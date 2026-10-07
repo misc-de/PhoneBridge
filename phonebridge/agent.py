@@ -542,6 +542,8 @@ class Agent:
         self._sms_pending = 0
         self.last_sms_id = store_last_id()
         self.modem = self._ofono_modem()
+        self.pim = Pim(self.session)
+        self._calls_pending = 0
         self._watch()
 
     # -- sources ----------------------------------------------------------
@@ -660,7 +662,32 @@ class Agent:
         GLib.timeout_add_seconds(30, self._tick)
         GLib.timeout_add_seconds(20, self._sms_tick)
 
+    def active_calls(self):
+        if not self.modem:
+            return []
+        try:
+            calls = call(self.system, "org.ofono", self.modem, "org.ofono.VoiceCallManager",
+                         "GetCalls", None, "(a(oa{sv}))")[0]
+        except RuntimeError:
+            return []
+        out = []
+        for path, props in calls:
+            number = props.get("LineIdentification", "")
+            contact = BOOK.lookup(number) if number and number != "withheld" else None
+            out.append({"path": path, "state": props.get("State", ""), "number": number,
+                        "name": (contact[0] if contact else "") or props.get("Name", ""),
+                        "avatar": avatar_key(contact[1]) if contact else None})
+        return out
+
+    def _send_calls(self):
+        self._calls_pending = 0
+        send({"event": "calls", "calls": self.active_calls()})
+        return False
+
     def _on_signal(self, conn, sender, path, iface, signal, params):
+        if iface in ("org.ofono.VoiceCallManager", "org.ofono.VoiceCall"):
+            if not self._calls_pending:
+                self._calls_pending = GLib.timeout_add(150, self._send_calls)
         if iface == "org.ofono.MessageManager" and signal == "IncomingMessage":
             # chatty stores it a moment later; the file monitor catches that
             # too, this is the safety net when it does not fire.
@@ -982,6 +1009,961 @@ def cmd_call(agent, args):
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
     return number
+
+
+# --- iCalendar and vCard text ------------------------------------------------
+
+def _escape(value):
+    return (value.replace("\\", "\\\\").replace("\n", "\\n")
+            .replace(",", "\\,").replace(";", "\\;"))
+
+
+def _prop(line):
+    """'DTSTART;TZID=Europe/Berlin:20261007T100000' -> name, params, value.
+    Quoted parameter values may hold ':' and ';'."""
+    i, quoted = 0, False
+    while i < len(line):
+        c = line[i]
+        if c == '"':
+            quoted = not quoted
+        elif c == ":" and not quoted:
+            break
+        i += 1
+    head, value = line[:i], line[i + 1:]
+    parts = re.findall(r'(?:[^;"]|"[^"]*")+', head)
+    params = {}
+    for p in parts[1:]:
+        k, _eq, v = p.partition("=")
+        params[k.upper()] = v.strip('"')
+    return (parts[0] if parts else "").split(".")[-1].upper(), params, value
+
+
+def _fold(line):
+    """Lines longer than 75 octets are folded, as RFC 5545/6350 want."""
+    raw = line.encode("utf-8")
+    if len(raw) <= 75:
+        return line
+    out, cur = [], b""
+    for ch in line:
+        b = ch.encode("utf-8")
+        if len(cur) + len(b) > (75 if not out else 74):
+            out.append(cur.decode("utf-8"))
+            cur = b""
+        cur += b
+    out.append(cur.decode("utf-8"))
+    return "\r\n ".join(out)
+
+
+def components(text, kind):
+    """The BEGIN:<kind> ... END:<kind> blocks of an iCalendar text, as line
+    lists (unfolded); nested blocks (VALARM) stay inside."""
+    out, cur, depth = [], None, 0
+    for line in _unfold(text):
+        if line == "BEGIN:" + kind and cur is None:
+            cur, depth = [line], 0
+            continue
+        if cur is not None:
+            cur.append(line)
+            if line.startswith("BEGIN:"):
+                depth += 1
+            elif line.startswith("END:"):
+                if depth == 0 and line == "END:" + kind:
+                    out.append(cur)
+                    cur = None
+                else:
+                    depth -= 1
+    return out
+
+
+# --- contacts ------------------------------------------------------------------
+
+PHONE_TYPES = {"mobile": "CELL", "home": "HOME,VOICE", "work": "WORK,VOICE",
+               "other": "VOICE"}
+# what the editor owns in a vCard; everything else stays as it was
+CONTACT_OWNED = {"FN", "N", "ORG", "TEL", "EMAIL", "BDAY", "NOTE",
+                 "X-EVOLUTION-FILE-AS"}
+
+
+def _phone_type(head):
+    h = head.upper()
+    if "CELL" in h or "MOBILE" in h:
+        return "mobile"
+    if "WORK" in h:
+        return "work"
+    if "HOME" in h:
+        return "home"
+    return "other"
+
+
+def contact_from_vcard(text):
+    c = {"uid": "", "name": "", "given": "", "family": "", "org": "",
+         "phones": [], "emails": [], "birthday": "", "note": "", "avatar": None}
+    photo = None
+    for line in _unfold(text):
+        if ":" not in line:
+            continue
+        key, params, value = _prop(line)
+        if key == "UID":
+            c["uid"] = value
+        elif key == "FN":
+            c["name"] = _unescape(value).strip()
+        elif key == "N":
+            parts = [_unescape(p).strip() for p in re.split(r"(?<!\\);", value)]
+            c["family"] = parts[0] if parts else ""
+            c["given"] = parts[1] if len(parts) > 1 else ""
+        elif key == "ORG":
+            c["org"] = _unescape(re.split(r"(?<!\\);", value)[0]).strip()
+        elif key == "TEL":
+            number = value[4:] if value.lower().startswith("tel:") else value
+            if number.strip():
+                c["phones"].append({"type": _phone_type(line.split(":", 1)[0]),
+                                    "value": number.strip()})
+        elif key == "EMAIL" and value.strip():
+            c["emails"].append(value.strip())
+        elif key == "BDAY":
+            m = re.match(r"(\d{4})-?(\d{2})-?(\d{2})", value)
+            c["birthday"] = "%s-%s-%s" % m.groups() if m else ""
+        elif key == "NOTE":
+            c["note"] = _unescape(value)
+    _n, _nums, photo = parse_vcard(text)
+    if photo and photo[0] == "file" and not os.path.isfile(photo[1]):
+        photo = None
+    c["avatar"] = avatar_key(photo)
+    if not c["name"]:
+        c["name"] = " ".join(p for p in (c["given"], c["family"]) if p) or c["org"]
+    return c
+
+
+def vcard_from_contact(c, original=None, photo=None):
+    """A vCard with the editor's fields; from `original` everything else is
+    kept (UID, ETag, addresses, extra fields). photo: None keeps the picture,
+    "" removes it, else (mime, bytes) sets it."""
+    lines = _unfold(original) if original else ["BEGIN:VCARD", "VERSION:3.0", "END:VCARD"]
+    owned = CONTACT_OWNED | ({"PHOTO"} if photo is not None else set())
+    kept = [l for l in lines
+            if l != "END:VCARD" and not (":" in l and _prop(l)[0] in owned)]
+    given, family = c.get("given", "").strip(), c.get("family", "").strip()
+    org = c.get("org", "").strip()
+    name = " ".join(p for p in (given, family) if p) or org or c.get("name", "").strip()
+    new = ["FN:" + _escape(name),
+           "N:%s;%s;;;" % (_escape(family), _escape(given)),
+           "X-EVOLUTION-FILE-AS:" + _escape(
+               ", ".join(p for p in (family, given) if p) or name)]
+    if org:
+        new.append("ORG:" + _escape(org))
+    for p in c.get("phones", []):
+        if p.get("value", "").strip():
+            new.append("TEL;TYPE=%s:%s" % (PHONE_TYPES.get(p.get("type"), "VOICE"),
+                                           p["value"].strip()))
+    for e in c.get("emails", []):
+        if e.strip():
+            new.append("EMAIL;TYPE=INTERNET:" + e.strip())
+    if c.get("birthday"):
+        new.append("BDAY:" + c["birthday"])
+    if c.get("note", "").strip():
+        new.append("NOTE:" + _escape(c["note"].strip()))
+    if photo:
+        mime, raw = photo
+        kind = "PNG" if "png" in mime else "JPEG"
+        new.append("PHOTO;ENCODING=b;TYPE=%s:%s" % (kind, base64.b64encode(raw).decode()))
+    return "\r\n".join(_fold(l) for l in kept + new + ["END:VCARD"]) + "\r\n"
+
+
+# --- events ----------------------------------------------------------------------
+
+def local_zone_name():
+    """The phone's time zone, as an Olson name."""
+    try:
+        with open("/etc/timezone", encoding="utf-8") as f:
+            name = f.read().strip()
+            if name:
+                return name
+    except OSError:
+        pass
+    try:
+        link = os.path.realpath("/etc/localtime")
+        m = re.search(r"zoneinfo/(.+)$", link)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "UTC"
+
+
+def _zone(tzid):
+    from zoneinfo import ZoneInfo
+    if tzid:
+        m = re.search(r"([A-Za-z]+(?:/[A-Za-z0-9_+\-]+)+|UTC)$", tzid)
+        if m:
+            try:
+                return ZoneInfo(m.group(1))
+            except Exception:  # noqa: BLE001 - unknown zone: the phone's own
+                pass
+    try:
+        return ZoneInfo(local_zone_name())
+    except Exception:  # noqa: BLE001
+        return ZoneInfo("UTC")
+
+
+def parse_time(value, params):
+    """-> ("date", date) or ("time", aware datetime)."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    value = value.strip()
+    if params.get("VALUE") == "DATE" or re.fullmatch(r"\d{8}", value):
+        return "date", dt.date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+    naive = dt.datetime.strptime(value[:15], "%Y%m%dT%H%M%S")
+    if value.endswith("Z"):
+        return "time", naive.replace(tzinfo=ZoneInfo("UTC"))
+    return "time", naive.replace(tzinfo=_zone(params.get("TZID")))
+
+
+def _duration(text):
+    import datetime as dt
+    m = re.fullmatch(r"([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?",
+                     text.strip())
+    if not m:
+        return None
+    sign, w, d, h, mi, s = m.groups()
+    delta = dt.timedelta(weeks=int(w or 0), days=int(d or 0), hours=int(h or 0),
+                         minutes=int(mi or 0), seconds=int(s or 0))
+    return -delta if sign == "-" else delta
+
+
+WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
+def _nth_weekdays(year, month, spec):
+    """'2MO' / '-1FR' / 'TU' -> the matching days of that month."""
+    import calendar
+    import datetime as dt
+    m = re.fullmatch(r"([+-]?\d+)?(MO|TU|WE|TH|FR|SA|SU)", spec)
+    if not m:
+        return []
+    wd = WEEKDAYS.index(m.group(2))
+    days = [d for d in range(1, calendar.monthrange(year, month)[1] + 1)
+            if dt.date(year, month, d).weekday() == wd]
+    if m.group(1):
+        n = int(m.group(1))
+        return [days[n - 1 if n > 0 else n]] if -len(days) <= n <= len(days) and n else []
+    return days
+
+
+def recurrences(start, rule, until_limit, exdates=(), max_steps=20000):
+    """Start values (date or naive datetime, as `start`) of a recurring
+    event, from `start` up to `until_limit` (same kind). Daily, weekly,
+    monthly and yearly rules with INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY
+    and BYMONTH - what calendars write in practice."""
+    import calendar
+    import datetime as dt
+    r = dict(p.split("=", 1) for p in rule.split(";") if "=" in p)
+    freq = r.get("FREQ", "")
+    interval = max(1, int(r.get("INTERVAL", "1") or 1))
+    count = int(r["COUNT"]) if r.get("COUNT", "").isdigit() else None
+    until = None
+    if r.get("UNTIL"):
+        kind, u = parse_time(r["UNTIL"], {})
+        if isinstance(start, dt.datetime):
+            until = (u if kind == "time" else dt.datetime(u.year, u.month, u.day, 23, 59, 59,
+                                                          tzinfo=start.tzinfo))
+            if until.tzinfo is not None and start.tzinfo is not None:
+                until = until.astimezone(start.tzinfo)
+            until = until.replace(tzinfo=None)
+        else:
+            until = u if kind == "date" else u.date()
+    is_time = isinstance(start, dt.datetime)
+    naive_start = start.replace(tzinfo=None) if is_time else start
+    byday = [d for d in r.get("BYDAY", "").split(",") if d]
+    bymonthday = [int(d) for d in r.get("BYMONTHDAY", "").split(",") if d.lstrip("-").isdigit()]
+    bymonth = [int(m) for m in r.get("BYMONTH", "").split(",") if m.isdigit()]
+    excluded = set(exdates)
+
+    def at(day):
+        if is_time:
+            return dt.datetime.combine(day, naive_start.time())
+        return day
+
+    def candidates():
+        base = naive_start.date() if is_time else naive_start
+        step = 0
+        while step < max_steps:
+            if freq == "DAILY":
+                yield [base + dt.timedelta(days=step * interval)]
+            elif freq == "WEEKLY":
+                week = base - dt.timedelta(days=base.weekday()) + dt.timedelta(weeks=step * interval)
+                days = [WEEKDAYS.index(d[-2:]) for d in byday if d[-2:] in WEEKDAYS] \
+                    or [base.weekday()]
+                yield [week + dt.timedelta(days=d) for d in sorted(set(days))]
+            elif freq in ("MONTHLY", "YEARLY"):
+                if freq == "MONTHLY":
+                    months = [(base.year * 12 + base.month - 1 + step * interval)]
+                    months = [(m // 12, m % 12 + 1) for m in months]
+                else:
+                    year = base.year + step * interval
+                    months = [(year, m) for m in (bymonth or [base.month])]
+                out = []
+                for year, month in months:
+                    last = calendar.monthrange(year, month)[1]
+                    if byday:
+                        days = sorted({d for spec in byday for d in _nth_weekdays(year, month, spec)})
+                    else:
+                        days = []
+                        for md in (bymonthday or [base.day]):
+                            d = md if md > 0 else last + 1 + md
+                            if 1 <= d <= last:
+                                days.append(d)
+                    out += [dt.date(year, month, d) for d in sorted(days)]
+                yield out
+            else:
+                yield [base] if step == 0 else []
+                return
+            step += 1
+
+    n = 0
+    for group in candidates():
+        for day in group:
+            value = at(day)
+            if value < naive_start:
+                continue
+            if until is not None and value > until:
+                return
+            if count is not None and n >= count:
+                return
+            n += 1
+            if value > until_limit:
+                return
+            if value not in excluded:
+                yield value.replace(tzinfo=start.tzinfo) if is_time else value
+    return
+
+
+def _alarm_minutes(lines):
+    for i, line in enumerate(lines):
+        if line.startswith("TRIGGER"):
+            key, params, value = _prop(line)
+            d = _duration(value)
+            if d is not None and params.get("RELATED", "START") == "START":
+                return int(-d.total_seconds() // 60)
+    return None
+
+
+def event_from_lines(lines):
+    """The fields of one VEVENT (its own lines; alarms read separately)."""
+    ev = {"uid": "", "summary": "", "location": "", "description": "", "rrule": "",
+          "exdates": [], "rid": "", "start": None, "end": None, "duration": None,
+          "status": ""}
+    depth = 0
+    alarm_lines = []
+    for line in lines[1:-1]:
+        if line.startswith("BEGIN:"):
+            depth += 1
+            continue
+        if line.startswith("END:"):
+            depth -= 1
+            continue
+        if depth:
+            alarm_lines.append(line)
+            continue
+        if ":" not in line:
+            continue
+        key, params, value = _prop(line)
+        if key == "UID":
+            ev["uid"] = value
+        elif key in ("SUMMARY", "LOCATION", "DESCRIPTION"):
+            ev[key.lower()] = _unescape(value)
+        elif key == "DTSTART":
+            ev["start"] = parse_time(value, params)
+        elif key == "DTEND":
+            ev["end"] = parse_time(value, params)
+        elif key == "DURATION":
+            ev["duration"] = _duration(value)
+        elif key == "RRULE":
+            ev["rrule"] = value
+        elif key == "EXDATE":
+            for v in value.split(","):
+                ev["exdates"].append(parse_time(v, params))
+        elif key == "RECURRENCE-ID":
+            ev["rid"] = value
+            ev["rid_time"] = parse_time(value, params)
+        elif key == "STATUS":
+            ev["status"] = value.upper()
+    ev["alarm"] = _alarm_minutes(alarm_lines)
+    return ev
+
+
+def _end_of(ev):
+    import datetime as dt
+    kind, start = ev["start"]
+    if ev["end"] is not None:
+        return ev["end"][1]
+    if ev["duration"] is not None:
+        return start + ev["duration"]
+    return start + dt.timedelta(days=1) if kind == "date" else start
+
+
+def _rid_text(value):
+    if hasattr(value, "hour"):
+        from zoneinfo import ZoneInfo
+        return value.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
+    return value.strftime("%Y%m%d")
+
+
+def expand_events(ics_objects, range_start, range_end):
+    """Occurrences between two epoch times: (fields, start, end) with start
+    and end as date (all-day) or aware datetime."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    utc = ZoneInfo("UTC")
+    lo = dt.datetime.fromtimestamp(range_start, utc)
+    hi = dt.datetime.fromtimestamp(range_end, utc)
+    events = []
+    for text in ics_objects:
+        events += [event_from_lines(c) for c in components(text, "VEVENT")]
+    overridden = {}
+    for ev in events:
+        if ev["rid"]:
+            overridden.setdefault(ev["uid"], set()).add(_rid_text(ev["rid_time"][1]))
+    out = []
+    for ev in events:
+        if ev["start"] is None or ev["status"] == "CANCELLED":
+            continue
+        kind, start = ev["start"]
+        length = _end_of(ev) - start
+        if ev["rrule"] and not ev["rid"]:
+            if kind == "date":
+                limit = hi.date()
+                ex = [v for k, v in ev["exdates"] if k == "date"]
+            else:
+                limit = hi.astimezone(start.tzinfo).replace(tzinfo=None)
+                ex = [(v.astimezone(start.tzinfo).replace(tzinfo=None) if k == "time" else
+                       dt.datetime.combine(v, start.time())) for k, v in ev["exdates"]]
+            starts = recurrences(start, ev["rrule"], limit, ex)
+        else:
+            starts = [start]
+        skip = overridden.get(ev["uid"], set()) if not ev["rid"] else set()
+        for s in starts:
+            e = s + length
+            if kind == "date":
+                if e <= lo.date() or s > hi.date():
+                    continue
+            elif e < lo or s > hi:
+                continue
+            rid = ev["rid"] or (_rid_text(s) if ev["rrule"] else "")
+            if ev["rrule"] and _rid_text(s) in skip:
+                continue
+            out.append((ev, s, e, rid))
+    return out
+
+
+def _ical_value(kind, value, zone_name):
+    """DTSTART/DTEND parameters and value for a date or an epoch time."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    if kind == "date":
+        return ";VALUE=DATE", value.replace("-", "")
+    t = dt.datetime.fromtimestamp(value, ZoneInfo(zone_name))
+    if zone_name == "UTC":
+        return "", t.strftime("%Y%m%dT%H%M%SZ")
+    return ";TZID=" + zone_name, t.strftime("%Y%m%dT%H%M%S")
+
+
+ZONE_RE = r"([A-Za-z]+(?:/[A-Za-z0-9_+\-]+)+|UTC)$"
+
+
+def event_zone(lines):
+    """The zone an event's times are written in: its TZID, "UTC" for times
+    ending in Z, else (dates, floating times) the phone's."""
+    for line in lines:
+        if line.startswith("DTSTART"):
+            key, params, value = _prop(line)
+            if params.get("TZID"):
+                m = re.search(ZONE_RE, params["TZID"])
+                if m:
+                    return m.group(1)
+            if value.strip().endswith("Z"):
+                return "UTC"
+    return local_zone_name()
+
+
+def add_exdate(master_lines, occurrence_start):
+    """The master VEVENT with one more EXDATE, written like its DTSTART -
+    takes one occurrence out of a series."""
+    old = event_from_lines(master_lines)
+    if old["start"][0] == "date":
+        day = (occurrence_start if isinstance(occurrence_start, str) else
+               time.strftime("%Y-%m-%d", time.localtime(occurrence_start)))
+        line = "EXDATE;VALUE=DATE:" + day.replace("-", "")
+    else:
+        zone = event_zone(master_lines)
+        if isinstance(occurrence_start, str):
+            raise RuntimeError("expected a time for this event")
+        p, v = _ical_value("time", occurrence_start, zone)
+        line = "EXDATE%s:%s" % (p, v)
+    return master_lines[:-1] + [line, "END:VEVENT"]
+
+
+def _shift_times(line, delta):
+    """An EXDATE (or similar) line with every time moved by delta, written
+    as before."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    key, params, value = _prop(line)
+    head = line[:len(line) - len(value) - 1]
+    out = []
+    for v in value.split(","):
+        kind, t = parse_time(v, params)
+        if kind == "date":
+            out.append((t + dt.timedelta(days=delta.days or round(delta.total_seconds() / 86400)))
+                       .strftime("%Y%m%d"))
+        elif v.strip().endswith("Z"):
+            out.append((t + delta).astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ"))
+        else:
+            # same wall-clock arithmetic as the series: local time + delta
+            moved = (t.replace(tzinfo=None) + delta).replace(tzinfo=t.tzinfo)
+            out.append(moved.strftime("%Y%m%dT%H%M%S"))
+    return head + ":" + ",".join(out)
+
+
+def vevent_from_fields(f, original=None, shift=None):
+    """A VEVENT with the editor's fields. From `original` (a VEVENT text)
+    everything else stays: recurrence, attendees, ETag, other alarms.
+    f: summary, location, description, allday, start, end (epoch, or
+    'YYYY-MM-DD' for all-day; end exclusive), alarm (minutes, None = none,
+    "keep" = leave alarms alone). shift: for a series edited through one
+    of its occurrences, (old start, new start) of that occurrence - the
+    series moves by the same amount."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    now = dt.datetime.now(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
+    comps = components(original, "VEVENT") if original else []
+    lines = comps[0] if comps else ["BEGIN:VEVENT", "END:VEVENT"]
+    old = event_from_lines(lines) if comps else None
+    zone = event_zone(lines) if old else local_zone_name()
+    allday = bool(f.get("allday"))
+    start, end = f["start"], f["end"]
+    series_delta = None
+    if shift and old and old["rrule"]:
+        # move the series' first start by what the occurrence moved
+        o_start, n_start = shift
+        kind, first = old["start"]
+        length = (dt.date.fromisoformat(end) - dt.date.fromisoformat(start)
+                  if allday else dt.timedelta(seconds=end - start))
+        if allday:
+            delta = dt.date.fromisoformat(n_start) - dt.date.fromisoformat(o_start)
+            series_delta = delta
+            base = first if kind == "date" else first.date()
+            new_first = base + delta
+            start, end = new_first.isoformat(), (new_first + length).isoformat()
+        else:
+            delta = dt.timedelta(seconds=n_start - o_start)
+            series_delta = delta
+            first_t = first if kind == "time" else dt.datetime.combine(
+                first, dt.time(9), ZoneInfo(zone))
+            new_first = first_t + delta
+            start = int(new_first.timestamp())
+            end = int((new_first + length).timestamp())
+    owned = {"SUMMARY", "LOCATION", "DESCRIPTION", "DTSTART", "DTEND", "DURATION",
+             "DTSTAMP", "LAST-MODIFIED", "SEQUENCE"}
+    keep_alarms = f.get("alarm", "keep") == "keep"
+    out, depth, skipping = [], 0, False
+    sequence = 0
+    for line in lines[1:-1]:
+        if line.startswith("BEGIN:"):
+            depth += 1
+            skipping = line == "BEGIN:VALARM" and not keep_alarms
+            if not skipping:
+                out.append(line)
+            continue
+        if line.startswith("END:"):
+            depth -= 1
+            if not skipping:
+                out.append(line)
+            if depth == 0:
+                skipping = False
+            continue
+        if skipping:
+            continue
+        if depth == 0 and ":" in line:
+            key = _prop(line)[0]
+            if key == "EXDATE" and series_delta:
+                # the days taken out of the series move with it
+                out.append(_shift_times(line, series_delta))
+                continue
+            if key == "SEQUENCE":
+                v = line.split(":", 1)[1]
+                sequence = int(v) + 1 if v.strip().isdigit() else 1
+            if key in owned:
+                continue
+        out.append(line)
+    new = []
+    if not any(l.startswith("UID") for l in out):
+        new.append("UID:" + hashlib.sha1(("%s%f%s" % (now, time.time(), f.get("summary")))
+                                         .encode()).hexdigest())
+    new += ["DTSTAMP:" + now, "LAST-MODIFIED:" + now, "SEQUENCE:%d" % sequence]
+    if not old:
+        new.append("CREATED:" + now)
+    kind = "date" if allday else "time"
+    p, v = _ical_value(kind, start, zone)
+    new.append("DTSTART%s:%s" % (p, v))
+    p, v = _ical_value(kind, end, zone)
+    new.append("DTEND%s:%s" % (p, v))
+    new.append("SUMMARY:" + _escape(f.get("summary", "").strip()))
+    if f.get("location", "").strip():
+        new.append("LOCATION:" + _escape(f["location"].strip()))
+    if f.get("description", "").strip():
+        new.append("DESCRIPTION:" + _escape(f["description"].strip()))
+    body = new + out
+    if not keep_alarms and f.get("alarm") is not None:
+        minutes = int(f["alarm"])
+        body += ["BEGIN:VALARM", "ACTION:DISPLAY",
+                 "DESCRIPTION:" + _escape(f.get("summary", "").strip() or "Reminder"),
+                 "TRIGGER;RELATED=START:%sPT%dM" % ("-" if minutes >= 0 else "", abs(minutes)),
+                 "END:VALARM"]
+    return "\r\n".join(_fold(l) for l in ["BEGIN:VEVENT"] + body + ["END:VEVENT"]) + "\r\n"
+
+
+# --- evolution-data-server over D-Bus ---------------------------------------------
+
+EDS_SOURCES = "org.gnome.evolution.dataserver.Sources5"
+EDS_BOOKS = "org.gnome.evolution.dataserver.AddressBook10"
+EDS_CALENDARS = "org.gnome.evolution.dataserver.Calendar8"
+EDS = "org.gnome.evolution.dataserver."
+
+
+class Pim:
+    """Address books and calendars of evolution-data-server - the same
+    store GNOME Contacts and Calendar use, so changes sync to the accounts."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        self._open = {}
+
+    def sources(self):
+        objs = call(self.conn, EDS_SOURCES, "/org/gnome/evolution/dataserver/SourceManager",
+                    "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+                    None, "(a{oa{sa{sv}}})", timeout=15000)[0]
+        raw = {}
+        for ifaces in objs.values():
+            s = ifaces.get(EDS + "Source")
+            if s and s.get("UID"):
+                kf = GLib.KeyFile()
+                try:
+                    data = s.get("Data", "")
+                    kf.load_from_data(data, len(data.encode("utf-8")), GLib.KeyFileFlags.NONE)
+                except GLib.Error:
+                    continue
+                raw[s["UID"]] = kf
+
+        def get(kf, group, key, default=""):
+            try:
+                return kf.get_string(group, key)
+            except GLib.Error:
+                return default
+
+        out = []
+        for uid, kf in raw.items():
+            kinds = [k for k, g in (("contacts", "Address Book"), ("calendar", "Calendar"))
+                     if kf.has_group(g)]
+            if not kinds or get(kf, "Data Source", "Enabled", "true") == "false":
+                continue
+            parent = raw.get(get(kf, "Data Source", "Parent"))
+            account = get(parent, "Data Source", "DisplayName") if parent else ""
+            for kind in kinds:
+                group = "Address Book" if kind == "contacts" else "Calendar"
+                out.append({"uid": uid, "kind": kind,
+                            "name": get(kf, "Data Source", "DisplayName") or uid,
+                            "account": account,
+                            "backend": get(kf, group, "BackendName"),
+                            "color": get(kf, group, "Color")})
+        return out
+
+    def _handle(self, kind, uid):
+        if (kind, uid) not in self._open:
+            if kind == "contacts":
+                path, name = call(self.conn, EDS_BOOKS,
+                                  "/org/gnome/evolution/dataserver/AddressBookFactory",
+                                  EDS + "AddressBookFactory", "OpenAddressBook",
+                                  GLib.Variant("(s)", (uid,)), "(ss)", timeout=30000)
+                iface = EDS + "AddressBook"
+            else:
+                path, name = call(self.conn, EDS_CALENDARS,
+                                  "/org/gnome/evolution/dataserver/CalendarFactory",
+                                  EDS + "CalendarFactory", "OpenCalendar",
+                                  GLib.Variant("(s)", (uid,)), "(ss)", timeout=30000)
+                iface = EDS + "Calendar"
+            call(self.conn, name, path, iface, "Open", None, "(as)", timeout=60000)
+            writable = get_prop(self.conn, name, path, iface, "Writable")
+            self._open[(kind, uid)] = (name, path, iface, bool(writable))
+        return self._open[(kind, uid)]
+
+    def writable(self, kind, uid):
+        return self._handle(kind, uid)[3]
+
+    def call(self, kind, uid, method, args, reply=None, timeout=60000):
+        name, path, iface, _w = self._handle(kind, uid)
+        try:
+            return call(self.conn, name, path, iface, method, args, reply, timeout)
+        except RuntimeError:
+            # the backend may have gone away (EDS restarts idle backends)
+            self._open.pop((kind, uid), None)
+            name, path, iface, _w = self._handle(kind, uid)
+            return call(self.conn, name, path, iface, method, args, reply, timeout)
+
+
+# --- the phone: call history (GNOME Calls, read only) and calls in progress ---------
+
+CALLS_DB = os.environ.get("PHONEBRIDGE_CALLS_DB",
+                          os.path.join(HOME, ".local/share/calls/records.db"))
+
+
+def _iso(value):
+    import datetime as dt
+    if not value:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode("ascii", "replace")
+    try:
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def call_history(limit=200, path=None, book=BOOK, country="49"):
+    path = path or CALLS_DB
+    if not os.path.exists(path):
+        return []
+    db = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=3)
+    out = []
+    with db:
+        for rid, target, inbound, start, answered, end in db.execute(
+                "SELECT id, target, inbound, start, answered, end FROM calls"
+                " ORDER BY id DESC LIMIT ?", (int(limit),)):
+            t0, ta, t1 = _iso(start), _iso(answered), _iso(end)
+            number = (target or "").strip()
+            contact = book.lookup(number, country) if (book is not None and number) else None
+            out.append({"id": rid, "number": number, "inbound": bool(inbound),
+                        "answered": ta is not None, "start": t0,
+                        "duration": int(t1 - ta) if ta and t1 else 0,
+                        "name": contact[0] if contact else "",
+                        "avatar": avatar_key(contact[1]) if contact else None})
+    db.close()
+    return out
+
+
+@command("pim.sources")
+def cmd_pim_sources(agent, args):
+    out = []
+    for s in agent.pim.sources():
+        try:
+            s["writable"] = agent.pim.writable(s["kind"], s["uid"])
+        except RuntimeError:
+            s["writable"] = False
+            s["broken"] = True
+        out.append(s)
+    return out
+
+
+@command("contacts.list")
+def cmd_contacts(agent, args):
+    out = []
+    for s in agent.pim.sources():
+        if s["kind"] != "contacts":
+            continue
+        try:
+            vcards = agent.pim.call("contacts", s["uid"], "GetContactList",
+                                    GLib.Variant("(s)", ("",)), "(as)")[0]
+            writable = agent.pim.writable("contacts", s["uid"])
+        except RuntimeError:
+            continue
+        for v in vcards:
+            if re.search(r"^X-EVOLUTION-LIST:TRUE", v, re.M | re.I):
+                continue
+            c = contact_from_vcard(v)
+            c["source"] = s["uid"]
+            c["book"] = s["name"]
+            c["writable"] = writable
+            out.append(c)
+    out.sort(key=lambda c: (c["name"] or "~").lower())
+    return out
+
+
+@command("contacts.save")
+def cmd_contact_save(agent, args):
+    source = args["source"]
+    photo = None
+    if "photo" in args:
+        p = args["photo"]
+        photo = "" if not p else (p.get("mime", "image/jpeg"), base64.b64decode(p["data"]))
+    uid = args.get("uid")
+    old_source = args.get("old_source") or source
+    original = None
+    if uid:
+        original = agent.pim.call("contacts", old_source, "GetContact",
+                                  GLib.Variant("(s)", (uid,)), "(s)")[0]
+    if uid and old_source != source:
+        # another address book: a new contact there, the old one goes
+        text = vcard_from_contact(args["contact"], re.sub(
+            r"^(UID|X-EVOLUTION-WEBDAV-ETAG|REV)[;:].*\r?\n", "", original, flags=re.M),
+            photo)
+        new = agent.pim.call("contacts", source, "CreateContacts",
+                             GLib.Variant("(asu)", ([text], 0)), "(as)")[0]
+        agent.pim.call("contacts", old_source, "RemoveContacts",
+                       GLib.Variant("(asu)", ([uid], 0)))
+        return {"uid": new[0] if new else ""}
+    text = vcard_from_contact(args["contact"], original, photo)
+    if uid:
+        agent.pim.call("contacts", source, "ModifyContacts",
+                       GLib.Variant("(asu)", ([text], 0)))
+        return {"uid": uid}
+    new = agent.pim.call("contacts", source, "CreateContacts",
+                         GLib.Variant("(asu)", ([text], 0)), "(as)")[0]
+    return {"uid": new[0] if new else ""}
+
+
+@command("contacts.delete")
+def cmd_contact_delete(agent, args):
+    agent.pim.call("contacts", args["source"], "RemoveContacts",
+                   GLib.Variant("(asu)", ([args["uid"]], 0)))
+    return True
+
+
+def _make_time(epoch):
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(epoch))
+
+
+@command("calendar.events")
+def cmd_events(agent, args):
+    start, end = int(args["start"]), int(args["end"])
+    query = '(occur-in-time-range? (make-time "%s") (make-time "%s"))' % (
+        _make_time(start), _make_time(end))
+    out = []
+    for s in agent.pim.sources():
+        if s["kind"] != "calendar":
+            continue
+        try:
+            objs = agent.pim.call("calendar", s["uid"], "GetObjectList",
+                                  GLib.Variant("(s)", (query,)), "(as)")[0]
+            writable = agent.pim.writable("calendar", s["uid"])
+        except RuntimeError:
+            continue
+        for ev, s0, e0, rid in expand_events(objs, start, end):
+            allday = not hasattr(s0, "hour")
+            out.append({
+                "source": s["uid"], "calendar": s["name"], "color": s["color"],
+                "writable": writable, "uid": ev["uid"], "rid": rid,
+                "recurring": bool(ev["rrule"] or ev["rid"]),
+                "override": bool(ev["rid"]),
+                "summary": ev["summary"], "location": ev["location"],
+                "description": ev["description"], "alarm": ev["alarm"],
+                "allday": allday,
+                "start": s0.isoformat() if allday else int(s0.timestamp()),
+                "end": e0.isoformat() if allday else int(e0.timestamp()),
+            })
+    out.sort(key=lambda e: (e["start"] if not e["allday"] else
+                            time.mktime(time.strptime(e["start"], "%Y-%m-%d"))))
+    return out
+
+
+@command("calendar.save")
+def cmd_event_save(agent, args):
+    source = args["source"]
+    uid = args.get("uid")
+    old_source = args.get("old_source") or source
+    fields = args["event"]
+    original = None
+    if uid and args.get("override") and args.get("rid") and old_source == source:
+        # an occurrence the calendar keeps as an exception of its own
+        original = agent.pim.call("calendar", source, "GetObject",
+                                  GLib.Variant("(ss)", (uid, args["rid"])), "(s)")[0]
+        mine = [c for c in components(original, "VEVENT")
+                if any(l.startswith("RECURRENCE-ID") for l in c)]
+        text = vevent_from_fields(fields, "\r\n".join(mine[0]) if mine else original)
+        agent.pim.call("calendar", source, "ModifyObjects",
+                       GLib.Variant("(assu)", ([text], "this", 0)))
+        return {"uid": uid}
+    if uid:
+        original = agent.pim.call("calendar", old_source, "GetObject",
+                                  GLib.Variant("(ss)", (uid, "")), "(s)")[0]
+        masters = [c for c in components(original, "VEVENT")
+                   if not any(l.startswith("RECURRENCE-ID") for l in c)]
+        original = "\r\n".join(masters[0]) if masters else original
+    shift = None
+    if args.get("occurrence_start") is not None:
+        shift = (args["occurrence_start"], fields["start"])
+    if uid and old_source != source:
+        text = vevent_from_fields(fields, re.sub(
+            r"^(X-EVOLUTION-CALDAV-ETAG|X-EVOLUTION-CALDAV-HREF)[;:].*\r?\n", "",
+            original, flags=re.M), shift)
+        agent.pim.call("calendar", source, "CreateObjects",
+                       GLib.Variant("(asu)", ([text], 0)), "(as)")
+        agent.pim.call("calendar", old_source, "RemoveObjects",
+                       GLib.Variant("(a(ss)su)", ([(uid, "")], "all", 0)))
+        return {"uid": uid}
+    text = vevent_from_fields(fields, original, shift)
+    if uid:
+        agent.pim.call("calendar", source, "ModifyObjects",
+                       GLib.Variant("(assu)", ([text], "all", 0)))
+        return {"uid": uid}
+    new = agent.pim.call("calendar", source, "CreateObjects",
+                         GLib.Variant("(asu)", ([text], 0)), "(as)")[0]
+    return {"uid": new[0] if new else ""}
+
+
+@command("calendar.delete")
+def cmd_event_delete(agent, args):
+    """scope "all" removes the event (a whole series); "this" takes one
+    occurrence out: an EXDATE on the series, or - for an occurrence the
+    calendar keeps as an exception of its own - that exception."""
+    source, uid = args["source"], args["uid"]
+    if args.get("scope") != "this":
+        agent.pim.call("calendar", source, "RemoveObjects",
+                       GLib.Variant("(a(ss)su)", ([(uid, "")], "all", 0)))
+        return True
+    if args.get("override"):
+        agent.pim.call("calendar", source, "RemoveObjects",
+                       GLib.Variant("(a(ss)su)", ([(uid, args["rid"])], "this", 0)))
+        return True
+    original = agent.pim.call("calendar", source, "GetObject",
+                              GLib.Variant("(ss)", (uid, "")), "(s)")[0]
+    masters = [c for c in components(original, "VEVENT")
+               if not any(l.startswith("RECURRENCE-ID") for l in c)]
+    if not masters:
+        raise RuntimeError("no such event")
+    text = "\r\n".join(_fold(l) for l in add_exdate(masters[0], args["start"])) + "\r\n"
+    agent.pim.call("calendar", source, "ModifyObjects",
+                   GLib.Variant("(assu)", ([text], "all", 0)))
+    return True
+
+
+@command("calls.history")
+def cmd_call_history(agent, args):
+    return call_history(args.get("limit", 200), country=args.get("country", "49"))
+
+
+@command("calls.active")
+def cmd_calls_active(agent, args):
+    return agent.active_calls()
+
+
+@command("call.answer")
+def cmd_answer(agent, args):
+    call(agent.system, "org.ofono", args["path"], "org.ofono.VoiceCall", "Answer",
+         timeout=15000)
+    return True
+
+
+@command("call.hangup")
+def cmd_hangup(agent, args):
+    try:
+        call(agent.system, "org.ofono", args["path"], "org.ofono.VoiceCall", "Hangup",
+             timeout=15000)
+    except RuntimeError:
+        # ofono's Hangup fails now and then; ModemManager's hangup works
+        if not agent.modem:
+            raise
+        call(agent.system, "org.ofono", agent.modem, "org.ofono.VoiceCallManager",
+             "HangupAll", timeout=15000)
+    return True
 
 
 # --- main ------------------------------------------------------------------

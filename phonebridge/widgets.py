@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
+# SPDX-License-Identifier: MIT
+"""Small pieces the pages share: picking a date and a time, names of days
+and months in the user's language."""
+
+import datetime as dt
+
+from gi.repository import GLib, GObject, Gtk
+
+from .i18n import N_, _
+
+WEEKDAYS = (N_("Monday"), N_("Tuesday"), N_("Wednesday"), N_("Thursday"),
+            N_("Friday"), N_("Saturday"), N_("Sunday"))
+MONTHS = (N_("January"), N_("February"), N_("March"), N_("April"), N_("May"),
+          N_("June"), N_("July"), N_("August"), N_("September"), N_("October"),
+          N_("November"), N_("December"))
+
+
+def day_title(day, today=None):
+    """'Today', 'Tomorrow', or 'Wednesday, 7 October 2026'."""
+    today = today or dt.date.today()
+    if day == today:
+        prefix = _("Today")
+    elif day == today + dt.timedelta(days=1):
+        prefix = _("Tomorrow")
+    elif day == today - dt.timedelta(days=1):
+        prefix = _("Yesterday")
+    else:
+        prefix = _(WEEKDAYS[day.weekday()])
+    text = _("%(day)d %(month)s") % {"day": day.day, "month": _(MONTHS[day.month - 1])}
+    if day.year != today.year:
+        text += " %d" % day.year
+    return "%s, %s" % (prefix, text)
+
+
+def short_date(day):
+    return day.strftime(_("%Y-%m-%d"))
+
+
+def parse_date(text):
+    """'7.10.2026', '2026-10-07' or '07.10.' (this year) -> date or None."""
+    text = text.strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d.%m.%y", "%m/%d/%Y"):
+        try:
+            return dt.datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    try:
+        d = dt.datetime.strptime(text.rstrip("."), "%d.%m")
+        return d.date().replace(year=dt.date.today().year)
+    except ValueError:
+        return None
+
+
+class DateButton(Gtk.MenuButton):
+    """A button showing a date; a calendar pops up to change it."""
+
+    __gsignals__ = {"changed": (GObject.SignalFlags.RUN_FIRST, None, ())}
+
+    def __init__(self, day=None):
+        super().__init__(valign=Gtk.Align.CENTER)
+        self.calendar = Gtk.Calendar()
+        self.calendar.connect("day-selected", self._on_day)
+        pop = Gtk.Popover(child=self.calendar)
+        self.set_popover(pop)
+        self._day = None
+        self.set_date(day or dt.date.today())
+
+    def get_date(self):
+        return self._day
+
+    def set_date(self, day):
+        self._day = day
+        self.calendar.select_day(GLib.DateTime.new_local(day.year, day.month, day.day, 0, 0, 0))
+        self.set_label(short_date(day))
+
+    def _on_day(self, cal):
+        d = cal.get_date()
+        day = dt.date(d.get_year(), d.get_month(), d.get_day_of_month())
+        if day != self._day:
+            self._day = day
+            self.set_label(short_date(day))
+            self.get_popover().popdown()
+            self.emit("changed")
+
+
+class TimeEntry(Gtk.Box):
+    """Hours and minutes as two spin buttons."""
+
+    __gsignals__ = {"changed": (GObject.SignalFlags.RUN_FIRST, None, ())}
+
+    def __init__(self, hour=9, minute=0):
+        super().__init__(spacing=2, valign=Gtk.Align.CENTER)
+        self.hours = Gtk.SpinButton.new_with_range(0, 23, 1)
+        self.minutes = Gtk.SpinButton.new_with_range(0, 59, 5)
+        for spin in (self.hours, self.minutes):
+            spin.set_wrap(True)
+            spin.set_numeric(True)
+            spin.set_orientation(Gtk.Orientation.VERTICAL)
+            spin.connect("output", self._two_digits)
+            spin.connect("value-changed", lambda *a: self.emit("changed"))
+        self.append(self.hours)
+        self.append(Gtk.Label(label=":"))
+        self.append(self.minutes)
+        self.set_time(hour, minute)
+
+    @staticmethod
+    def _two_digits(spin):
+        spin.set_text("%02d" % spin.get_value_as_int())
+        return True
+
+    def get_time(self):
+        return self.hours.get_value_as_int(), self.minutes.get_value_as_int()
+
+    def set_time(self, hour, minute):
+        self.hours.set_value(hour)
+        self.minutes.set_value(minute)

@@ -7,29 +7,39 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import i18n, text
 from .i18n import _
+from .calendar_page import CalendarPage
+from .contacts import ContactsPage
 from .messages import MessagesPage
 from .overview import OverviewPage
+from .phone import CallBar, PhonePage
 from .phone_settings import PhoneSettingsPage
 
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="PhoneBridge",
-                         default_width=960, default_height=680)
+                         default_width=1180, default_height=760)
         self.set_hide_on_close(True)
         self.set_size_request(360, 400)
         self.app = app
 
         self.overview = OverviewPage(app)
+        self.phone = PhonePage(app)
         self.messages = MessagesPage(app)
+        self.contacts = ContactsPage(app)
+        self.calendar = CalendarPage(app)
         self.settings = PhoneSettingsPage(app)
+        self.pages = (self.overview, self.phone, self.messages, self.contacts,
+                      self.calendar, self.settings)
         self.stack = Adw.ViewStack()
-        self.stack.add_titled_with_icon(self.overview, "overview", _("Overview"),
-                                        "phone-symbolic")
-        self.stack.add_titled_with_icon(self.messages, "messages", _("Messages"),
-                                        "mail-unread-symbolic")
-        self.stack.add_titled_with_icon(self.settings, "settings", _("Phone settings"),
-                                        "emblem-system-symbolic")
+        for page, name, title, icon in (
+                (self.overview, "overview", _("Overview"), "phone-symbolic"),
+                (self.phone, "phone", _("Telephone"), "call-start-symbolic"),
+                (self.messages, "messages", _("Messages"), "mail-unread-symbolic"),
+                (self.contacts, "contacts", _("Contacts"), "x-office-address-book-symbolic"),
+                (self.calendar, "calendar", _("Appointments"), "x-office-calendar-symbolic"),
+                (self.settings, "settings", _("Settings"), "emblem-system-symbolic")):
+            self.stack.add_titled_with_icon(page, name, title, icon)
         self.stack.connect("notify::visible-child", self._on_page)
 
         header = Adw.HeaderBar()
@@ -59,15 +69,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.body.add_named(self.empty, "empty")
         self.toasts = Adw.ToastOverlay(child=self.body)
 
+        self.callbar = CallBar(app)
         view = Adw.ToolbarView()
         view.add_top_bar(header)
         view.add_top_bar(self.banner)
+        view.add_top_bar(self.callbar)
         view.set_content(self.toasts)
         bar = Adw.ViewSwitcherBar(stack=self.stack)
         view.add_bottom_bar(bar)
         self.set_content(view)
 
-        bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 640sp"))
+        bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 900sp"))
         bp.add_setter(bar, "reveal", True)
         bp.add_setter(header, "title-widget", Adw.WindowTitle(title="PhoneBridge"))
         self.add_breakpoint(bp)
@@ -114,9 +126,10 @@ class MainWindow(Adw.ApplicationWindow):
             self._picking = True
             self.picker.set_selected(ids.index(dev.id))
             self._picking = False
-        for page in (self.overview, self.messages, self.settings):
+        for page in self.pages:
             page.set_device(dev)
         self._update_banner(dev)
+        self.calls_changed(dev)
 
     def _on_pick(self, *args):
         if self._picking:
@@ -129,8 +142,8 @@ class MainWindow(Adw.ApplicationWindow):
     def device_changed(self, dev):
         if dev is self.app.active_device():
             self.overview.update()
-            self.messages.device_changed()
-            self.settings.device_changed()
+            for page in self.pages[1:]:
+                page.device_changed()
             self._update_banner(dev)
 
     def threads_changed(self, dev):
@@ -140,6 +153,12 @@ class MainWindow(Adw.ApplicationWindow):
     def sms_arrived(self, dev, new):
         if dev is self.app.active_device():
             self.messages.sms_arrived(new)
+
+    def calls_changed(self, dev):
+        if dev is not None and dev is self.app.active_device():
+            self.callbar.show_call(dev, self.app.current_call(dev.id))
+        elif dev is None:
+            self.callbar.show_call(None, None)
 
     def _update_banner(self, dev):
         if dev is None or dev.online:
@@ -162,8 +181,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_page(self, *args):
         page = self.stack.get_visible_child()
-        if page is self.settings:
-            self.settings.load()
+        if hasattr(page, "load"):
+            page.load()
         self.messages.window_focus()
 
     def showing_thread(self):

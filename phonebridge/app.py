@@ -5,7 +5,8 @@ every phone and - when asked for - the window.
 
   phonebridge                 icon + window
   phonebridge --background    icon only (autostart)
-  phonebridge --messages      window, on the messages
+  phonebridge --messages      window, on the messages (likewise --overview,
+                              --phone, --contacts, --calendar, --settings)
   phonebridge --quit          ends the running instance
 
 A second start hands its arguments to the running instance."""
@@ -13,6 +14,7 @@ A second start hands its arguments to the running instance."""
 import os
 import shutil
 import sys
+import time
 
 import gi
 
@@ -21,12 +23,13 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, VERSION, config, i18n, icon, text  # noqa: E402
+from . import APP_ID, VERSION, config, i18n, icon, phone, text  # noqa: E402
 from .avatars import Avatars  # noqa: E402
 from .connection import Device  # noqa: E402
 from .i18n import _  # noqa: E402
 
 RING_SECONDS = 20
+PAGES = ("overview", "phone", "messages", "contacts", "calendar", "settings")
 
 CSS = """
 .bubble { padding: 6px 10px; border-radius: 14px; }
@@ -37,6 +40,8 @@ CSS = """
                 border-radius: 10px; padding: 0 7px; font-weight: bold;
                 font-size: smaller; min-width: 8px; }
 .thread-unread { font-weight: bold; }
+.call-bar { background: alpha(@accent_bg_color, 0.18); border-radius: 12px;
+            padding: 6px 10px; }
 """
 
 
@@ -51,6 +56,7 @@ class PhoneBridgeApp(Adw.Application):
         self.tray = None
         self.ringing = {}
         self.avatars = Avatars()
+        self.calls = {}
         self._was_online = {}
 
     # -- start ------------------------------------------------------------
@@ -75,10 +81,11 @@ class PhoneBridgeApp(Adw.Application):
 
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]
+        pages = [a[2:] for a in args if a[2:] in PAGES]
         if "--quit" in args:
             self.quit()
-        elif "--messages" in args:
-            self.show_window("messages")
+        elif pages:
+            self.show_window(pages[0])
         elif "--background" not in args:
             self.show_window()
         return 0
@@ -105,6 +112,9 @@ class PhoneBridgeApp(Adw.Application):
         add("show", lambda *a: self.show_window())
         add("quit", lambda *a: self.quit())
         add("open-thread", self._on_open_thread, "(ss)")
+        add("call-answer", lambda a, p: self.answer_call(*p.unpack()), "(ss)")
+        add("call-hangup", lambda a, p: self.hangup_call(*p.unpack()), "(ss)")
+        add("show-phone", lambda *a: self.show_window("phone"))
         add("devices", lambda *a: self.show_devices())
         add("about", lambda *a: self.show_about())
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
@@ -130,6 +140,7 @@ class PhoneBridgeApp(Adw.Application):
                 dev = Device(info)
                 dev.connect("changed", self._on_device_changed)
                 dev.connect("sms", self._on_sms)
+                dev.connect("calls", self._on_calls)
                 self.devices[dev_id] = dev
                 dev.start()
         if self.cfg["active"] not in self.devices:
@@ -167,6 +178,10 @@ class PhoneBridgeApp(Adw.Application):
                 seen["baseline"] = (dev.hello or {}).get("sms_last_id", 0)
                 config.save(self.cfg)
             self.refresh_threads(dev)
+            dev.request("calls.active", {},
+                        lambda r, e: e is None and self._on_calls(dev, r))
+        if not online and self.calls.get(dev.id):
+            self._on_calls(dev, [])
         self._was_online[dev.id] = online
         self.update_tray()
         if self.window is not None:
@@ -209,14 +224,100 @@ class PhoneBridgeApp(Adw.Application):
         n.add_button_with_target(_("Reply"), "app.open-thread", target)
         self.send_notification("sms-%s-%s" % (dev.id, msg["id"]), n)
 
-    def _sender_icon(self, dev, thread):
+    def _sender_icon(self, dev, thread, key=None):
         """The sender's picture when PhoneBridge has it already."""
-        key = next((t.get("avatar") for t in self.threads.get(dev.id, [])
-                    if t["thread"] == thread), None)
+        key = key or next((t.get("avatar") for t in self.threads.get(dev.id, [])
+                           if t["thread"] == thread), None)
         texture = self.avatars.textures.get(key) if key else None
         if texture is not None:
             return Gio.BytesIcon.new(texture.save_to_png_bytes())
         return Gio.ThemedIcon.new(APP_ID)
+
+    # -- calls --------------------------------------------------------------
+    def _on_calls(self, dev, calls):
+        old = {c["path"]: c for c in self.calls.get(dev.id, [])}
+        now = []
+        for c in calls:
+            c = dict(c)
+            prev = old.get(c["path"])
+            if c["state"] == "active":
+                c["since"] = prev.get("since") if prev and prev.get("since") else time.time()
+            now.append(c)
+            if c["state"] in ("incoming", "waiting") and (prev is None or prev["state"] != c["state"]):
+                self.notify_call(dev, c)
+            elif c["state"] not in ("incoming", "waiting"):
+                self.withdraw_notification("call-%s-%s" % (dev.id, c["path"]))
+        for path in set(old) - {c["path"] for c in now}:
+            self.withdraw_notification("call-%s-%s" % (dev.id, path))
+        self.calls[dev.id] = now
+        if self.window is not None:
+            self.window.calls_changed(dev)
+        if old and not now and self.window is not None:
+            # GNOME Calls writes the history when the call is over
+            GLib.timeout_add_seconds(2, lambda: self.window is not None
+                                     and self.window.phone.load(force=True) and False)
+        self.update_tray()
+
+    def notify_call(self, dev, c):
+        name = c["name"] or c["number"] or _("Unknown number")
+        if c["number"] == "withheld":
+            name = _("Withheld number")
+        n = Gio.Notification.new(_("Call from %s") % name)
+        if len(self.devices) > 1:
+            n.set_body(dev.name)
+        n.set_priority(Gio.NotificationPriority.URGENT)
+        n.set_icon(self._sender_icon(dev, c["number"], c.get("avatar")))
+        target = GLib.Variant("(ss)", (dev.id, c["path"]))
+        n.set_default_action("app.show-phone")
+        n.add_button_with_target(_("Answer"), "app.call-answer", target)
+        n.add_button_with_target(_("Hang up"), "app.call-hangup", target)
+        self.send_notification("call-%s-%s" % (dev.id, c["path"]), n)
+
+    def current_call(self, dev_id):
+        calls = self.calls.get(dev_id, [])
+        order = ("incoming", "waiting", "active", "dialing", "alerting", "held")
+        calls = sorted(calls, key=lambda c: order.index(c["state"]) if c["state"] in order else 9)
+        return calls[0] if calls else None
+
+    def answer_call(self, dev_id, call):
+        dev = self.devices.get(dev_id)
+        path = call["path"] if isinstance(call, dict) else call
+        if dev is not None and path:
+            dev.request("call.answer", {"path": path},
+                        lambda r, e: e is not None and self.toast(text.error(e)))
+
+    def hangup_call(self, dev_id, call):
+        dev = self.devices.get(dev_id)
+        path = call["path"] if isinstance(call, dict) else call
+        if dev is not None and path:
+            dev.request("call.hangup", {"path": path},
+                        lambda r, e: e is not None and self.toast(text.error(e)))
+
+    def dial(self, number):
+        dev = self.active_device()
+        if dev is None or not number:
+            return
+
+        def done(result, error):
+            self.toast(text.error(error) if error is not None
+                       else _("Calling %s on the phone …") % result)
+
+        dev.request("call", {"number": number, "country": self.cfg["country"]}, done)
+
+    def open_sms(self, number):
+        if number:
+            self.show_window("messages")
+            self.window.messages.open_thread(number)
+
+    def new_contact(self, number):
+        self.show_window("contacts")
+        self.window.contacts.load()
+        self.window.contacts.edit(None, number=number)
+
+    def find_contact(self, number):
+        if self.window is None:
+            return None
+        return self.window.contacts.find_number(number)
 
     def mark_seen(self, dev_id, thread, message_id):
         seen = config.seen_for(self.cfg, dev_id)
@@ -297,6 +398,15 @@ class PhoneBridgeApp(Adw.Application):
             unread = self.unread()
             if unread:
                 items.append({"id": "messages", "label": text.n_unread(unread)})
+            call = self.current_call(dev.id)
+            if call is not None:
+                who = call["name"] or call["number"] or _("Unknown number")
+                items.append({"type": "separator"})
+                items.append({"label": "%s: %s" % (phone.call_state(call["state"]), who),
+                              "enabled": False})
+                if call["state"] in ("incoming", "waiting"):
+                    items.append({"id": "answer", "label": _("Answer")})
+                items.append({"id": "hangup", "label": _("Hang up")})
         if len(self.devices) > 1:
             items.append({"type": "separator"})
             for d in self.devices.values():
@@ -327,6 +437,10 @@ class PhoneBridgeApp(Adw.Application):
         elif item_id == "compose":
             self.show_window("messages")
             self.window.messages.compose()
+        elif item_id in ("answer", "hangup") and dev is not None:
+            call = self.current_call(dev.id)
+            if call is not None:
+                (self.answer_call if item_id == "answer" else self.hangup_call)(dev.id, call)
         elif item_id == "ring":
             self.ring(dev)
         elif item_id == "reconnect" and dev is not None:

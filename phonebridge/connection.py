@@ -44,6 +44,7 @@ class Device(GObject.Object):
     __gsignals__ = {
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "sms": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "calls": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
     }
 
     def __init__(self, info):
@@ -59,6 +60,8 @@ class Device(GObject.Object):
         self._next_id = 1
         self._pending = {}
         self._stderr = []
+        self._outq = []
+        self._writing = False
         self._retry = 0
         self._retry_source = 0
         self._running = False
@@ -126,7 +129,11 @@ class Device(GObject.Object):
         self._proc = proc
         self._set_state("connecting")
         self._stdin = proc.get_stdin_pipe()
-        self._stdin.write_all(agent_payload(), None)
+        self._outq = []
+        self._writing = False
+        # asynchronously: the agent is larger than a pipe holds, and ssh
+        # reads it only once it is connected
+        self._write(agent_payload())
         out = Gio.DataInputStream.new(proc.get_stdout_pipe())
         err = Gio.DataInputStream.new(proc.get_stderr_pipe())
         out.read_line_async(GLib.PRIORITY_DEFAULT, self._cancel, self._on_line, proc)
@@ -208,6 +215,8 @@ class Device(GObject.Object):
                 self.emit("changed")
             elif msg["event"] == "sms":
                 self.emit("sms", msg.get("new") or [])
+            elif msg["event"] == "calls":
+                self.emit("calls", msg.get("calls") or [])
             return
         cb = self._pending.pop(msg.get("id"), None)
         if cb is not None:
@@ -227,8 +236,31 @@ class Device(GObject.Object):
         self._next_id += 1
         self._pending[rid] = callback
         data = json.dumps({"id": rid, "cmd": cmd, "args": args or {}}) + "\n"
+        self._write(data.encode("utf-8"))
+
+    def _write(self, data):
+        self._outq.append(data)
+        if not self._writing:
+            self._write_next()
+
+    def _write_next(self):
+        if not self._outq or self._stdin is None:
+            self._writing = False
+            return
+        self._writing = True
+        stream = self._stdin
+        stream.write_all_async(self._outq.pop(0), GLib.PRIORITY_DEFAULT, self._cancel,
+                               self._written, None)
+
+    def _written(self, stream, res, _data):
         try:
-            self._stdin.write_all(data.encode("utf-8"), None)
-        except GLib.Error as e:
-            self._pending.pop(rid, None)
-            GLib.idle_add(lambda: callback(None, e.message) and False)
+            stream.write_all_finish(res)
+        except GLib.Error:
+            # the connection is going away; _on_exit fails what is pending
+            self._outq = []
+            self._writing = False
+            return
+        if stream is self._stdin:
+            self._write_next()
+        else:
+            self._writing = False
