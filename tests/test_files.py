@@ -427,6 +427,40 @@ class Page(unittest.TestCase):
         self.assertTrue(launched[0].startswith(os.path.join(self.home.dir, "cache")))
         self.assertIn(launched[0], self.page._watching)
 
+    def test_5_zoom(self):
+        """Ctrl + / - / 0 and Ctrl + wheel: the icons of the list grow and shrink."""
+        from gi.repository import Gdk
+        from phonebridge import files_page
+        page = self.page
+        self.go(os.path.join(self.phone, "Pictures"))
+        run_loop_until(lambda: page._name_boxes, 5)
+        size = lambda: page._name_boxes[0].image.get_pixel_size()  # noqa: E731
+        page.set_zoom(files_page.ZOOM_DEFAULT)
+        self.assertEqual(size(), 32)
+        self.assertFalse(page.acts["zoom-reset"].get_enabled())
+        page.group.activate_action("zoom-in", None)
+        self.assertEqual(size(), 48)
+        self.assertEqual(config.load()["files_zoom"], files_page.ZOOM_DEFAULT + 1)  # kept
+        for _ in range(10):
+            page.group.activate_action("zoom-in", None)
+        self.assertEqual(size(), 128)
+        self.assertFalse(page.acts["zoom-in"].get_enabled())
+        page.group.activate_action("zoom-reset", None)
+        self.assertEqual(size(), 32)
+
+        ctrl = Gdk.ModifierType.CONTROL_MASK
+        self.assertFalse(page.zoom_scroll(-1, 0))                  # no Ctrl: it scrolls
+        self.assertTrue(page.zoom_scroll(-1, ctrl))                # wheel up: larger
+        self.assertEqual(size(), 48)
+        for _ in range(4):
+            page.zoom_scroll(0.3, ctrl)                            # touchpad: adds up
+        self.assertEqual(size(), 32)
+        for _ in range(10):
+            page.zoom_scroll(1, ctrl)
+        self.assertEqual(size(), 16)
+        self.assertFalse(page.acts["zoom-out"].get_enabled())
+        page.set_zoom(files_page.ZOOM_DEFAULT)
+
 
 def GLib_true():
     from gi.repository import GLib

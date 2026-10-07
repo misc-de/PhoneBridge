@@ -37,6 +37,7 @@ DEFAULTS = {
     "devices": [],
     "seen": {},
     "updates": True,
+    "files_zoom": 2,            # size of the icons in the file list (files_page.ZOOM)
     # the call's sound on the PC (callaudio.py)
     "call_audio_gain": 2.0,
     "call_audio_echo": True,

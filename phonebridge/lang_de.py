@@ -1179,4 +1179,8 @@ TRANSLATIONS = {
         'Dateien',
     'Home folder':
         'Persönlicher Ordner',
+    'Smaller':
+        'Kleiner',
+    'Normal size':
+        'Normale Größe',
 }

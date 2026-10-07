@@ -26,6 +26,8 @@ PLACES = (("home", N_("Home folder"), "user-home-symbolic"),
           ("videos", N_("Videos"), "folder-videos-symbolic"),
           ("root", N_("File system"), "drive-harddisk-symbolic"))
 THUMB_DELAY = 120           # ms: rows scrolled past in that time ask for nothing
+ZOOM = (16, 24, 32, 48, 64, 96, 128)    # icon and thumbnail sizes of the list
+ZOOM_DEFAULT = 2
 
 
 class FileItem(GObject.Object):
@@ -108,6 +110,10 @@ class FilesPage(Gtk.Box):
         self._thumb_busy = False
         self._thumb_timer = 0
         self._watching = {}         # local copy -> (monitor, device, remote, mtime)
+        self._name_boxes = []       # every name cell made: their icons follow the zoom
+        self._scrolled = 0.0
+        z = app.cfg.get("files_zoom", ZOOM_DEFAULT)
+        self.zoom = z if isinstance(z, int) and 0 <= z < len(ZOOM) else ZOOM_DEFAULT
         files.clean_open_cache()
 
         self._actions()
@@ -122,6 +128,7 @@ class FilesPage(Gtk.Box):
                                  GObject.BindingFlags.SYNC_CREATE)
         self._shortcuts()
         self._update_actions()
+        self._update_zoom()
 
     # -- building ----------------------------------------------------------------
     def _actions(self):
@@ -137,7 +144,10 @@ class FilesPage(Gtk.Box):
                          ("upload-folder", lambda *a: self.ask_upload(folder=True)),
                          ("refresh", lambda *a: self.refresh()),
                          ("up", lambda *a: self.go_up()),
-                         ("back", lambda *a: self.go_back())):
+                         ("back", lambda *a: self.go_back()),
+                         ("zoom-in", lambda *a: self.set_zoom(self.zoom + 1)),
+                         ("zoom-out", lambda *a: self.set_zoom(self.zoom - 1)),
+                         ("zoom-reset", lambda *a: self.set_zoom(ZOOM_DEFAULT))):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", cb)
             self.group.add_action(action)
@@ -152,7 +162,10 @@ class FilesPage(Gtk.Box):
         controller = Gtk.ShortcutController()
         for keys, action in (("Delete", "delete"), ("F2", "rename"), ("F5", "refresh"),
                              ("BackSpace|<Alt>Up", "up"), ("<Alt>Left", "back"),
-                             ("<Control>h", "hidden")):
+                             ("<Control>h", "hidden"),
+                             ("<Control>plus|<Control>equal|<Control>KP_Add", "zoom-in"),
+                             ("<Control>minus|<Control>KP_Subtract", "zoom-out"),
+                             ("<Control>0|<Control>KP_0", "zoom-reset")):
             controller.add_shortcut(Gtk.Shortcut(
                 trigger=Gtk.ShortcutTrigger.parse_string(keys),
                 action=Gtk.NamedAction.new("files." + action)))
@@ -210,6 +223,11 @@ class FilesPage(Gtk.Box):
         menu.append(_("Upload folder …"), "files.upload-folder")
         menu.append(_("Show hidden files"), "files.hidden")
         menu.append(_("Refresh"), "files.refresh")
+        zoom = Gio.Menu()
+        zoom.append(_("Larger"), "files.zoom-in")
+        zoom.append(_("Smaller"), "files.zoom-out")
+        zoom.append(_("Normal size"), "files.zoom-reset")
+        menu.append_section(None, zoom)
         bar.append(Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=menu,
                                   tooltip_text=_("More")))
 
@@ -242,6 +260,12 @@ class FilesPage(Gtk.Box):
         self.status = Adw.StatusPage(icon_name="folder-symbolic")
         self.stack = Gtk.Stack()
         self.stack.add_named(Gtk.ScrolledWindow(child=self.view), "list")
+        # Ctrl + wheel (or touchpad): larger, smaller - before the list scrolls
+        scroll = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL,
+                                           propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        scroll.connect("scroll", lambda c, dx, dy: self.zoom_scroll(
+            dy, c.get_current_event_state()))
+        self.view.add_controller(scroll)
         self.stack.add_named(self.status, "status")
 
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
@@ -290,11 +314,12 @@ class FilesPage(Gtk.Box):
 
     def _setup_name(self, factory, item):
         box = Gtk.Box(spacing=10, margin_top=2, margin_bottom=2)
-        box.image = Gtk.Image(pixel_size=32)
+        box.image = Gtk.Image(pixel_size=ZOOM[self.zoom])
         box.label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE)
         box.append(box.image)
         box.append(box.label)
         item.set_child(box)
+        self._name_boxes.append(box)
         self._cell_menu(box, item)
 
     def _setup_label(self, factory, item):
@@ -328,6 +353,36 @@ class FilesPage(Gtk.Box):
     def _bind_date(self, factory, list_item):
         f = list_item.get_item()
         list_item.get_child().set_label(text.activity(f.mtime) if f.mtime else "")
+
+    # -- zoom ------------------------------------------------------------------------------
+    def set_zoom(self, level):
+        level = max(0, min(len(ZOOM) - 1, level))
+        if level != self.zoom:
+            self.zoom = level
+            for box in self._name_boxes:
+                box.image.set_pixel_size(ZOOM[level])
+            self.app.cfg["files_zoom"] = level
+            from . import config
+            config.save(self.app.cfg)
+        self._update_zoom()
+
+    def _update_zoom(self):
+        self.acts["zoom-in"].set_enabled(self.zoom < len(ZOOM) - 1)
+        self.acts["zoom-out"].set_enabled(self.zoom > 0)
+        self.acts["zoom-reset"].set_enabled(self.zoom != ZOOM_DEFAULT)
+
+    def zoom_scroll(self, dy, state):
+        """With Ctrl: a step per notch of the wheel - a touchpad's small
+        steps add up to one. Without: the list scrolls."""
+        if not state & Gdk.ModifierType.CONTROL_MASK:
+            self._scrolled = 0.0
+            return False
+        self._scrolled += dy
+        while abs(self._scrolled) >= 1:
+            step = 1 if self._scrolled < 0 else -1      # up: larger
+            self._scrolled += step
+            self.set_zoom(self.zoom + step)
+        return True
 
     # -- the phone ---------------------------------------------------------------------
     def set_device(self, dev):
