@@ -31,25 +31,41 @@ def duration(seconds):
 
 
 class CallRow(Gtk.ListBoxRow):
+    """A call - with VoiceBox's message when VoiceBox answered it, or a
+    message alone when the call history has no entry for it."""
+
     def __init__(self, page, call):
         super().__init__(activatable=False)
         self.call = call
         app, dev = page.app, page.dev
-        name = call["name"] or call["number"] or _("Unknown number")
+        vb = call.get("voicebox")
+        name = call["name"] or call["number"] or (_("Withheld number") if vb
+                                                  else _("Unknown number"))
         box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=10,
                       margin_end=8)
-        avatar = Adw.Avatar(size=36, text=call["name"], show_initials=bool(call["name"]))
-        if call.get("avatar"):
-            app.avatars.get(dev, call["avatar"], avatar.set_custom_image)
-        box.append(avatar)
+        if call["number"] and not call["name"]:
+            # an unknown caller: in the avatar's place, a button to keep them
+            add = Gtk.Button(icon_name="contact-new-symbolic", valign=Gtk.Align.CENTER,
+                             tooltip_text=_("Add to contacts"))
+            add.add_css_class("circular")
+            add.set_size_request(36, 36)
+            add.connect("clicked", lambda b: app.new_contact(call["number"]))
+            box.append(add)
+        else:
+            avatar = Adw.Avatar(size=36, text=call["name"], show_initials=bool(call["name"]))
+            if call.get("avatar"):
+                app.avatars.get(dev, call["avatar"], avatar.set_custom_image)
+            box.append(avatar)
         lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
                         valign=Gtk.Align.CENTER)
         title = Gtk.Label(label=name, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        vb = call.get("voicebox")
         # answered by VoiceBox: for the user it is a call they missed
         missed = (call["inbound"] and not call["answered"]) or bool(vb)
         if missed:
             title.add_css_class("error")
+        unheard = bool(vb and vb.get("new") and vb["audio"])
+        if unheard:
+            title.add_css_class("thread-unread")
         lines.append(title)
         sub = Gtk.Box(spacing=4)
         icon = ("call-missed-symbolic" if missed else
@@ -59,6 +75,8 @@ class CallRow(Gtk.ListBoxRow):
         if vb:
             parts.append(_("Voicebox: no message") if vb["missed"] or not vb["audio"]
                          else _("Voicebox: %s") % duration(int(round(vb["duration"]))))
+            if vb.get("box_name"):
+                parts.append(vb["box_name"])
         elif call["answered"] and call["duration"]:
             parts.append(duration(call["duration"]))
         elif missed:
@@ -71,6 +89,10 @@ class CallRow(Gtk.ListBoxRow):
         sub.append(info)
         lines.append(sub)
         box.append(lines)
+        if unheard:
+            badge = Gtk.Label(label=_("new"), valign=Gtk.Align.CENTER)
+            badge.add_css_class("unread-badge")
+            box.append(badge)
         if vb and vb["audio"]:
             box.append(page.play_button(vb["id"]))
         if call["number"]:
@@ -81,61 +103,12 @@ class CallRow(Gtk.ListBoxRow):
                 b.add_css_class("flat")
                 b.connect("clicked", lambda btn, f=cb: f(call["number"]))
                 box.append(b)
-            if not call["name"]:
-                add = Gtk.Button(icon_name="contact-new-symbolic", valign=Gtk.Align.CENTER,
-                                 tooltip_text=_("Add to contacts"))
-                add.add_css_class("flat")
-                add.connect("clicked", lambda b: app.new_contact(call["number"]))
-                box.append(add)
-        self.set_child(box)
-
-
-class VoicemailRow(Gtk.ListBoxRow):
-    """One message VoiceBox recorded."""
-
-    def __init__(self, page, msg):
-        super().__init__(activatable=False)
-        self.msg = msg
-        app, dev = page.app, page.dev
-        box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=10,
-                      margin_end=8)
-        avatar = Adw.Avatar(size=36, text=msg["name"], show_initials=bool(msg["name"]))
-        if msg.get("avatar"):
-            app.avatars.get(dev, msg["avatar"], avatar.set_custom_image)
-        box.append(avatar)
-        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
-                        valign=Gtk.Align.CENTER)
-        who = msg["name"] or msg["number"] or _("Withheld number")
-        title = Gtk.Label(label=who, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        if msg["new"]:
-            title.add_css_class("thread-unread")
-        lines.append(title)
-        parts = [text.activity(msg["time"]), duration(int(round(msg["duration"])))]
-        if len(app.voicebox.get(dev.id, {}).get("boxes", [])) > 1:
-            parts.append(app.voicebox_box_name(dev.id, msg["box"]))
-        info = Gtk.Label(label=" · ".join(p for p in parts if p), xalign=0)
-        info.add_css_class("dim-label")
-        info.add_css_class("caption")
-        lines.append(info)
-        box.append(lines)
-        if msg["new"]:
-            badge = Gtk.Label(label=_("new"), valign=Gtk.Align.CENTER)
-            badge.add_css_class("unread-badge")
-            box.append(badge)
-        box.append(page.play_button(msg["id"]))
-        if msg["number"]:
-            for icon_name, tip, cb in (
-                    ("call-start-symbolic", _("Call back from the phone"), app.dial),
-                    ("mail-send-symbolic", _("Write a message"), app.open_sms)):
-                b = Gtk.Button(icon_name=icon_name, valign=Gtk.Align.CENTER, tooltip_text=tip)
-                b.add_css_class("flat")
-                b.connect("clicked", lambda btn, f=cb: f(msg["number"]))
-                box.append(b)
-        delete = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER,
-                            tooltip_text=_("Delete"))
-        delete.add_css_class("flat")
-        delete.connect("clicked", lambda b: page.delete_voicemail(msg))
-        box.append(delete)
+        if vb and vb["audio"]:
+            delete = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER,
+                                tooltip_text=_("Delete the voice message"))
+            delete.add_css_class("flat")
+            delete.connect("clicked", lambda b: page.delete_voicemail(vb, name))
+            box.append(delete)
         self.set_child(box)
 
 
@@ -206,19 +179,8 @@ class PhonePage(Gtk.Box):
 
         self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.list.add_css_class("boxed-list")
-        # VoiceBox's messages, above the calls - only when there are any
-        self.vb_title = Gtk.Label(label=_("Voicebox"), xalign=0, margin_start=6)
-        self.vb_title.add_css_class("heading")
-        self.vb_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.vb_list.add_css_class("boxed-list")
-        self.calls_title = Gtk.Label(label=_("Recent calls"), xalign=0, margin_start=6)
-        self.calls_title.add_css_class("heading")
-        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        column.append(self.vb_title)
-        column.append(self.vb_list)
-        column.append(self.calls_title)
-        column.append(self.list)
-        self.calls_box = column
+        column = self.list
+        self.calls = []
         self.player = None
         self.playing = None
         self.play_buttons = {}
@@ -235,7 +197,7 @@ class PhonePage(Gtk.Box):
         header.pack_end(refresh)
         view = Adw.ToolbarView(content=self.stack)
         view.add_top_bar(header)
-        content = Adw.NavigationPage(title=_("Calls"), child=view)
+        content = Adw.NavigationPage(title=_("Recent calls"), child=view)
         self.split = Adw.NavigationSplitView(sidebar=sidebar, content=content, hexpand=True,
                                              min_sidebar_width=300, max_sidebar_width=340,
                                              show_content=True)
@@ -279,32 +241,54 @@ class PhonePage(Gtk.Box):
 
     def _fill(self, calls):
         self.calls = calls
+        self._refill()
+
+    def entries(self):
+        """The calls, with VoiceBox's messages in their places: on the call
+        they belong to, or - when the history has none - on their own."""
+        dev = self.dev
+        current = {m["id"]: m for m in (self.app.voicebox.get(dev.id, {}).get("messages", [])
+                                        if dev else [])}
+        out, matched = [], set()
+        for c in self.calls:
+            c = dict(c)
+            vb = c.get("voicebox")
+            if vb:
+                m = current.get(vb["id"])
+                if m is None:
+                    c.pop("voicebox")           # deleted meanwhile
+                else:
+                    matched.add(vb["id"])
+                    c["voicebox"] = self._vb(dev, m)
+            out.append(c)
+        for m in current.values():
+            if m["id"] in matched or not m["audio"]:
+                continue
+            out.append({"number": m["number"], "name": m["name"], "inbound": True,
+                        "answered": True, "start": m["time"], "duration": 0,
+                        "avatar": m.get("avatar"), "voicebox": self._vb(dev, m)})
+        out.sort(key=lambda c: c.get("start") or 0, reverse=True)
+        return out
+
+    def _vb(self, dev, m):
+        vb = {"id": m["id"], "missed": m["missed"], "audio": m["audio"],
+              "duration": m["duration"], "new": m["new"]}
+        if m.get("box") and len(self.app.voicebox.get(dev.id, {}).get("boxes", [])) > 1:
+            vb["box_name"] = self.app.voicebox_box_name(dev.id, m["box"])
+        return vb
+
+    def _refill(self):
         self._prune_buttons()
         while (row := self.list.get_row_at_index(0)) is not None:
             self.list.remove(row)
-        for c in calls:
+        entries = self.entries()
+        for c in entries:
             self.list.append(CallRow(self, c))
-        self.calls_title.set_visible(bool(calls))
-        self.list.set_visible(bool(calls))
-        self._fill_voicebox()
-
-    def _fill_voicebox(self):
-        msgs = self.app.voicemails(self.dev.id) if self.dev else []
-        self._prune_buttons()
-        while (row := self.vb_list.get_row_at_index(0)) is not None:
-            self.vb_list.remove(row)
-        for m in msgs:
-            self.vb_list.append(VoicemailRow(self, m))
-        new = sum(1 for m in msgs if m["new"])
-        self.vb_title.set_label(_("Voicebox") + (" · " + text.n_voicemails(new) if new else ""))
-        self.vb_title.set_visible(bool(msgs))
-        self.vb_list.set_visible(bool(msgs))
         self.status.set_title(_("No calls"))
-        self.stack.set_visible_child_name(
-            "list" if msgs or getattr(self, "calls", None) else "status")
+        self.stack.set_visible_child_name("list" if entries else "status")
 
     def voicebox_changed(self, reload_calls=True):
-        self._fill_voicebox()
+        self._refill()
         if reload_calls and self._loaded_for is not None:
             self.load(force=True)
 
@@ -363,8 +347,7 @@ class PhonePage(Gtk.Box):
         self.playing = None
         self._set_icons()
 
-    def delete_voicemail(self, msg):
-        who = msg["name"] or msg["number"] or _("Withheld number")
+    def delete_voicemail(self, vb, who):
         dialog = Adw.AlertDialog(heading=_("Delete the message from %s?") % who,
                                  body=_("It is deleted on the phone as well."))
         dialog.add_response("cancel", _("Cancel"))
@@ -373,9 +356,9 @@ class PhonePage(Gtk.Box):
 
         def answered(d, response):
             if response == "delete":
-                if self.playing == msg["id"]:
+                if self.playing == vb["id"]:
                     self.stop()
-                self.app.voicebox_delete(self.dev, msg["id"])
+                self.app.voicebox_delete(self.dev, vb["id"])
 
         dialog.connect("response", answered)
         dialog.present(self.get_root())

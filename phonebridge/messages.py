@@ -116,7 +116,7 @@ class MessagesPage(Gtk.Box):
         side.append(self.list_stack)
         side_header = Adw.HeaderBar(show_end_title_buttons=False,
                                     show_start_title_buttons=False)
-        self.new_button = Gtk.Button(icon_name="document-edit-symbolic",
+        self.new_button = Gtk.Button(icon_name="list-add-symbolic",
                                      tooltip_text=_("New message"))
         self.new_button.connect("clicked", lambda *a: self.compose())
         side_header.pack_start(self.new_button)

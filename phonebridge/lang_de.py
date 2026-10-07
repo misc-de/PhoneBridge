@@ -103,8 +103,6 @@ TRANSLATIONS = {
         'Kalender',
     'Calendar: %s':
         'Kalender: %s',
-    'Call back from the phone':
-        'Mit dem Phone zurückrufen',
     'Call from %s':
         'Anruf von %s',
     'Call from the phone':
@@ -119,8 +117,6 @@ TRANSLATIONS = {
         'Das Phone ruft %s an …',
     'Calling …':
         'Wählt …',
-    'Calls':
-        'Anrufe',
     'Calls at the PC':
         'Telefonieren am PC',
     'Cancel':
@@ -177,6 +173,8 @@ TRANSLATIONS = {
         '%s löschen?',
     'Delete the message from %s?':
         'Nachricht von %s löschen?',
+    'Delete the voice message':
+        'Sprachnachricht löschen',
     'Delete “%s”?':
         '„%s“ löschen?',
     'Dial':
@@ -551,8 +549,6 @@ TRANSLATIONS = {
         'Nur Vibration',
     'Voice message from %s':
         'Sprachnachricht von %s',
-    'Voicebox':
-        'Voicebox',
     'Voicebox: %s':
         'Voicebox: %s',
     'Voicebox: no message':

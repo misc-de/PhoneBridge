@@ -136,3 +136,42 @@ class OverTheWire(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SortedIntoCalls(unittest.TestCase):
+    """The phone page: messages in the call history, not in a block of their own."""
+
+    def test_entries(self):
+        import types
+        from phonebridge.phone import PhonePage
+        now = time.time()
+        msgs = [
+            {"id": "m1", "number": NUMBER, "name": "", "time": now - 100, "duration": 9.0,
+             "new": True, "box": "global", "missed": False, "audio": True},
+            {"id": "m2", "number": "+4915550000002", "name": "Bernd", "time": now - 50,
+             "duration": 4.0, "new": False, "box": "b1", "missed": False, "audio": True},
+            {"id": "m3", "number": NUMBER, "name": "", "time": now - 900, "duration": 0.0,
+             "new": True, "box": "global", "missed": True, "audio": False},
+        ]
+        app = types.SimpleNamespace(
+            voicebox={"t": {"messages": msgs, "boxes": [{"id": "global"}, {"id": "b1"}]}},
+            voicebox_box_name=lambda dev_id, box: {"global": "General", "b1": "Familie"}[box])
+        page = types.SimpleNamespace(dev=types.SimpleNamespace(id="t"), app=app, calls=[
+            {"number": NUMBER, "name": "", "inbound": True, "answered": True,
+             "start": now - 130, "duration": 20, "voicebox": {"id": "m1", "missed": False,
+                                                            "audio": True, "duration": 9.0,
+                                                            "new": True}},
+            {"number": "+4915550000009", "name": "", "inbound": False, "answered": True,
+             "start": now - 20, "duration": 60},
+            {"number": NUMBER, "name": "", "inbound": True, "answered": True,
+             "start": now - 3600, "duration": 5, "voicebox": {"id": "gone", "missed": False,
+                                                            "audio": True, "duration": 3.0,
+                                                            "new": False}}])
+        page._vb = lambda dev, m: PhonePage._vb(page, dev, m)
+        entries = PhonePage.entries(page)
+        # newest first; m2 has no call of its own and comes in on its own
+        self.assertEqual([e.get("voicebox", {}).get("id") for e in entries],
+                         [None, "m2", "m1", None])
+        self.assertEqual(entries[1]["voicebox"]["box_name"], "Familie")
+        self.assertTrue(entries[2]["voicebox"]["new"])
+        self.assertNotIn("voicebox", entries[3])        # deleted meanwhile
