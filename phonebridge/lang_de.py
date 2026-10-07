@@ -29,6 +29,8 @@ TRANSLATIONS = {
         '%d ungelesene Nachrichten',
     "%s does not take PhoneBridge's SSH key. Log in with the password of the phone's user instead.":
         '%s nimmt den SSH-Schlüssel von PhoneBridge nicht an. Melde dich stattdessen mit dem Passwort des Benutzers auf dem Phone an.',
+    '%s is set up.':
+        '%s ist eingerichtet.',
     '%s left':
         'noch %s',
     '%s: login needed - the SSH key is not accepted':
@@ -217,12 +219,16 @@ TRANSLATIONS = {
         'Schließen',
     'Company':
         'Firma',
+    'Connect':
+        'Verbinden',
     'Connect by itself':
         'Automatisch verbinden',
     'Connect now':
         'Jetzt verbinden',
     'Connected':
         'Verbunden',
+    'Connecting to %s …':
+        'Verbinde mit %s …',
     'Connecting …':
         'Verbinde …',
     'Connection':
@@ -247,6 +253,8 @@ TRANSLATIONS = {
         'Unterhaltungen',
     'Country':
         'Land',
+    'Create an SSH key on this PC':
+        'SSH-Schlüssel auf diesem PC erzeugen',
     'Dark style':
         'Dunkles Design',
     'Date in the clock':
@@ -285,6 +293,8 @@ TRANSLATIONS = {
         'Bildschirm vorher abdunkeln',
     'Display name':
         'Anzeigename',
+    'Done':
+        'Fertig',
     "During a call, “Sound on the PC” in the call bar puts the caller on the PC's speakers and the PC's microphone on the line; the phone's microphone is muted meanwhile.":
         'Während eines Anrufs legt „Ton am PC“ in der Anrufleiste den Anrufer auf die Lautsprecher des PCs und das Mikrofon des PCs in die Leitung; das Mikrofon des Phones ist so lange stumm.',
     'Echo cancellation':
@@ -379,6 +389,8 @@ TRANSLATIONS = {
         'Eingehender Anruf',
     'Input':
         'Eingabe',
+    'Install with:':
+        'Installieren mit:',
     'Internet calls (SIP)':
         'Internet-Anrufe (SIP)',
     'Internet telephony with GNOME Calls. Saving restarts Calls on the phone for a moment - not possible during a call.':
@@ -399,6 +411,8 @@ TRANSLATIONS = {
         'Juni',
     'Keep in the keyring':
         'Im Schlüsselbund speichern',
+    'Keep the password in the keyring':
+        'Passwort im Schlüsselbund speichern',
     'Key sounds':
         'Tastentöne',
     'Keyboard size (Squeekboard)':
@@ -439,6 +453,8 @@ TRANSLATIONS = {
         'Bei %s anmelden',
     'Log in to %s …':
         'Bei %s anmelden …',
+    'Logging in …':
+        'Melde an …',
     'login refused':
         'Anmeldung abgelehnt',
     'March':
@@ -473,6 +489,8 @@ TRANSLATIONS = {
         'Stumm',
     'Name':
         'Name',
+    'Name (optional)':
+        'Name (optional)',
     'Needed with speakers, not with a headset':
         'Nötig mit Lautsprechern, nicht mit Headset',
     'Neighbourhood':
@@ -503,8 +521,14 @@ TRANSLATIONS = {
         'Kein Kalender lässt sich ändern',
     'No calls':
         'Keine Anrufe',
+    "No calls at the PC: the call's sound cannot be played and recorded here.":
+        'Kein Telefonieren am PC: Der Ton des Anrufs lässt sich hier nicht abspielen und aufnehmen.',
+    'No connection: %s':
+        'Keine Verbindung: %s',
     'No contacts':
         'Keine Kontakte',
+    'No echo cancellation for calls at the PC.':
+        'Keine Echounterdrückung beim Telefonieren am PC.',
     'No messages':
         'Keine Nachrichten',
     'no modem':
@@ -517,6 +541,10 @@ TRANSLATIONS = {
         'Kein Netz',
     'No phone set up':
         'Kein Phone eingerichtet',
+    'No SSH key can be made when setting up a phone.':
+        'Beim Einrichten eines Phones lässt sich kein SSH-Schlüssel erzeugen.',
+    'No SSH key could be made: %s':
+        'Es ließ sich kein SSH-Schlüssel erzeugen: %s',
     'no such SIP account':
         'dieses SIP-Konto gibt es nicht',
     'None':
@@ -605,6 +633,8 @@ TRANSLATIONS = {
         'Passwort',
     'Password (empty: unchanged)':
         'Passwort (leer: unverändert)',
+    'Passwords for phones without SSH key cannot be kept in the keyring.':
+        'Passwörter für Phones ohne SSH-Schlüssel lassen sich nicht im Schlüsselbund speichern.',
     'Per app':
         'Pro App',
     'Performance':
@@ -615,8 +645,12 @@ TRANSLATIONS = {
         'Phone',
     "Phone's microphone":
         'Mikrofon des Phones',
+    'PhoneBridge cannot start - missing:':
+        'PhoneBridge kann nicht starten – es fehlt:',
     'PhoneBridge logs in over SSH with your key. Set it up once with “ssh-copy-id user@address”.':
         'PhoneBridge meldet sich per SSH mit deinem Schlüssel an. Einmal einrichten mit „ssh-copy-id benutzer@adresse“.',
+    'PhoneBridge reaches the phone over SSH.':
+        'PhoneBridge erreicht das Phone per SSH.',
     'PhoneBridge reaches your phone over SSH with your key.':
         'PhoneBridge erreicht dein Phone per SSH mit deinem Schlüssel.',
     'Phones':
@@ -649,6 +683,8 @@ TRANSLATIONS = {
         'Datenschutz & Standort',
     'Purple':
         'Lila',
+    'Put the SSH key on the phone':
+        'SSH-Schlüssel auf dem Phone hinterlegen',
     'pw-record and pw-play are missing on this PC.':
         'pw-record und pw-play fehlen auf diesem PC.',
     'Quick settings':
@@ -671,6 +707,8 @@ TRANSLATIONS = {
         'Zuletzt benutzte Dateien merken',
     'Remind me':
         'Erinnern',
+    'Remind me next time':
+        'Beim nächsten Mal erinnern',
     'Reminder':
         'Erinnerung',
     'Reminder: %s':
@@ -739,10 +777,14 @@ TRANSLATIONS = {
         'Server',
     'server and user are needed':
         'Server und Benutzer fehlen',
+    'Set up a phone':
+        'Phone einrichten',
     'Set up a phone …':
         'Phone einrichten …',
     'Settings':
         'Einstellungen',
+    'Show':
+        'Anzeigen',
     'Show all':
         'Alle anzeigen',
     'Show attachments':
@@ -773,6 +815,8 @@ TRANSLATIONS = {
         'Klein',
     'SMS from %s':
         'SMS von %s',
+    'Some parts of PhoneBridge are missing':
+        'Einige Teile von PhoneBridge fehlen',
     'Sort by last name':
         'Nach Nachname sortieren',
     'Sound':
@@ -835,16 +879,28 @@ TRANSLATIONS = {
         'Das Phone liefert den Anrufer leise',
     'The phone does not take the SSH key - PhoneBridge needs the password.':
         'Das Phone nimmt den SSH-Schlüssel nicht an – PhoneBridge braucht das Passwort.',
+    "The phone does not take this PC's SSH key yet. Log in once with the password of the phone's user.":
+        'Das Phone nimmt den SSH-Schlüssel dieses PCs noch nicht an. Melde dich einmal mit dem Passwort des Benutzers auf dem Phone an.',
     'The phone has no call audio channels (droid-call-sink/-source) - they come with the patched audio plugin.':
         'Dem Phone fehlen die Anruf-Audiokanäle (droid-call-sink/-source) – sie kommen mit dem gepatchten Audio-Plugin.',
     'the phone has no call audio nodes (droid-call-sink/-source)':
         'dem Phone fehlen die Anruf-Audiokanäle (droid-call-sink/-source)',
+    "The phone takes this PC's SSH key from now on.":
+        'Das Phone nimmt ab jetzt den SSH-Schlüssel dieses PCs an.',
     "the phone's microphone could not be muted":
         'das Mikrofon des Phones ließ sich nicht stummschalten',
     'the setting is read only':
         'die Einstellung ist schreibgeschützt',
     'The sound stays on the phone: %s':
         'Der Ton bleibt am Phone: %s',
+    'The SSH key could not be put on the phone: %s':
+        'Der SSH-Schlüssel ließ sich nicht auf dem Phone hinterlegen: %s',
+    'Then no password is needed any more (like ssh-copy-id).':
+        'Danach ist kein Passwort mehr nötig (wie ssh-copy-id).',
+    'There is no SSH key on this PC to put on the phone.':
+        'Auf diesem PC gibt es keinen SSH-Schlüssel, der sich hinterlegen ließe.',
+    'There is none yet - the phone is reached with it from then on.':
+        'Es gibt noch keinen – das Phone wird dann damit erreicht.',
     'This appointment repeats – changes apply to the whole series.':
         'Dieser Termin wiederholt sich – Änderungen gelten für die ganze Serie.',
     'This appointment repeats.':
@@ -927,6 +983,8 @@ TRANSLATIONS = {
         'Woche',
     'Weekday in the clock':
         'Wochentag in der Uhr',
+    'Welcome to PhoneBridge. Your phone is reached over SSH - it needs to be on the same network, with SSH switched on.':
+        'Willkommen bei PhoneBridge. Dein Phone wird per SSH erreicht – es muss im selben Netz sein und SSH eingeschaltet haben.',
     'When possible':
         'Wenn möglich',
     'Where do you want to talk?':

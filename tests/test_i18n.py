@@ -17,7 +17,7 @@ PKG = os.path.join(ROOT, "phonebridge")
 GERMAN = re.compile(r"[äöüÄÖÜß„]")
 NOT_TEXT = {"GSM7", "GSM7_EXT"}
 # the same in both languages, and rightly so
-SAME_IN_GERMAN = set()
+SAME_IN_GERMAN = {"Name (optional)"}
 
 
 def sources():

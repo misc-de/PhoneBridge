@@ -12,6 +12,10 @@ for p in (os.path.join(here, "..", "lib", "phonebridge"), os.path.join(here, "..
         sys.path.insert(0, os.path.abspath(p))
         break
 
+from phonebridge.deps import check_required_or_exit  # noqa: E402
+
+check_required_or_exit()        # GTK, libadwaita, pycairo, ssh - said before any window
+
 from phonebridge.app import main  # noqa: E402
 
 sys.exit(main())

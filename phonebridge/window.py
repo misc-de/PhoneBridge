@@ -61,7 +61,7 @@ class MainWindow(Adw.ApplicationWindow):
         add = Gtk.Button(label=_("Add phone"), halign=Gtk.Align.CENTER)
         add.add_css_class("pill")
         add.add_css_class("suggested-action")
-        add.connect("clicked", lambda *a: app.show_devices())
+        add.connect("clicked", lambda *a: app.show_setup())
         self.empty.set_child(add)
 
         self.body = Gtk.Stack()

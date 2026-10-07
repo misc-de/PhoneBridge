@@ -129,6 +129,11 @@ class PhoneBridgeApp(Adw.Application):
             self.show_window(pages[0])
         elif "--background" not in args:
             self.show_window()
+        GLib.idle_add(lambda: self.check_dependencies() and False)
+        if not self.cfg["devices"] and not getattr(self, "_setup_shown", False):
+            # the first start: straight to setting up a phone
+            self._setup_shown = True
+            GLib.idle_add(lambda: self.show_setup(first=True) and False)
         return 0
 
     def do_shutdown(self):
@@ -986,6 +991,46 @@ class PhoneBridgeApp(Adw.Application):
     def toast(self, message):
         if self.window is not None:
             self.window.toast(message)
+
+    def check_dependencies(self):
+        """Optional parts of the PC that are missing: told once per start
+        while it is so - again whenever what is missing changes."""
+        from . import deps
+        if getattr(self, "_deps_checked", False):
+            return
+        self._deps_checked = True
+        missing = deps.missing_optional()
+        names = sorted(m[0] for m in missing)
+        if not missing or names == self.cfg.get("deps_told"):
+            return
+        lines = ["• %s: %s" % (m[0], _(m[4])) for m in missing]
+        hint = deps.install_hint(missing)
+        if hint:
+            lines += ["", _("Install with:"), hint]
+        body = "\n".join(lines)
+        if self.window is not None and self.window.is_visible():
+            dialog = Adw.AlertDialog(heading=_("Some parts of PhoneBridge are missing"),
+                                     body=body)
+            dialog.add_response("later", _("Remind me next time"))
+            dialog.add_response("ok", _("OK"))
+            dialog.set_default_response("ok")
+
+            def answered(d, response):
+                if response == "ok":
+                    self.cfg["deps_told"] = names
+                    config.save(self.cfg)
+
+            dialog.connect("response", answered)
+            dialog.present(self.window)
+        else:
+            n = Gio.Notification.new(_("Some parts of PhoneBridge are missing"))
+            n.set_body(body)
+            n.add_button(_("Show"), "app.show")
+            self._send_briefly("deps", n)
+
+    def show_setup(self, first=False):
+        from .setup import SetupDialog
+        SetupDialog(self, first=first).present(self.show_window())
 
     def show_devices(self):
         from .devices import DevicesDialog

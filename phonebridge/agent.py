@@ -2926,6 +2926,37 @@ def cmd_sip_delete(agent, args):
     return _with_calls_stopped(agent, change)
 
 
+# --- the PC's SSH key on the phone (ssh-copy-id) ------------------------------------
+
+AUTHORIZED_KEYS = os.environ.get("PHONEBRIDGE_AUTHORIZED_KEYS",
+                                 os.path.join(HOME, ".ssh", "authorized_keys"))
+PUBLIC_KEY = re.compile(r"(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|"
+                        r"sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]{40,}( [^\r\n]*)?")
+
+
+@command("ssh.authorize")
+def cmd_authorize(agent, args):
+    """Adds the PC's public key to ~/.ssh/authorized_keys, as ssh-copy-id
+    does: the directory 0700, the file 0600, a key already there not twice."""
+    key = (args.get("key") or "").strip()
+    if not PUBLIC_KEY.fullmatch(key):
+        raise RuntimeError("not a public SSH key")
+    _private_dir(os.path.dirname(AUTHORIZED_KEYS))
+    try:
+        with open(AUTHORIZED_KEYS, encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ""
+    if key.split()[:2] in [line.split()[:2] for line in text.splitlines() if line.strip()]:
+        return "present"
+    fd = os.open(AUTHORIZED_KEYS, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        # a last line without its newline would swallow the key
+        f.write(("\n" if text and not text.endswith("\n") else "") + key + "\n")
+    os.chmod(AUTHORIZED_KEYS, 0o600)
+    return "added"
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

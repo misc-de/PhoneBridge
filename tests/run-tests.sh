@@ -25,6 +25,10 @@ export PHONEBRIDGE_KEYRING=memory
 # caches (pictures for notifications, voice messages) never in yours
 export XDG_CACHE_HOME="${TMPDIR:-/tmp}/phonebridge-test-cache-$(id -u)"
 rm -rf "$XDG_CACHE_HOME"
+# and never your ~/.ssh: neither the PC's keys nor authorized_keys (the
+# agent runs here in the tests)
+export PHONEBRIDGE_SSH_DIR="$XDG_CACHE_HOME/ssh"
+export PHONEBRIDGE_AUTHORIZED_KEYS="$XDG_CACHE_HOME/phone-ssh/authorized_keys"
 # no desktop portals, no gvfs on the private bus - quieter and faster
 export GDK_DEBUG=no-portals ADW_DISABLE_PORTAL=1 GIO_USE_VFS=local GTK_A11Y=none
 args=()

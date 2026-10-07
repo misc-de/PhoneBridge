@@ -11,15 +11,18 @@ import os
 import tempfile
 
 import gi
+from gi.repository import GLib
 
-gi.require_version("Secret", "1")
-from gi.repository import GLib, Secret  # noqa: E402
-
-SCHEMA = Secret.Schema.new(
-    "io.github.miscde.PhoneBridge.ssh", Secret.SchemaFlags.NONE,
-    {"host": Secret.SchemaAttributeType.STRING,
-     "user": Secret.SchemaAttributeType.STRING,
-     "port": Secret.SchemaAttributeType.STRING})
+try:                                # optional (deps.py): without it, no keyring
+    gi.require_version("Secret", "1")
+    from gi.repository import Secret
+    SCHEMA = Secret.Schema.new(
+        "io.github.miscde.PhoneBridge.ssh", Secret.SchemaFlags.NONE,
+        {"host": Secret.SchemaAttributeType.STRING,
+         "user": Secret.SchemaAttributeType.STRING,
+         "port": Secret.SchemaAttributeType.STRING})
+except (ImportError, ValueError):
+    Secret = SCHEMA = None
 
 ASKPASS = """#!/bin/sh
 # PhoneBridge: hands ssh the password of this one connection
@@ -49,6 +52,9 @@ def lookup(info, callback):
     if _MEMORY is not None:
         GLib.idle_add(lambda: callback(_MEMORY.get(_key(info))) and False)
         return
+    if Secret is None:
+        GLib.idle_add(lambda: callback(None) and False)
+        return
 
     def done(source, res):
         try:
@@ -69,6 +75,10 @@ def store(info, password, callback=None):
         if callback:
             GLib.idle_add(lambda: callback(None) and False)
         return
+    if Secret is None:
+        if callback:
+            GLib.idle_add(lambda: callback("libsecret is not installed") and False)
+        return
 
     def done(source, res):
         try:
@@ -84,8 +94,9 @@ def store(info, password, callback=None):
 
 
 def clear(info, callback=None):
-    if _MEMORY is not None:
-        _MEMORY.pop(_key(info), None)
+    if _MEMORY is not None or Secret is None:
+        if _MEMORY is not None:
+            _MEMORY.pop(_key(info), None)
         if callback:
             GLib.idle_add(lambda: callback() and False)
         return
