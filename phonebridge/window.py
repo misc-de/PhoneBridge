@@ -52,7 +52,7 @@ class MainWindow(Adw.ApplicationWindow):
                                        menu_model=self._menu(), primary=True,
                                        tooltip_text=_("Menu")))
 
-        self.banner = Adw.Banner(button_label=_("Connect now"))
+        self.banner = Adw.Banner(button_label=_("Connect now"), use_markup=False)
         self.banner.connect("button-clicked", self._on_reconnect)
 
         self.empty = Adw.StatusPage(
@@ -219,5 +219,6 @@ class MainWindow(Adw.ApplicationWindow):
         return dev.id, self.messages.thread
 
     def toast(self, message):
-        self.toasts.add_toast(Adw.Toast.new(message))
+        # plain text: names, SMS senders and error messages are not markup
+        self.toasts.add_toast(Adw.Toast(title=message, use_markup=False))
 

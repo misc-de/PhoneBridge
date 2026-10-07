@@ -84,6 +84,19 @@ def load_echo_cancel():
     return out.stdout.strip() if out.returncode == 0 and out.stdout.strip().isdigit() else None
 
 
+def unload_leftovers():
+    """Unloads echo cancellers of ours that a crash left loaded."""
+    try:
+        out = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) > 2 and parts[1] == "module-echo-cancel" and EC_SOURCE in parts[2]:
+            unload_module(parts[0])
+
+
 def unload_module(module_id):
     if module_id:
         try:

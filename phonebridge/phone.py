@@ -217,6 +217,7 @@ class PhonePage(Gtk.Box):
             self.stop()
             self.dev = dev
             self._loaded_for = None
+            self._serial += 1           # late answers of the last phone: not here
             self._fill([])
             self.lines_changed()
         self.device_changed()
@@ -492,7 +493,7 @@ class CallBar(Gtk.Revealer):
         self.answer.set_visible(call["state"] in ("incoming", "waiting"))
         possible = self.app.call_audio_possible(dev)
         audio = self.app.pc_audio.get(dev.id)
-        on = audio is not None and not audio.test
+        on = audio is not None and not getattr(audio, "test", False)
         self.pc.set_visible(possible and call["state"] in ("active", "dialing", "alerting",
                                                            "held"))
         self._syncing = True
@@ -513,7 +514,7 @@ class CallBar(Gtk.Revealer):
 
     def _update_levels(self):
         audio = self.app.pc_audio.get(self.dev_id)
-        if audio is None or audio.test:
+        if audio is None or getattr(audio, "test", True):
             self._level_tick = 0
             self.level_in.set_value(0)
             self.level_out.set_value(0)

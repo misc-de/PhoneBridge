@@ -12,7 +12,9 @@ then every 60 seconds, or right away with reconnect()."""
 
 import json
 import os
+import queue
 import shlex
+import threading
 
 from gi.repository import Gio, GLib, GObject
 
@@ -20,6 +22,15 @@ AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.py")
 BOOTSTRAP = ("python3 -u -c 'import sys;n=int(sys.stdin.buffer.readline());"
              "exec(compile(sys.stdin.buffer.read(n),\"phonebridge-agent\",\"exec\"))'")
 BACKOFF = (3, 5, 10, 30, 60)
+# seconds a request may take before it fails with "timeout"
+TIMEOUT = 45
+TIMEOUTS = {"sms.send": 120, "pim.sources": 90, "contacts.list": 150,
+            "contacts.save": 150, "contacts.delete": 150, "calendar.events": 150,
+            "calendar.save": 150, "calendar.delete": 150, "voicebox.audio": 120,
+            "sms.delete_thread": 60}
+# a ping this often; no answer in PING_TIMEOUT and the connection is dead
+PING_EVERY = 20
+PING_TIMEOUT = 20
 
 
 def ssh_argv(device, command=BOOTSTRAP, low_delay=False):
@@ -29,7 +40,7 @@ def ssh_argv(device, command=BOOTSTRAP, low_delay=False):
         "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
         "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"] + extra + [
         "-p", str(device.get("port") or 22),
-        "%s@%s" % (device["user"], device["host"]), command]
+        "--", "%s@%s" % (device["user"], device["host"]), command]
 
 
 def agent_payload():
@@ -62,10 +73,10 @@ class Device(GObject.Object):
         self._next_id = 1
         self._pending = {}
         self._stderr = []
-        self._outq = []
-        self._writing = False
+        self._queue = None
         self._retry = 0
         self._retry_source = 0
+        self._ping_source = 0
         self._running = False
 
     @property
@@ -89,21 +100,30 @@ class Device(GObject.Object):
     def stop(self):
         self._running = False
         self._clear_retry()
-        proc, self._proc, self._stdin = self._proc, None, None
+        self._stop_ping()
+        proc, q = self._proc, self._queue
+        self._proc, self._stdin, self._queue = None, None, None
         if proc is not None:
+            # end of input first (the writer closes the pipe once what is
+            # queued is out): the agent ends by itself and cleans up - gives
+            # the phone's microphone back, ...; killed only if it lingers
             self._cancel.cancel()
-            proc.force_exit()
-        pending, self._pending = self._pending, {}
-        for cb in pending.values():
-            cb(None, "not connected")
+            q.put(None)
+            GLib.timeout_add(2000, lambda: proc.get_identifier() and proc.force_exit()
+                             and False)
+        self._fail_pending("not connected")
         self._set_state("offline")
 
     def reconnect(self):
+        """Connect now - ending a connection that hangs, if there is one."""
         self._clear_retry()
         self._retry = 0
+        self._running = True
         if self._proc is None:
-            self._running = True
             self._connect()
+        else:
+            self._now = True
+            self._proc.force_exit()
 
     def _clear_retry(self):
         if self._retry_source:
@@ -131,22 +151,26 @@ class Device(GObject.Object):
         self._proc = proc
         self._set_state("connecting")
         self._stdin = proc.get_stdin_pipe()
-        self._outq = []
-        self._writing = False
-        # asynchronously: the agent is larger than a pipe holds, and ssh
-        # reads it only once it is connected
-        self._write(agent_payload())
+        # a thread of its own writes: the agent is larger than a pipe holds,
+        # ssh reads it only once it is connected, and a GIO pipe write would
+        # block the window meanwhile
+        self._queue = queue.Queue()
+        threading.Thread(target=_writer, args=(self._stdin, self._queue),
+                         daemon=True).start()
+        self._queue.put(agent_payload())
         out = Gio.DataInputStream.new(proc.get_stdout_pipe())
         err = Gio.DataInputStream.new(proc.get_stderr_pipe())
         out.read_line_async(GLib.PRIORITY_DEFAULT, self._cancel, self._on_line, proc)
         err.read_line_async(GLib.PRIORITY_DEFAULT, self._cancel, self._on_err, proc)
         proc.wait_async(None, self._on_exit)
-        self.request("hello", {}, self._on_hello)
+        self.request("hello", {}, self._on_hello, timeout=30)
 
     def _schedule_retry(self):
         if not self._running:
             return
         delay = BACKOFF[min(self._retry, len(BACKOFF) - 1)]
+        if getattr(self, "_now", False):
+            self._now, delay = False, 0
         self._retry += 1
         self._clear_retry()
         self._retry_source = GLib.timeout_add_seconds(delay, self._retry_now)
@@ -159,10 +183,39 @@ class Device(GObject.Object):
 
     def _on_hello(self, result, error):
         if error is not None:
+            if error == "timeout" and self._proc is not None:
+                self._proc.force_exit()         # nothing answers: anew
             return
         self.hello = result
         self._retry = 0
         self._set_state("online")
+        self._stop_ping()
+        self._ping_source = GLib.timeout_add_seconds(PING_EVERY, self._ping)
+
+    def _ping(self):
+        proc = self._proc
+        if proc is None or not self.online:
+            self._ping_source = 0
+            return False
+
+        def answered(result, error):
+            if error == "timeout" and proc is self._proc:
+                self._stderr.append("the phone does not answer")
+                proc.force_exit()               # a dead line: reconnect
+
+        self.request("ping", {}, answered, timeout=PING_TIMEOUT)
+        return True
+
+    def _stop_ping(self):
+        if self._ping_source:
+            GLib.source_remove(self._ping_source)
+            self._ping_source = 0
+
+    def _fail_pending(self, reason):
+        pending, self._pending = self._pending, {}
+        for cb, source in pending.values():
+            GLib.source_remove(source)
+            cb(None, reason)
 
     def _on_exit(self, proc, res):
         try:
@@ -173,9 +226,11 @@ class Device(GObject.Object):
             return
         self._proc = None
         self._stdin = None
-        pending, self._pending = self._pending, {}
-        for cb in pending.values():
-            cb(None, "connection lost")
+        if self._queue is not None:
+            self._queue.put(None)
+            self._queue = None
+        self._stop_ping()
+        self._fail_pending("connection lost")
         reason = self._stderr[-1] if self._stderr else None
         if reason is None and proc.get_if_exited() and proc.get_exit_status() != 0:
             reason = "ssh exited with %d" % proc.get_exit_status()
@@ -185,8 +240,13 @@ class Device(GObject.Object):
     # -- reading ----------------------------------------------------------
     def _on_line(self, stream, res, proc):
         try:
+            # the text variant: at the end it says None (the bytes one b"",
+            # the same as an empty line)
             line, _len = stream.read_line_finish_utf8(res)
-        except GLib.Error:
+        except GLib.Error as e:
+            if not e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED) \
+                    and proc is self._proc:
+                proc.force_exit()           # unreadable: rather anew than deaf
             return
         if line is None:
             return
@@ -222,49 +282,55 @@ class Device(GObject.Object):
             elif msg["event"] == "voicebox":
                 self.emit("voicebox")
             return
-        cb = self._pending.pop(msg.get("id"), None)
-        if cb is not None:
+        if not isinstance(msg, dict):
+            return
+        entry = self._pending.pop(msg.get("id"), None)
+        if entry is not None:
+            cb, source = entry
+            GLib.source_remove(source)
             if msg.get("ok"):
                 cb(msg.get("result"), None)
             else:
                 cb(None, msg.get("error") or "failed")
 
     # -- requests ---------------------------------------------------------
-    def request(self, cmd, args=None, callback=None):
-        """callback(result, error) - exactly one of them is None."""
+    def request(self, cmd, args=None, callback=None, timeout=None):
+        """callback(result, error) - exactly one of them is None; error is
+        "timeout" when no answer comes in time (TIMEOUTS)."""
         callback = callback or (lambda r, e: None)
-        if self._stdin is None:
+        if self._stdin is None or self._queue is None:
             GLib.idle_add(lambda: callback(None, "not connected") and False)
             return
         rid = self._next_id
         self._next_id += 1
-        self._pending[rid] = callback
+        seconds = timeout or TIMEOUTS.get(cmd, TIMEOUT)
+        source = GLib.timeout_add_seconds(seconds, self._expire, rid)
+        self._pending[rid] = (callback, source)
         data = json.dumps({"id": rid, "cmd": cmd, "args": args or {}}) + "\n"
-        self._write(data.encode("utf-8"))
+        self._queue.put(data.encode("utf-8"))
 
-    def _write(self, data):
-        self._outq.append(data)
-        if not self._writing:
-            self._write_next()
+    def _expire(self, rid):
+        entry = self._pending.pop(rid, None)
+        if entry is not None:
+            entry[0](None, "timeout")
+        return False
 
-    def _write_next(self):
-        if not self._outq or self._stdin is None:
-            self._writing = False
-            return
-        self._writing = True
-        stream = self._stdin
-        stream.write_all_async(self._outq.pop(0), GLib.PRIORITY_DEFAULT, self._cancel,
-                               self._written, None)
 
-    def _written(self, stream, res, _data):
+def _writer(stream, q):
+    """Writes what is queued to the pipe, in order; None ends it and closes
+    the pipe (the agent then sees the end of its input)."""
+    fd = stream.get_fd()
+    while True:
+        data = q.get()
+        if data is None:
+            break
         try:
-            stream.write_all_finish(res)
-        except GLib.Error:
-            # the connection is going away; _on_exit fails what is pending
-            self._outq = []
-            self._writing = False
-            return
-        if stream is self._stdin:
-            self._write_next()
-        else:
-            self._writing = False
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+        except OSError:
+            break                       # the other side is gone; _on_exit follows
+    try:
+        stream.close(None)
+    except GLib.Error:
+        pass

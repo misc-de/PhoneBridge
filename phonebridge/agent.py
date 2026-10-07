@@ -27,12 +27,15 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import sqlite3
 import subprocess
 import sys
+import queue
 import threading
 import time
+import traceback
 
 UID = os.getuid()
 os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % UID)
@@ -75,13 +78,27 @@ COMMANDS = {}
 _out_lock = threading.Lock()
 
 
-def command(name, deferred=False):
+def command(name, deferred=False, threaded=False):
     """Registers a handler. A deferred one gets a reply(result, error)
-    callback and answers later; the others return their result."""
+    callback and answers later; the others return their result. A threaded
+    one runs in the worker thread - for what may take long (EDS, the SMS
+    store, big files), so the main loop keeps delivering calls and SMS."""
     def wrap(fn):
-        COMMANDS[name] = (fn, deferred)
+        COMMANDS[name] = (fn, deferred, threaded)
         return fn
     return wrap
+
+
+def guarded(fn):
+    """For GLib callbacks: an exception would remove a periodic source for
+    good - it is printed instead, and the source keeps its return value."""
+    def wrapper(*args, keep=None):
+        try:
+            return fn(*args)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+            return keep
+    return wrapper
 
 
 def send(obj):
@@ -234,14 +251,23 @@ class Book:
     def __init__(self, roots=None):
         self.roots = (roots or ADDRESSBOOKS).split(os.pathsep)
         self._stamp = None
+        self._checked = 0.0
         self._by_number = {}
+        self._lock = threading.RLock()
 
     def _databases(self):
         found = []
         for root in self.roots:
             for name in ("contacts.db", "cache.db"):
                 found += glob.glob(os.path.join(root, "*", name))
-        return sorted(p for p in found if os.path.getsize(p) > 0)
+        out = []
+        for p in sorted(found):
+            try:
+                if os.path.getsize(p) > 0:
+                    out.append(p)
+            except OSError:
+                pass                    # gone meanwhile (EDS rewriting it)
+        return out
 
     def _current_stamp(self):
         out = []
@@ -255,13 +281,18 @@ class Book:
         return tuple(out)
 
     def lookup(self, number, country="49"):
-        stamp = self._current_stamp()
-        if stamp != self._stamp:
-            self._stamp = stamp
-            self._by_number = {}
-            for db in self._databases():
-                self._read(db)
-        return self._by_number.get(normalize(number, country))
+        with self._lock:
+            # whether a book changed: looked at most every 2 s, not per lookup
+            if time.monotonic() - self._checked > 2:
+                self._checked = time.monotonic()
+                stamp = self._current_stamp()
+                if stamp != self._stamp:
+                    self._stamp = stamp
+                    self._by_number = {}
+                    _KEYS.clear()
+                    for db in self._databases():
+                        self._read(db)
+            return self._by_number.get(normalize(number, country))
 
     def _vcards(self, db):
         tables = {r[0] for r in db.execute(
@@ -317,11 +348,18 @@ def chatty_file(path):
     return None
 
 
+_KEYS = {}      # id(picture) -> key, for the pictures the book holds
+
+
 def avatar_key(picture):
     """A key for a picture that changes when the picture does - the PC
     caches by it - or None."""
     if picture is None:
         return None
+    known = _KEYS.get(id(picture))
+    if known is not None and known[0] is picture:
+        AVATARS.setdefault(known[1], picture)
+        return known[1]
     if picture[0] == "file":
         try:
             st = os.stat(picture[1])
@@ -332,6 +370,8 @@ def avatar_key(picture):
         seed = picture[1]
     key = hashlib.sha1(seed).hexdigest()[:20]
     AVATARS[key] = picture
+    if picture[0] == "data":
+        _KEYS[id(picture)] = (picture, key)
     return key
 
 
@@ -357,11 +397,37 @@ def read_sent(path=None):
     return out
 
 
+SENT_KEEP_DAYS = 90
+
+
+def _private_dir(path):
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
 def append_sent(entry, path=None):
+    """Our log of sent messages - private, and only the last 90 days."""
     path = path or SENT_LOG
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "a", encoding="utf-8") as f:
+    _private_dir(os.path.dirname(path))
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    try:
+        os.chmod(path, 0o600)
+        if os.path.getsize(path) > 256 * 1024:
+            cutoff = time.time() - SENT_KEEP_DAYS * 86400
+            keep = [e for e in read_sent(path) if e.get("time", 0) >= cutoff]
+            tmp = path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                for e in keep:
+                    f.write(json.dumps(e, ensure_ascii=False) + "\n")
+            os.replace(tmp, path)
+    except OSError:
+        pass
 
 
 def _is_duplicate(entry, outgoing):
@@ -500,16 +566,25 @@ def bus(kind):
         return None
 
 
+class DBusFailure(RuntimeError):
+    """A failed D-Bus call; `name` is the D-Bus error name, if any."""
+
+    def __init__(self, message, name=None):
+        super().__init__(message)
+        self.name = name
+
+
 def call(conn, name, path, iface, method, args=None, reply=None, timeout=5000):
     if conn is None:
-        raise RuntimeError("%s is not reachable" % name)
+        raise DBusFailure("%s is not reachable" % name, "org.freedesktop.DBus.Error.ServiceUnknown")
     try:
         v = conn.call_sync(name, path, iface, method, args,
                            GLib.VariantType(reply) if reply else None,
                            Gio.DBusCallFlags.NONE, timeout, None)
     except GLib.Error as e:
+        remote = Gio.DBusError.get_remote_error(e)
         Gio.DBusError.strip_remote_error(e)
-        raise RuntimeError(e.message)
+        raise DBusFailure(e.message, remote)
     return v.unpack() if v is not None else None
 
 
@@ -539,12 +614,35 @@ class Agent:
         self.session = bus(Gio.BusType.SESSION)
         self.status = None
         self._refresh_pending = 0
+        self._last_refresh = 0.0
         self._sms_pending = 0
-        self.last_sms_id = store_last_id()
-        self.modem = self._ofono_modem()
+        try:
+            self.last_sms_id = store_last_id()
+        except sqlite3.Error:
+            self.last_sms_id = 0        # locked or being migrated: found later
+        self._modem = None
+        self._modem_tried = 0.0
         self.pim = Pim(self.session)
         self._calls_pending = 0
+        self._slow = {}                 # what only the 30 s tick refreshes
+        self._call_audio = None
+        self._call_audio_tried = 0.0
+        self.work = queue.Queue()
+        self.last_rx = time.monotonic()
         self._watch()
+
+    @property
+    def modem(self):
+        """ofono's modem - looked for again (at most every 10 s) while there
+        is none: after the phone booted, ofono may come after the agent."""
+        if self._modem is None and time.monotonic() - self._modem_tried > 10:
+            self._modem_tried = time.monotonic()
+            self._modem = self._ofono_modem()
+        return self._modem
+
+    @modem.setter
+    def modem(self, value):
+        self._modem = value
 
     # -- sources ----------------------------------------------------------
     def _ofono_modem(self):
@@ -560,7 +658,7 @@ class Agent:
             return {}
         try:
             return call(self.system, "org.ofono", self.modem, "org.ofono." + iface,
-                        "GetProperties", None, "(a{sv})")[0]
+                        "GetProperties", None, "(a{sv})", timeout=1500)[0]
         except RuntimeError:
             return {}
 
@@ -633,26 +731,52 @@ class Agent:
         return get_prop(self.session, "org.sigxcpu.Feedback",
                         "/org/sigxcpu/Feedback", "org.sigxcpu.Feedback", "Profile")
 
-    def collect(self):
-        return {"hostname": socket.gethostname(), "battery": self.battery(),
-                "network": self.network(), "mobile_data": self.mobile_data(),
-                "wifi": self.wifi(), "volume": self.volume(),
-                "power_profile": self.power_profile(),
-                "feedback_profile": self.feedback_profile()}
+    def call_audio(self):
+        """The call audio nodes - once there, they stay; looked for again at
+        most every minute until then (PipeWire may come late after a boot)."""
+        if not self._call_audio and time.monotonic() - self._call_audio_tried > 60:
+            self._call_audio_tried = time.monotonic()
+            self._call_audio = call_audio_nodes()
+        return bool(self._call_audio)
+
+    def collect(self, slow=False):
+        """The status; Wi-Fi, volume and profiles (helper programs, the
+        session bus) only on the 30 s tick or when asked - a burst of ofono
+        signals must not run them over and over."""
+        if slow or not self._slow:
+            self._slow = {"wifi": self.wifi(), "volume": self.volume(),
+                          "power_profile": self.power_profile(),
+                          "feedback_profile": self.feedback_profile(),
+                          "call_audio": self.call_audio()}
+        return dict({"hostname": socket.gethostname(), "battery": self.battery(),
+                     "network": self.network(), "mobile_data": self.mobile_data()},
+                    **self._slow)
 
     # -- watching ---------------------------------------------------------
     def _watch(self):
+        # only the signals that mean something here - ofono can be chatty
         if self.system is not None:
-            for sender, iface in (("org.freedesktop.UPower", None),
-                                  ("org.ofono", None),
-                                  ("org.freedesktop.UPower.PowerProfiles", None)):
+            for sender, iface, member in (
+                    ("org.freedesktop.UPower", "org.freedesktop.DBus.Properties",
+                     "PropertiesChanged"),
+                    ("org.freedesktop.UPower.PowerProfiles",
+                     "org.freedesktop.DBus.Properties", "PropertiesChanged"),
+                    ("org.ofono", "org.ofono.NetworkRegistration", "PropertyChanged"),
+                    ("org.ofono", "org.ofono.ConnectionManager", "PropertyChanged"),
+                    ("org.ofono", "org.ofono.VoiceCallManager", "CallAdded"),
+                    ("org.ofono", "org.ofono.VoiceCallManager", "CallRemoved"),
+                    ("org.ofono", "org.ofono.VoiceCall", "PropertyChanged"),
+                    ("org.ofono", "org.ofono.MessageManager", "IncomingMessage"),
+                    ("org.ofono", "org.ofono.Manager", "ModemAdded"),
+                    ("org.ofono", "org.ofono.Manager", "ModemRemoved")):
                 self.system.signal_subscribe(
-                    sender, iface, None, None, None, Gio.DBusSignalFlags.NONE,
+                    sender, iface, member, None, None, Gio.DBusSignalFlags.NONE,
                     self._on_signal)
         if self.session is not None:
             self.session.signal_subscribe(
-                "org.sigxcpu.Feedback", None, None, None, None,
-                Gio.DBusSignalFlags.NONE, self._on_signal)
+                "org.sigxcpu.Feedback", "org.freedesktop.DBus.Properties",
+                "PropertiesChanged", None, None, Gio.DBusSignalFlags.NONE,
+                self._on_signal)
         store = Gio.File.new_for_path(CHATTY_DB)
         try:
             self._monitor = store.monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -661,6 +785,7 @@ class Agent:
             self._monitor = None
         GLib.timeout_add_seconds(30, self._tick)
         GLib.timeout_add_seconds(20, self._sms_tick)
+        GLib.timeout_add_seconds(10, self._watchdog)
         self._vb_signature = voicebox_signature()
         self._vb_pending = 0
         try:
@@ -669,7 +794,7 @@ class Agent:
             self._vb_monitor.connect("changed", lambda *a: self.schedule_voicebox_check())
         except GLib.Error:
             self._vb_monitor = None
-        GLib.timeout_add_seconds(30, lambda: self.check_voicebox() or True)
+        GLib.timeout_add_seconds(30, lambda: guarded(self.check_voicebox)(keep=True) or True)
 
     def active_calls(self):
         if not self.modem:
@@ -688,39 +813,68 @@ class Agent:
                         "avatar": avatar_key(contact[1]) if contact else None})
         return out
 
+    def _watchdog(self):
+        """The PC pings every 20 s. Nothing for 75 s: it is gone (suspended,
+        out of Wi-Fi) without the connection noticing - give the phone's
+        microphone back and end, instead of keeping it muted for minutes."""
+        if time.monotonic() - self.last_rx > 75:
+            pc_audio_release(self)
+            self.loop.quit()
+            return False
+        return True
+
     def _send_calls(self):
         self._calls_pending = 0
-        calls = self.active_calls()
+        try:
+            calls = self.active_calls()
+        except Exception:  # noqa: BLE001 - the call event must go out
+            traceback.print_exc()
+            calls = []
         if not calls:
             pc_audio_release(self)      # the call is over: the microphone as it was
         send({"event": "calls", "calls": calls})
         return False
 
     def _on_signal(self, conn, sender, path, iface, signal, params):
+        if iface == "org.ofono.Manager":
+            self.modem = None           # modems came or went: look again
+            self._modem_tried = 0.0
         if iface in ("org.ofono.VoiceCallManager", "org.ofono.VoiceCall"):
             if not self._calls_pending:
                 self._calls_pending = GLib.timeout_add(150, self._send_calls)
         if iface == "org.ofono.MessageManager" and signal == "IncomingMessage":
             # chatty stores it a moment later; the file monitor catches that
             # too, this is the safety net when it does not fire.
-            GLib.timeout_add_seconds(3, lambda: self.check_sms() and False)
-        self.schedule_refresh()
+            GLib.timeout_add_seconds(3, lambda: guarded(self.check_sms)() and False)
+        if iface not in ("org.ofono.VoiceCall", "org.ofono.MessageManager"):
+            self.schedule_refresh()
 
     def _tick(self):
+        self._slow_due = True
         self.schedule_refresh()
         return True
 
     def _sms_tick(self):
-        self.check_sms()
+        guarded(self.check_sms)()
         return True
 
-    def schedule_refresh(self, delay=800):
+    def schedule_refresh(self, delay=800, slow=False):
+        """At most one status refresh every 3 s, whatever signals come."""
+        if slow:
+            self._slow_due = True
         if not self._refresh_pending:
-            self._refresh_pending = GLib.timeout_add(delay, self._refresh)
+            wait = max(delay, int((self._last_refresh + 3 - time.monotonic()) * 1000))
+            self._refresh_pending = GLib.timeout_add(max(0, wait), self._refresh)
 
     def _refresh(self):
         self._refresh_pending = 0
-        status = self.collect()
+        self._last_refresh = time.monotonic()
+        slow, self._slow_due = getattr(self, "_slow_due", False), False
+        try:
+            status = self.collect(slow=slow)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+            return False
         if status != self.status:
             self.status = status
             send({"event": "status", "data": status})
@@ -732,7 +886,7 @@ class Agent:
 
     def _voicebox_once(self):
         self._vb_pending = 0
-        self.check_voicebox()
+        guarded(self.check_voicebox)()
         return False
 
     def check_voicebox(self):
@@ -748,7 +902,7 @@ class Agent:
 
     def _sms_check_once(self):
         self._sms_pending = 0
-        self.check_sms()
+        guarded(self.check_sms)()
         return False
 
     def check_sms(self):
@@ -780,7 +934,10 @@ class Agent:
         if entry is None:
             reply(error="unknown command: %s" % req.get("cmd"))
             return False
-        fn, deferred = entry
+        fn, deferred, threaded = entry
+        if threaded:
+            self.work.put((fn, req.get("args") or {}, reply))
+            return False
         try:
             if deferred:
                 fn(self, req.get("args") or {}, reply)
@@ -814,19 +971,19 @@ def cmd_status(agent, args):
     return agent.status
 
 
-@command("sms.threads")
+@command("sms.threads", threaded=True)
 def cmd_threads(agent, args):
     return list_threads(args.get("baseline", 0), args.get("seen"),
                         args.get("country", "49"))
 
 
-@command("sms.messages")
+@command("sms.messages", threaded=True)
 def cmd_messages(agent, args):
     return list_messages(args["thread"], args.get("limit", 300),
                          args.get("country", "49"))
 
 
-@command("avatar")
+@command("avatar", threaded=True)
 def cmd_avatar(agent, args):
     """The picture behind a key from sms.threads, base64."""
     picture = AVATARS.get(args["key"])
@@ -966,6 +1123,22 @@ NOTIFY_APP_KEYS = ("enable", "show-banners", "enable-sound-alerts", "show-in-loc
                    "details-in-lock-screen", "force-expanded")
 
 
+def _desktop_app_info(app_id):
+    """GioUnix.DesktopAppInfo where GLib has it (2.86), else Gio's - quietly."""
+    global _DESKTOP_APP_INFO
+    if _DESKTOP_APP_INFO is None:
+        try:
+            gi.require_version("GioUnix", "2.0")
+            from gi.repository import GioUnix
+            _DESKTOP_APP_INFO = GioUnix.DesktopAppInfo
+        except (ImportError, ValueError):
+            _DESKTOP_APP_INFO = Gio.DesktopAppInfo
+    return _DESKTOP_APP_INFO.new(app_id)
+
+
+_DESKTOP_APP_INFO = None
+
+
 @command("notifications.apps")
 def cmd_notification_apps(agent, args):
     """The apps that have shown notifications, with their notification
@@ -983,7 +1156,7 @@ def cmd_notification_apps(agent, args):
         app_id = st.get_string("application-id")
         name = app_id[:-8] if app_id.endswith(".desktop") else app_id or child
         try:
-            info = Gio.DesktopAppInfo.new(app_id) if app_id else None
+            info = _desktop_app_info(app_id) if app_id else None
         except TypeError:
             info = None
         if info is not None:
@@ -1024,7 +1197,7 @@ def cmd_volume(agent, args):
     if "muted" in args:
         run_checked("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@",
                     "1" if args["muted"] else "0")
-    agent.schedule_refresh(100)
+    agent.schedule_refresh(100, slow=True)
     return agent.volume()
 
 
@@ -1042,7 +1215,7 @@ def cmd_data(agent, args):
 @command("wifi.set")
 def cmd_wifi(agent, args):
     run_checked("nmcli", "radio", "wifi", "on" if args["on"] else "off")
-    agent.schedule_refresh(300)
+    agent.schedule_refresh(300, slow=True)
     return bool(args["on"])
 
 
@@ -1052,7 +1225,7 @@ def cmd_power(agent, args):
              "/org/freedesktop/UPower/PowerProfiles",
              "org.freedesktop.UPower.PowerProfiles", "ActiveProfile",
              GLib.Variant("s", args["profile"]))
-    agent.schedule_refresh(300)
+    agent.schedule_refresh(300, slow=True)
     return args["profile"]
 
 
@@ -1060,7 +1233,7 @@ def cmd_power(agent, args):
 def cmd_feedback(agent, args):
     set_prop(agent.session, "org.sigxcpu.Feedback", "/org/sigxcpu/Feedback",
              "org.sigxcpu.Feedback", "Profile", GLib.Variant("s", args["profile"]))
-    agent.schedule_refresh(300)
+    agent.schedule_refresh(300, slow=True)
     return args["profile"]
 
 
@@ -1082,17 +1255,23 @@ def cmd_ring_stop(agent, args):
     return True
 
 
+DIALABLE = re.compile(r"\+?[0-9*#]+")
+
+
 @command("call")
 def cmd_call(agent, args):
     """Calls a number - on a chosen line (lines.list), or as GNOME Calls
-    would by default."""
+    would by default. Only digits, * and # (and a leading +) are dialled -
+    a name from an SMS sender must not turn into an option."""
     number = normalize(args["number"], args.get("country", "49"))
+    if not DIALABLE.fullmatch(number):
+        raise RuntimeError("not a number to call")
     if args.get("line"):
         dial_on_line(agent, number, args["line"])
         return number
     env = dict(os.environ)
     env.setdefault("WAYLAND_DISPLAY", "wayland-0")
-    subprocess.Popen(["gnome-calls", "--dial", number], env=env,
+    subprocess.Popen(["gnome-calls", "--dial=" + number], env=env,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
     return number
@@ -1101,8 +1280,14 @@ def cmd_call(agent, args):
 # --- iCalendar and vCard text ------------------------------------------------
 
 def _escape(value):
-    return (value.replace("\\", "\\\\").replace("\n", "\\n")
-            .replace(",", "\\,").replace(";", "\\;"))
+    return (value.replace("\\", "\\\\").replace("\r\n", "\n").replace("\r", "\n")
+            .replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;"))
+
+
+def _one_line(value):
+    """Line breaks out of a value that must stay one line (a number, an
+    address) - they would start a property of their own."""
+    return re.sub(r"[\r\n]+", " ", value or "").strip()
 
 
 def _prop(line):
@@ -1241,11 +1426,11 @@ def vcard_from_contact(c, original=None, photo=None):
     for p in c.get("phones", []):
         if p.get("value", "").strip():
             new.append("TEL;TYPE=%s:%s" % (PHONE_TYPES.get(p.get("type"), "VOICE"),
-                                           p["value"].strip()))
+                                           _one_line(p["value"])))
     for e in c.get("emails", []):
         if e.strip():
-            new.append("EMAIL;TYPE=INTERNET:" + e.strip())
-    if c.get("birthday"):
+            new.append("EMAIL;TYPE=INTERNET:" + _one_line(e))
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", c.get("birthday") or ""):
         new.append("BDAY:" + c["birthday"])
     if c.get("note", "").strip():
         new.append("NOTE:" + _escape(c["note"].strip()))
@@ -1786,12 +1971,21 @@ class Pim:
     def writable(self, kind, uid):
         return self._handle(kind, uid)[3]
 
+    GONE = ("org.freedesktop.DBus.Error.UnknownObject",
+            "org.freedesktop.DBus.Error.UnknownMethod",
+            "org.freedesktop.DBus.Error.ServiceUnknown",
+            "org.freedesktop.DBus.Error.NameHasNoOwner")
+
     def call(self, kind, uid, method, args, reply=None, timeout=60000):
         name, path, iface, _w = self._handle(kind, uid)
         try:
             return call(self.conn, name, path, iface, method, args, reply, timeout)
-        except RuntimeError:
-            # the backend may have gone away (EDS restarts idle backends)
+        except DBusFailure as e:
+            # EDS ends idle backends: then the object is gone - open it again
+            # and try once more. Not after anything else (a timeout may have
+            # done the change already), and never a creation twice.
+            if e.name not in self.GONE or method.startswith("Create"):
+                raise
             self._open.pop((kind, uid), None)
             name, path, iface, _w = self._handle(kind, uid)
             return call(self.conn, name, path, iface, method, args, reply, timeout)
@@ -1837,7 +2031,7 @@ def call_history(limit=200, path=None, book=BOOK, country="49"):
     return out
 
 
-@command("pim.sources")
+@command("pim.sources", threaded=True)
 def cmd_pim_sources(agent, args):
     out = []
     for s in agent.pim.sources():
@@ -1850,7 +2044,7 @@ def cmd_pim_sources(agent, args):
     return out
 
 
-@command("contacts.list")
+@command("contacts.list", threaded=True)
 def cmd_contacts(agent, args):
     out = []
     for s in agent.pim.sources():
@@ -1874,7 +2068,7 @@ def cmd_contacts(agent, args):
     return out
 
 
-@command("contacts.save")
+@command("contacts.save", threaded=True)
 def cmd_contact_save(agent, args):
     source = args["source"]
     photo = None
@@ -1907,7 +2101,7 @@ def cmd_contact_save(agent, args):
     return {"uid": new[0] if new else ""}
 
 
-@command("contacts.delete")
+@command("contacts.delete", threaded=True)
 def cmd_contact_delete(agent, args):
     agent.pim.call("contacts", args["source"], "RemoveContacts",
                    GLib.Variant("(asu)", ([args["uid"]], 0)))
@@ -1918,7 +2112,7 @@ def _make_time(epoch):
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(epoch))
 
 
-@command("calendar.events")
+@command("calendar.events", threaded=True)
 def cmd_events(agent, args):
     start, end = int(args["start"]), int(args["end"])
     query = '(occur-in-time-range? (make-time "%s") (make-time "%s"))' % (
@@ -1951,7 +2145,7 @@ def cmd_events(agent, args):
     return out
 
 
-@command("calendar.save")
+@command("calendar.save", threaded=True)
 def cmd_event_save(agent, args):
     source = args["source"]
     uid = args.get("uid")
@@ -1996,7 +2190,7 @@ def cmd_event_save(agent, args):
     return {"uid": new[0] if new else ""}
 
 
-@command("calendar.delete")
+@command("calendar.delete", threaded=True)
 def cmd_event_delete(agent, args):
     """scope "all" removes the event (a whole series); "this" takes one
     occurrence out: an EXDATE on the series, or - for an occurrence the
@@ -2022,7 +2216,7 @@ def cmd_event_delete(agent, args):
     return True
 
 
-@command("calls.history")
+@command("calls.history", threaded=True)
 def cmd_call_history(agent, args):
     country = args.get("country", "49")
     calls = call_history(args.get("limit", 200), country=country)
@@ -2179,7 +2373,7 @@ def match_voicebox(calls, messages, country="49"):
     return calls
 
 
-@command("voicebox.list")
+@command("voicebox.list", threaded=True)
 def cmd_voicebox(agent, args):
     if not voicebox_installed():
         return {"installed": False, "boxes": [], "messages": []}
@@ -2187,14 +2381,24 @@ def cmd_voicebox(agent, args):
             "messages": voicebox_messages(country=args.get("country", "49"))}
 
 
-@command("voicebox.audio")
+VOICEBOX_CHUNK = 512 * 1024
+
+
+@command("voicebox.audio", threaded=True)
 def cmd_voicebox_audio(agent, args):
+    """A recording in pieces ("offset", up to 512 KB each) - one huge line
+    would hold up every event behind it."""
     path = os.path.join(voicebox_dir(), _voicebox_id(args["id"]) + ".wav")
+    offset = max(0, int(args.get("offset", 0)))
     try:
-        if os.path.getsize(path) > VOICEBOX_AUDIO_MAX:
+        total = os.path.getsize(path)
+        if total > VOICEBOX_AUDIO_MAX:
             raise RuntimeError("recording too large")
         with open(path, "rb") as f:
-            return {"data": base64.b64encode(f.read()).decode("ascii")}
+            f.seek(offset)
+            data = f.read(VOICEBOX_CHUNK)
+        return {"data": base64.b64encode(data).decode("ascii"), "total": total,
+                "offset": offset}
     except FileNotFoundError:
         raise RuntimeError("no such message")
 
@@ -2246,7 +2450,7 @@ def pc_audio_guard(agent):
     try:
         if not _uplink_muted(agent):
             _set_uplink_muted(agent, True)
-    except RuntimeError:
+    except Exception:  # noqa: BLE001 - the guard must stay
         pass
     return True
 
@@ -2328,8 +2532,8 @@ def _gone(pid):
         return True
 
 
-def stop_chatty(timeout=8):
-    procs = chatty_processes()
+def stop_chatty(timeout=8, procs=None):
+    procs = chatty_processes() if procs is None else procs
     for pid, _argv, _env in procs:
         try:
             os.kill(pid, 15)
@@ -2348,6 +2552,10 @@ def start_chatty(procs):
         if len(argv) > 1 and os.path.basename(argv[0]) != "chatty" \
                 and os.path.basename(argv[1]) == "chatty":
             argv = argv[1:]     # started through its interpreter (#!): start it as such
+        if argv and shutil.which("systemd-run"):
+            # in the user's session, not in this SSH login's scope (which may
+            # take chatty along when the PC disconnects)
+            argv = ["systemd-run", "--user", "--scope", "--collect", "--quiet", "--"] + argv
         if argv:
             subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -2357,8 +2565,9 @@ def start_chatty(procs):
 def backup_store(path=None):
     path = path or CHATTY_DB
     d = os.path.join(DATA_DIR, "backups")
-    os.makedirs(d, exist_ok=True)
+    _private_dir(d)
     target = os.path.join(d, "chatty-history-%s.db" % time.strftime("%Y%m%d-%H%M%S"))
+    os.close(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
     src = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=5)
     dst = sqlite3.connect(target)
     with dst:
@@ -2375,6 +2584,7 @@ def delete_thread_rows(thread, path=None):
     db = sqlite3.connect(path or CHATTY_DB, timeout=10)
     try:
         db.execute("PRAGMA foreign_keys = ON")
+        db.execute("PRAGMA secure_delete = ON")   # deleted is overwritten, not just unlinked
         with db:
             ids = [r[0] for r in db.execute("SELECT id FROM threads WHERE name = ?", (thread,))]
             if not ids:
@@ -2385,6 +2595,7 @@ def delete_thread_rows(thread, path=None):
             db.execute("DELETE FROM messages WHERE thread_id IN (%s)" % marks, ids)
             db.execute("DELETE FROM thread_members WHERE thread_id IN (%s)" % marks, ids)
             db.execute("DELETE FROM threads WHERE id IN (%s)" % marks, ids)
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         return n
     finally:
         db.close()
@@ -2398,26 +2609,33 @@ def drop_sent(number, path=None):
     if len(keep) == len(entries):
         return 0
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         for e in keep:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
     return len(entries) - len(keep)
 
 
-@command("sms.delete_thread")
+@command("sms.delete_thread", threaded=True)
 def cmd_delete_thread(agent, args):
     thread = args["thread"]
     country = args.get("country", "49")
     deleted = 0
     procs = []
     if os.path.exists(CHATTY_DB):
-        backup_store()
-        procs = stop_chatty()
+        backup = backup_store()
+        procs = chatty_processes()
         try:
+            stop_chatty(procs=procs)
             deleted = delete_thread_rows(thread)
         finally:
-            start_chatty(procs)
+            # every chatty that ended comes back - also when one would not stop
+            start_chatty([p for p in procs if _gone(p[0])])
+        try:
+            os.remove(backup)           # deleted for good means no copy either
+        except OSError:
+            pass
     deleted += drop_sent(normalize(thread, country))
     agent.last_sms_id = store_last_id()
     send({"event": "sms", "new": []})
@@ -2522,13 +2740,25 @@ def dial_on_line(agent, number, line):
 
 def _reader(agent):
     for line in sys.stdin.buffer:
+        agent.last_rx = time.monotonic()
         GLib.idle_add(agent.dispatch, line)
     GLib.idle_add(agent.loop.quit)
+
+
+def _worker(agent):
+    """Runs the threaded commands, one after the other, in order."""
+    while True:
+        fn, args, reply = agent.work.get()
+        try:
+            reply(fn(agent, args))
+        except Exception as e:  # noqa: BLE001 - every failure goes back to the PC
+            reply(error=e)
 
 
 def main():
     loop = GLib.MainLoop()
     agent = Agent(loop)
+    threading.Thread(target=_worker, args=(agent,), daemon=True).start()
     threading.Thread(target=_reader, args=(agent,), daemon=True).start()
     agent.schedule_refresh(0)
     try:                            # GLib 2.80 moved it

@@ -145,6 +145,9 @@ class Tray:
             self._signal(ITEM_PATH, "org.kde.StatusNotifierItem", "NewIcon")
 
     def set_tooltip(self, title, text):
+        # some hosts (KDE ...) read the tooltip as rich text; SSIDs and
+        # operator names come from strangers
+        title, text = GLib.markup_escape_text(title), GLib.markup_escape_text(text)
         if (title, text) != self.tooltip:
             self.tooltip = (title, text)
             self.title = title
@@ -165,10 +168,19 @@ class Tray:
         except GLib.Error:
             pass
 
-    def _watcher_appeared(self, conn, name, owner):
+    def _watcher_appeared(self, conn, name, owner, attempt=0):
+        def done(c, res):
+            try:
+                c.call_finish(res)
+            except GLib.Error as e:
+                print("phonebridge: panel icon not registered:", e.message)
+                if attempt < 3:             # the host may still be starting
+                    GLib.timeout_add_seconds(2, lambda: self._watcher_appeared(
+                        conn, name, owner, attempt + 1) and False)
+
         conn.call(WATCHER, "/StatusNotifierWatcher", WATCHER,
                   "RegisterStatusNotifierItem", GLib.Variant("(s)", (self.name,)),
-                  None, Gio.DBusCallFlags.NONE, -1, None, None)
+                  None, Gio.DBusCallFlags.NONE, 5000, None, done)
 
     def _item_prop(self, conn, sender, path, iface, prop):
         values = {

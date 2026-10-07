@@ -1,5 +1,15 @@
 #!/bin/bash
 # Stand-in for ssh: runs the remote command here, as the phone would.
 # The last argument is the command; everything before it is ssh options.
+[ -n "$FAKE_SSH_SLOW" ] && { sleep "$FAKE_SSH_SLOW"; echo "ssh: connect to host phone port 22: No route to host" >&2; exit 255; }
 [ -n "$FAKE_SSH_FAIL" ] && { echo "ssh: connect to host phone port 22: No route to host" >&2; exit 255; }
-exec sh -c "${@: -1}"
+# a phone that takes everything and never answers
+[ -n "$FAKE_SSH_HANG" ] && exec cat > /dev/null
+cmd="${@: -1}"
+# measuring coverage (tests/coverage.sh): the agent from the source tree,
+# under coverage, instead of the copy sent over stdin
+if [ -n "$PHONEBRIDGE_COVERAGE" ] && [ "${cmd#python3 -u -c}" != "$cmd" ]; then
+    exec python3 -m coverage run -p --rcfile="$PHONEBRIDGE_COVERAGE" \
+        "$(dirname "$0")/../agent_entry.py"
+fi
+exec sh -c "$cmd"

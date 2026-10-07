@@ -144,9 +144,11 @@ class OverviewPage(Gtk.ScrolledWindow):
 
     # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):
+        self.show_threads()
         if dev is not self.dev:
             self.dev = dev
             self._loaded_for = None
+            self._serial += 1           # late answers of the last phone: not here
             self.calls, self.events = [], []
         self.update()
         self.load()
@@ -172,7 +174,6 @@ class OverviewPage(Gtk.ScrolledWindow):
             info = dev.info
             where = "%s@%s" % (info["user"], info["host"])
             self.conn.set_tooltip_text("%s (%s)" % (s.get("hostname") or dev.name, where))
-        self.show_threads()
 
     def load(self, force=False):
         """Calls and appointments - once per connection, again after a minute

@@ -70,9 +70,30 @@ def save(cfg):
     os.replace(tmp, path())
 
 
+USER = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._-]{0,63}")
+HOST = re.compile(r"[A-Za-z0-9.:\[\]_][A-Za-z0-9.:\[\]_-]{0,253}")
+
+
+def valid_user(user):
+    return bool(USER.fullmatch(user or ""))
+
+
+def valid_host(host):
+    """A host name or address - nothing ssh could take for an option."""
+    return bool(HOST.fullmatch(host or ""))
+
+
+def valid_port(port):
+    try:
+        return 1 <= int(port) <= 65535
+    except (TypeError, ValueError):
+        return False
+
+
 def valid_device(d):
-    return (isinstance(d, dict) and d.get("id") and d.get("host")
-            and d.get("user"))
+    return (isinstance(d, dict) and bool(d.get("id")) and valid_host(d.get("host"))
+            and valid_user(d.get("user")) and valid_port(d.get("port") or 22)
+            and re.fullmatch(r"[a-z0-9-]+", d["id"]) is not None)
 
 
 def new_device_id(name, taken):

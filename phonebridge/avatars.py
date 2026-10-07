@@ -17,6 +17,26 @@ CACHE_DIR = os.environ.get("PHONEBRIDGE_CACHE") or os.path.join(
     "phonebridge", "avatars")
 
 
+def private_dir(path):
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
+def write_private(path, data):
+    """Whole, then in place; readable by the user only."""
+    tmp = "%s.%d.part" % (path, os.getpid())
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+LIMIT = 300         # pictures kept in memory
+
+
 def _texture(raw):
     try:
         return Gdk.Texture.new_from_bytes(GLib.Bytes.new(raw))
@@ -26,8 +46,14 @@ def _texture(raw):
 
 class Avatars:
     def __init__(self):
-        self.textures = {}
+        self.textures = {}          # key -> texture, or None: not a usable picture
         self._waiting = {}
+
+    def _keep(self, key, texture):
+        self.textures.pop(key, None)
+        self.textures[key] = texture
+        while len(self.textures) > LIMIT:       # the oldest go first
+            self.textures.pop(next(iter(self.textures)))
 
     def get(self, dev, key, callback):
         """callback(texture) - right away when known, later when fetched;
@@ -43,7 +69,7 @@ class Avatars:
             with open(path, "rb") as f:
                 texture = _texture(f.read())
             if texture is not None:
-                self.textures[key] = texture
+                self._keep(key, texture)
                 callback(texture)
                 return
         if key in self._waiting:
@@ -53,24 +79,22 @@ class Avatars:
 
         def done(result, error):
             callbacks = self._waiting.pop(key, [])
-            texture = None
-            if error is None:
+            if error is not None:
+                return      # not connected, timeout ... - asked again next time
+            try:
                 raw = base64.b64decode(result["data"])
-                texture = _texture(raw)
-                if texture is not None:
-                    try:
-                        os.makedirs(CACHE_DIR, exist_ok=True)
-                        tmp = "%s.%d.part" % (path, os.getpid())
-                        with open(tmp, "wb") as f:
-                            f.write(raw)
-                        os.replace(tmp, path)
-                    except OSError:
-                        pass
-            if texture is None and error != "not connected":
-                self.textures[key] = None       # not a picture GTK can show
-            elif texture is not None:
-                self.textures[key] = texture
-                for cb in callbacks:
-                    cb(texture)
+            except (KeyError, TypeError, ValueError):
+                raw = b""
+            texture = _texture(raw) if raw else None
+            self._keep(key, texture)    # None: not a picture GTK can show
+            if texture is None:
+                return
+            try:
+                private_dir(CACHE_DIR)
+                write_private(path, raw)
+            except OSError:
+                pass
+            for cb in callbacks:
+                cb(texture)
 
         dev.request("avatar", {"key": key}, done)

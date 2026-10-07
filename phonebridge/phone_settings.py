@@ -271,7 +271,8 @@ class PhoneSettingsPage(Gtk.Box):
 
             dev.request("gsettings.get", {"keys": keys}, done)
         if section.get("special") == "notify_apps":
-            dev.request("notifications.apps", {}, self._got_apps)
+            dev.request("notifications.apps", {},
+                        lambda r, e: self._got_apps(r, e, dev))
 
     def _required(self, row):
         req = row.opts.get("requires")
@@ -303,6 +304,8 @@ class PhoneSettingsPage(Gtk.Box):
             args["path"] = row.path
 
         def done(result, error):
+            if dev is not self.dev:
+                return
             if error is not None:
                 self.app.toast(text.error(error))
             elif result is not None:
@@ -316,8 +319,8 @@ class PhoneSettingsPage(Gtk.Box):
         dev.request("gsettings.set", args, done)
 
     # -- notifications per app -------------------------------------------------------
-    def _got_apps(self, result, error):
-        if error is not None:
+    def _got_apps(self, result, error, dev=None):
+        if error is not None or (dev is not None and dev is not self.dev):
             return
         self.notify_apps = result
         for row in list(getattr(self.apps_group, "app_rows", [])):

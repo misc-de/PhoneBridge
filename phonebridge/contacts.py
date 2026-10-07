@@ -138,6 +138,7 @@ class ContactsPage(Gtk.Box):
         if dev is not self.dev:
             self.dev = dev
             self._loaded_for = None
+            self._serial += 1           # late answers of the last phone: not here
             self.contacts = []
             self._fill()
             self._show(None)
@@ -204,11 +205,13 @@ class ContactsPage(Gtk.Box):
     def find_number(self, number):
         """The contact with this phone number, or None."""
         country = self.app.cfg["country"]
-        wanted = text.normalize(number, country)
-        for c in self.contacts:
-            if any(text.normalize(p["value"], country) == wanted for p in c["phones"]):
-                return c
-        return None
+        if getattr(self, "_by_number_of", None) is not self.contacts:
+            self._by_number = {}
+            for c in self.contacts:
+                for p in c["phones"]:
+                    self._by_number.setdefault(text.normalize(p["value"], country), c)
+            self._by_number_of = self.contacts
+        return self._by_number.get(text.normalize(number, country))
 
     # -- showing -------------------------------------------------------------------
     def _on_row(self, listbox, row):

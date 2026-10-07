@@ -126,7 +126,7 @@ class QuickSettings:
             self.gain.set_value(float(cfg["call_audio_gain"]))
             self.auto.set_active(bool(cfg["call_audio_auto"]))
             audio = self.app.pc_audio.get(dev.id) if dev is not None else None
-            testing = audio is not None and audio.test
+            testing = audio is not None and getattr(audio, "test", False)
             in_call = bool(dev is not None and self.app.calls.get(dev.id))
             self.test_button.set_label(_("Stop") if testing else _("Test"))
             self.test_button.set_sensitive(testing or (audio is None and not in_call))
@@ -153,7 +153,7 @@ class QuickSettings:
 
     def _test_levels(self):
         audio = self.app.pc_audio.get(self.dev.id) if self.dev is not None else None
-        if audio is None or not audio.test:
+        if audio is None or not getattr(audio, "test", False):
             self._test_tick = 0
             return False
         self.test_in.set_value(min(1.0, audio.level_in))

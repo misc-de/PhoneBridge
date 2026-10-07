@@ -78,9 +78,15 @@ class DevicesDialog(Adw.PreferencesDialog):
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
 
         def check(*args):
-            ok = (bool(host.get_text().strip()) and bool(user.get_text().strip())
-                  and port.get_text().strip().isdigit())
-            dialog.set_response_enabled("save", ok)
+            fields = ((host, config.valid_host(host.get_text().strip())),
+                      (user, config.valid_user(user.get_text().strip())),
+                      (port, config.valid_port(port.get_text().strip())))
+            for row, ok in fields:
+                if ok or not row.get_text().strip():
+                    row.remove_css_class("error")
+                else:
+                    row.add_css_class("error")
+            dialog.set_response_enabled("save", all(ok for _r, ok in fields))
 
         for row in (host, user, port):
             row.connect("changed", check)

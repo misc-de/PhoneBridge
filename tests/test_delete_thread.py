@@ -81,10 +81,11 @@ class WithChatty(unittest.TestCase):
                 while :; do sleep 0.1; done
                 """ % self.starts))
         os.chmod(self.fake, 0o755)
-        env = dict(os.environ, CHATTY_MARKER="from-the-session")
+        self.log = os.path.join(self.home.dir, "log")
+        env = dict(os.environ, CHATTY_MARKER="from-the-session", FAKE_LOG=self.log)
         self.proc = subprocess.Popen([self.fake, "--gapplication-service"], env=env)
         self.assertTrue(run_loop_until(lambda: agent.chatty_processes(), 5))
-        patcher = mock.patch.dict(os.environ, self.home.env())
+        patcher = mock.patch.dict(os.environ, dict(self.home.env(), FAKE_LOG=self.log))
         patcher.start()
         self.addCleanup(patcher.stop)
         self.addCleanup(self._kill_chatty)
@@ -119,7 +120,12 @@ class WithChatty(unittest.TestCase):
         with open(self.starts) as f:
             self.assertEqual(f.read().splitlines(),
                              ["from-the-session --gapplication-service"] * 2)
-        self.assertEqual(len(os.listdir(os.path.join(self.home.data, "backups"))), 1)
+        # the copy made before deleting goes once the deleting worked
+        self.assertEqual(os.listdir(os.path.join(self.home.data, "backups")), [])
+        self.assertEqual(os.stat(os.path.join(self.home.data, "backups")).st_mode & 0o777,
+                         0o700)
+        with open(self.log) as f:
+            self.assertIn("systemd-run --user --scope", f.read())
 
 
 if __name__ == "__main__":

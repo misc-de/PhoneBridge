@@ -50,7 +50,7 @@ class App(unittest.TestCase):
                                          os.path.join(cls.home.dir, "autostart.desktop"))]
         for p in cls.patches:
             p.start()
-        config.save(dict(config.DEFAULTS, devices=[
+        config.save(dict(config.DEFAULTS, language="en", devices=[
             {"id": "test", "name": "Testphone", "host": "phone", "user": "me"}]))
         cls.notified = []
         cls.app = PhoneBridgeApp()

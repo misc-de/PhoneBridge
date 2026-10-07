@@ -42,7 +42,7 @@ def _rounded(cr, x, y, w, h, r):
 def draw(cr, s, percent=None, charging=False, online=True, unread=0):
     lw = max(1.0, s / 14)
     w, h = s * 0.52, s * 0.88
-    x, y = s * 0.12, (s - h) / 2
+    x, y = (s - w) / 2, (s - h) / 2          # centred; the badge overlaps a corner
     r = s * 0.1
     outline = LIGHT if online else GREY
 
@@ -128,8 +128,18 @@ def render(size, **state):
     return size, size, bytes(data)
 
 
-def pixmaps(**state):
-    return [render(s, **state) for s in SIZES]
+_PIXMAPS = {}
+
+
+def pixmaps(percent=None, charging=False, online=True, unread=0):
+    """All sizes - drawn once per look (kept for the last few looks)."""
+    key = (percent, charging, online, min(unread, 10))
+    if key not in _PIXMAPS:
+        if len(_PIXMAPS) > 64:
+            _PIXMAPS.clear()
+        _PIXMAPS[key] = [render(s, percent=percent, charging=charging, online=online,
+                                unread=unread) for s in SIZES]
+    return _PIXMAPS[key]
 
 
 def write_png(path, size, **state):

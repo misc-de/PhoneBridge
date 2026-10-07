@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stand-in for systemd-run: runs what comes after "--", never the real user
+# manager. Logged, so tests can see it was used.
+echo "systemd-run $*" >> "${FAKE_LOG:-/dev/null}"
+while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift
+exec "$@"

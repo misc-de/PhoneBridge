@@ -69,6 +69,8 @@ class PhoneBridgeApp(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         self.cfg = config.load()
+        from .callaudio import unload_leftovers
+        run_in_thread(unload_leftovers)     # an echo canceller a crash left behind
         i18n.setup(self.cfg["language"])
         css = Gtk.CssProvider()
         css.load_from_string(CSS)
@@ -83,7 +85,36 @@ class PhoneBridgeApp(Adw.Application):
             print("phonebridge: no panel icon:", e.message, file=sys.stderr)
         self.sync_devices()
         self.update_tray()
+        self._watch_sleep_and_network()
         self.hold()
+
+    def _watch_sleep_and_network(self):
+        """After a suspend, or when the network changed, the SSH connections
+        may be dead without knowing it: connect anew right away."""
+        def reconnect_all(*args):
+            for dev in self.devices.values():
+                if dev._running:
+                    dev.reconnect()
+
+        try:
+            system = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            system.signal_subscribe(
+                "org.freedesktop.login1", "org.freedesktop.login1.Manager",
+                "PrepareForSleep", "/org/freedesktop/login1", None,
+                Gio.DBusSignalFlags.NONE,
+                lambda c, s, p, i, n, params: (not params.unpack()[0]) and
+                GLib.timeout_add_seconds(2, lambda: reconnect_all() and False))
+        except GLib.Error:
+            pass
+        monitor = Gio.NetworkMonitor.get_default()
+        self._net_up = monitor.get_network_available()
+
+        def changed(m, available):
+            if available and not self._net_up:
+                GLib.timeout_add_seconds(2, lambda: reconnect_all() and False)
+            self._net_up = available
+
+        monitor.connect("network-changed", changed)
 
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]
@@ -97,8 +128,13 @@ class PhoneBridgeApp(Adw.Application):
         return 0
 
     def do_shutdown(self):
-        for dev_id in list(self.pc_audio):
-            self.set_pc_audio(self.devices.get(dev_id), False)
+        for dev_id, audio in list(self.pc_audio.items()):
+            self.pc_audio.pop(dev_id, None)
+            if audio is not PENDING:
+                audio.stop()        # here and now: the app is ending
+            dev = self.devices.get(dev_id)
+            if dev is not None:
+                dev.request("callaudio.mute", {"on": False})    # out before the end
         for dev in self.devices.values():
             dev.stop()
         if self.tray is not None:
@@ -161,6 +197,13 @@ class PhoneBridgeApp(Adw.Application):
     def set_devices(self, devices):
         self.cfg["devices"] = devices
         ids = {d["id"] for d in devices}
+        # a phone that goes takes its voice messages along from the cache
+        try:
+            for fn in os.listdir(voicebox_cache()):
+                if fn.split("-", 1)[0] not in ids:
+                    os.remove(os.path.join(voicebox_cache(), fn))
+        except OSError:
+            pass
         self.cfg["seen"] = {k: v for k, v in self.cfg["seen"].items() if k in ids}
         if self.cfg["active"] not in ids:
             self.cfg["active"] = devices[0]["id"] if devices else None
@@ -195,6 +238,9 @@ class PhoneBridgeApp(Adw.Application):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:
             self.set_pc_audio(dev, False)
+        if not online:
+            self.ringing.pop(dev.id, None)
+            self._pc_wanted.pop(dev.id, None)
         self._was_online[dev.id] = online
         self.update_tray()
         if self.window is not None:
@@ -230,7 +276,7 @@ class PhoneBridgeApp(Adw.Application):
         if len(self.devices) > 1:
             title += " (%s)" % dev.name
         n = Gio.Notification.new(title)
-        n.set_body(msg["body"])
+        n.set_body(notification_text(msg["body"]))
         n.set_icon(self._sender_icon(dev, msg["thread"]))
         target = GLib.Variant("(ss)", (dev.id, msg["thread"]))
         n.set_default_action_and_target("app.open-thread", target)
@@ -291,24 +337,32 @@ class PhoneBridgeApp(Adw.Application):
         self.send_notification("vb-%s-%s" % (dev.id, m["id"]), n)
 
     def voicebox_audio(self, dev, mid, callback):
-        """callback(path or None, error)."""
+        """callback(path or None, error) - fetched in pieces into a private
+        cache, so a long recording never holds up the line."""
         import base64
-        cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
-                             "phonebridge", "voicebox")
+        from .avatars import private_dir, write_private
+        cache = voicebox_cache()
         path = os.path.join(cache, "%s-%s.wav" % (dev.id, mid))
         if os.path.exists(path):
             callback(path, None)
             return
+        pieces = []
 
         def done(result, error):
             if error is not None:
                 callback(None, error)
                 return
-            os.makedirs(cache, exist_ok=True)
-            tmp = path + ".part"
-            with open(tmp, "wb") as f:
-                f.write(base64.b64decode(result["data"]))
-            os.replace(tmp, path)
+            pieces.append(base64.b64decode(result["data"]))
+            got = result.get("offset", 0) + len(pieces[-1])
+            if "total" in result and got < result["total"] and pieces[-1]:
+                dev.request("voicebox.audio", {"id": mid, "offset": got}, done)
+                return
+            try:
+                private_dir(cache)
+                write_private(path, b"".join(pieces))
+            except OSError as e:
+                callback(None, str(e))
+                return
             callback(path, None)
 
         dev.request("voicebox.audio", {"id": mid}, done)
@@ -329,9 +383,7 @@ class PhoneBridgeApp(Adw.Application):
                 self.toast(_("Not deleted: %s") % text.error(error))
             else:
                 self.withdraw_notification("vb-%s-%s" % (dev.id, mid))
-                cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
-                                     or os.path.expanduser("~/.cache"),
-                                     "phonebridge", "voicebox", "%s-%s.wav" % (dev.id, mid))
+                cache = os.path.join(voicebox_cache(), "%s-%s.wav" % (dev.id, mid))
                 try:
                     os.remove(cache)
                 except FileNotFoundError:
@@ -404,8 +456,11 @@ class PhoneBridgeApp(Adw.Application):
     # -- the call's sound on the PC ---------------------------------------------
     def call_audio_possible(self, dev):
         from . import callaudio
-        return (dev is not None and dev.online and callaudio.available()
-                and bool((dev.hello or {}).get("has", {}).get("call_audio")))
+        if dev is None or not dev.online or not callaudio.available():
+            return False
+        # the agent finds the nodes later, too (PipeWire after a boot)
+        return bool((dev.hello or {}).get("has", {}).get("call_audio")
+                    or (dev.status or {}).get("call_audio"))
 
     def set_pc_audio(self, dev, on, test=False):
         """The call's sound (or, test=True, the phone's own speaker and
@@ -417,16 +472,25 @@ class PhoneBridgeApp(Adw.Application):
         if not on:
             if current is not None:
                 del self.pc_audio[dev.id]
-                current.stop()
-                if not current.test:
+                if current is not PENDING:
+                    run_in_thread(current.stop)
+                if current is PENDING or not current.test:
                     dev.request("callaudio.mute", {"on": False})
             self._pc_audio_changed(dev)
             return
         if current is not None:
-            return
+            return                      # running, or about to
+        self.pc_audio[dev.id] = PENDING
 
         def go(result=None, error=None):
+            if self.pc_audio.get(dev.id) is not PENDING:
+                return                  # switched off meanwhile
+            if error is None and not test and not (dev.online and self.calls.get(dev.id)):
+                error = "the call is over"
             if error is not None:
+                del self.pc_audio[dev.id]
+                if not test:
+                    dev.request("callaudio.mute", {"on": False})
                 self.toast(_("The sound stays on the phone: %s") % text.error(error))
                 self._pc_audio_changed(dev)
                 return
@@ -434,9 +498,8 @@ class PhoneBridgeApp(Adw.Application):
                               echo_cancel=bool(self.cfg["call_audio_echo"]), test=test)
             audio.connect("stopped", lambda a, why: self._pc_audio_stopped(dev, a, why))
             self.pc_audio[dev.id] = audio
-            if not audio.start():
-                return      # "stopped" has told why
-            self._pc_audio_changed(dev)
+            # starting means pactl and three programs: not on the GTK thread
+            run_in_thread(audio.start, lambda ok: self._pc_audio_changed(dev))
 
         if test:
             go()
@@ -790,6 +853,35 @@ class PhoneBridgeApp(Adw.Application):
             self.window = None
             if visible:
                 self.show_window(page)
+
+
+PENDING = object()      # in pc_audio while the phone's microphone is being muted
+
+
+def run_in_thread(fn, then=None):
+    """fn() in a thread; then(result) back on the GTK thread."""
+    import threading
+
+    def work():
+        result = fn()
+        if then is not None:
+            GLib.idle_add(lambda: then(result) and False)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def voicebox_cache():
+    return os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                        "phonebridge", "voicebox")
+
+
+def notification_text(body):
+    """An SMS as a notification body: notification servers outside GNOME
+    (KDE, xfce4-notifyd, dunst ...) read body markup - a stranger's SMS
+    must not bring links or formatting of its own."""
+    if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
+        return body
+    return GLib.markup_escape_text(body)
 
 
 def quit_running():

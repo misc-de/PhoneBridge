@@ -368,17 +368,22 @@ class MessagesPage(Gtk.Box):
         self.entry.set_sensitive(False)
         self.send_button.set_sensitive(False)
 
+        dev = self.dev
+
         def done(result, error):
             self.entry.set_sensitive(self._writable())
             if error is not None:
                 self.app.toast(_("Not sent: %s") % text.error(error))
                 self._on_typing()
                 return
+            if dev is not self.dev:
+                self.app.refresh_threads(dev)
+                return
             if self.entry.get_text() == body:
                 self.entry.set_text("")
             if thread == self.thread:
                 self._load(thread)
-            self.app.refresh_threads(self.dev)
+            self.app.refresh_threads(dev)
             self.entry.grab_focus()
 
         self.dev.request("sms.send", {"to": thread, "body": body,

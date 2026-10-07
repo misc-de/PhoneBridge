@@ -147,6 +147,7 @@ class CalendarPage(Gtk.Box):
         if dev is not self.dev:
             self.dev = dev
             self._loaded_for = None
+            self._serial += 1           # late answers of the last phone: not here
             self.events = []
             self.sources = []
             self._fill()
