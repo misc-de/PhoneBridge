@@ -293,8 +293,19 @@ class Battery(unittest.TestCase):
             (90, "charging"), (99, "charging"), (100, "charging"),   # full: told
             (100, "full"), (100, "charging"),                          # still full: quiet
             (98, "discharging"), (97, "discharging"),                  # unplugged
+            (80, "discharging"),                                       # used
             (99, "charging"), (100, "full")]),                         # full again: told
             ["full", "full"])
+
+    def test_swinging_on_the_charger_is_not_a_new_charge(self):
+        swing = [(100, "full"), (99, "discharging"), (98, "discharging"),
+                 (99, "charging"), (100, "charging"), (100, "full")]
+        self.assertEqual(self.run_states([(90, "charging")] + swing * 5), ["full"])
+        # just below the line is still no new charge, below it is
+        self.assertEqual(self.run_states([(90, "charging"), (100, "full"),
+                                          (95, "discharging"), (100, "full"),
+                                          (94, "discharging"), (100, "full")]),
+                         ["full", "full"])
 
     def test_already_full_when_met(self):
         self.assertEqual(self.run_states([(100, "full"), (100, "charging")]), [])

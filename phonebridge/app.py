@@ -263,7 +263,10 @@ class PhoneBridgeApp(Adw.Application):
     # -- the battery: full, and almost empty -------------------------------------
     def _battery_check(self, dev):
         """Once when the phone is fully charged, once when it falls below 5 %
-        (and does not charge). Told again only after the next charge cycle."""
+        (and does not charge). Told again only after the next charge cycle:
+        full again counts only once the battery fell below FULL_AGAIN % - on
+        the charger a full phone swings between 98 and 100 %, "discharging"
+        and "charging", and that is no new charge."""
         bat = (dev.status or {}).get("battery")
         if not bat:
             return
@@ -278,8 +281,8 @@ class PhoneBridgeApp(Adw.Application):
             self._battery_note(dev, "full", _("%s is fully charged") % dev.name,
                                _("%d %% - the charger can go.") % percent,
                                "battery-full-charged-symbolic")
-        elif not full and (state == "discharging" or percent < 95):
-            told["full"] = False                # unplugged: the next full counts again
+        elif not full and percent < FULL_AGAIN:
+            told["full"] = False                # really used: the next full counts again
         if percent < 5 and not charging and not told["low"]:
             told["low"] = True
             self._battery_note(dev, "low", _("The battery of %s is almost empty") % dev.name,
@@ -1225,6 +1228,7 @@ def run_in_thread(fn, then=None):
 
 
 NOTIFY_SECONDS = 10
+FULL_AGAIN = 95                 # % the battery must fall below before "full" is told again
 UPDATE_FIRST = 60               # s after the start: look for an update
 UPDATE_EVERY = 6 * 3600         # and again
 
