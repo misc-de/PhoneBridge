@@ -221,6 +221,9 @@ class Pages(unittest.TestCase):
                               for t in self.app.threads.get("test", [])))
         page._show(next(c for c in page.contacts if c["name"] == "Dora"))
         self.wait(lambda: page.activity_clamp.get_visible())
+        # the scrolling inside the breakpoint bin - outside, it never scrolled
+        self.assertIsInstance(page.detail.get_child(), Adw.BreakpointBin)
+        self.assertIsInstance(page.detail.get_child().get_child(), Gtk.ScrolledWindow)
         rows = []
         child = page.activity.get_first_child()
         while child is not None:

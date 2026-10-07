@@ -20,7 +20,7 @@ from . import text
 from .i18n import N_, _
 from .widgets import MONTHS, parse_date, short_date
 
-ACTIVITY_CALLS = 10
+ACTIVITY_CALLS = 5
 ACTIVITY_MESSAGES = 6
 ACTIVITY_EVENTS = 6
 EVENTS_BACK, EVENTS_AHEAD = 30, 180     # days around today searched for appointments
@@ -156,7 +156,7 @@ class ContactsPage(Gtk.Box):
                                       show_start_title_buttons=False)
         detail_header.pack_end(self.delete_button)
         detail_header.pack_end(self.edit_button)
-        self.detail = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.detail = Adw.Bin(vexpand=True)
         self.empty = Adw.StatusPage(icon_name="avatar-default-symbolic",
                                     title=_("Choose a contact"))
         self.detail_stack = Gtk.Stack()
@@ -373,7 +373,10 @@ class ContactsPage(Gtk.Box):
                                         valign=Gtk.Align.START, visible=False)
         columns.append(self.activity_clamp)
         self.columns = columns
-        holder = Adw.BreakpointBin(child=columns, width_request=280, height_request=200)
+        # the scrolling inside: a BreakpointBin tells only its minimum height,
+        # so around it nothing below that could be scrolled to
+        scroller = Gtk.ScrolledWindow(child=columns, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        holder = Adw.BreakpointBin(child=scroller, width_request=280, height_request=200)
         narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 720sp"))
         narrow.add_setter(columns, "orientation", Gtk.Orientation.VERTICAL)
         narrow.add_setter(columns, "homogeneous", False)     # no gap below the contact
