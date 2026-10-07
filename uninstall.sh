@@ -11,6 +11,7 @@ ID=io.github.miscde.PhoneBridge
 rm -rf "$LOCAL/lib/phonebridge"
 rm -f "$LOCAL/bin/phonebridge" "$LOCAL/share/applications/$ID.desktop" \
       "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg" \
+      "$LOCAL"/share/icons/hicolor/*x*/apps/$ID.png \
       "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$ID.desktop"
 [ -z "$PURGE" ] || rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/phonebridge"
 gtk-update-icon-cache -q -t "$LOCAL/share/icons/hicolor" 2>/dev/null || true
