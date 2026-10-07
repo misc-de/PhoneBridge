@@ -111,7 +111,8 @@ class App(unittest.TestCase):
                                "answered": False, "start": __import__("time").time(),
                                "duration": 0}]
         win.overview.show_calls()
-        self.assertEqual(win.overview.calls_card.badge.get_label(), "1")   # missed today
+        first = win.overview.calls_card.list.get_row_at_index(0)
+        self.assertTrue(first.has_css_class("fresh"))                 # missed today
         # the settings page carries the switches now
         self.assertIn(win.settings.quick.groups[0], list(_children(win.settings)))
         self.assertFalse(win.banner.get_revealed())

@@ -56,9 +56,6 @@ class Card(Gtk.Box):
         label = Gtk.Label(label=title, xalign=0, hexpand=True)
         label.add_css_class("heading")
         head.append(label)
-        self.badge = Gtk.Label(visible=False)
-        self.badge.add_css_class("unread-badge")
-        head.append(self.badge)
         more = Gtk.Button(label=_("Show all"))
         more.add_css_class("flat")
         more.connect("clicked", lambda *a: on_all())
@@ -73,7 +70,7 @@ class Card(Gtk.Box):
         self.empty.add_css_class("dim-label")
         self.append(self.empty)
 
-    def fill(self, rows, empty_text, badge=0):
+    def fill(self, rows, empty_text):
         while (r := self.list.get_row_at_index(0)) is not None:
             self.list.remove(r)
         for row in rows:
@@ -81,8 +78,6 @@ class Card(Gtk.Box):
         self.list.set_visible(bool(rows))
         self.empty.set_label(empty_text)
         self.empty.set_visible(not rows)
-        self.badge.set_label(str(badge))
-        self.badge.set_visible(badge > 0)
 
 
 def entry_row(prefix, title, subtitle, on_click, bold=False, red=False, fresh=False):
@@ -231,7 +226,6 @@ class OverviewPage(Gtk.ScrolledWindow):
             finally:
                 phone.calls = saved
         rows = []
-        missed_today = 0
         today = dt.date.today()
         for c in entries[:CALLS]:
             vb = c.get("voicebox")
@@ -247,12 +241,7 @@ class OverviewPage(Gtk.ScrolledWindow):
                                   " · ".join(sub), lambda: self.app.show_window("phone"),
                                   bold=unheard, red=missed,
                                   fresh=unheard or bool(missed_now)))
-        for c in entries:
-            vb = c.get("voicebox")
-            if c.get("start") and dt.date.fromtimestamp(c["start"]) == today and (
-                    (c["inbound"] and not c["answered"]) or vb):
-                missed_today += 1
-        self.calls_card.fill(rows, _("No calls"), missed_today)
+        self.calls_card.fill(rows, _("No calls"))
 
     def show_threads(self):
         dev = self.dev
@@ -264,8 +253,7 @@ class OverviewPage(Gtk.ScrolledWindow):
             rows.append(entry_row(self._avatar(t["title"], t.get("avatar")), t["title"], sub,
                                   lambda th=t["thread"]: self._open_thread(th),
                                   bold=bool(t["unread"]), fresh=bool(t["unread"])))
-        unread = self.app.unread(dev.id) if dev is not None else 0
-        self.messages_card.fill(rows, _("No messages"), unread)
+        self.messages_card.fill(rows, _("No messages"))
 
     def _open_thread(self, thread):
         self.app.show_window("messages")
@@ -300,8 +288,7 @@ class OverviewPage(Gtk.ScrolledWindow):
                                   ev["summary"] or _("(no title)"), when,
                                   lambda d=day: self._open_day(d),
                                   fresh=self._is_today(ev)))
-        today = sum(1 for ev in upcoming if self._is_today(ev))
-        self.events_card.fill(rows, _("No appointments in the next two weeks"), today)
+        self.events_card.fill(rows, _("No appointments in the next two weeks"))
 
     @staticmethod
     def _is_today(ev):
