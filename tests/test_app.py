@@ -56,6 +56,8 @@ class App(unittest.TestCase):
         cls.app = PhoneBridgeApp()
         # no notification daemon gets started, not even on the private bus
         cls.app.send_notification = lambda nid, n: cls.notified.append(nid)
+        cls.withdrawn = []
+        cls.app.withdraw_notification = lambda nid: cls.withdrawn.append(nid)
         cls.app.register(None)
         cls.dev = cls.app.devices["test"]
         assert run_loop_until(lambda: cls.dev.online and "test" in cls.app.threads, 20), \
@@ -95,6 +97,7 @@ class App(unittest.TestCase):
 
         self.app.mark_seen("test", BERND, mid)
         self.assertEqual(self.app.unread(), 0)
+        self.assertIn("sms-test-%d" % mid, self.withdrawn)   # read here: gone there too
         self.assertEqual(config.load()["seen"]["test"]["threads"][BERND], mid)
 
     def test_3_window_pages(self):

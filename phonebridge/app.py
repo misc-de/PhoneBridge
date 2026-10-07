@@ -60,6 +60,7 @@ class PhoneBridgeApp(Adw.Application):
         self.calls = {}
         self.voicebox = {}
         self.pc_audio = {}
+        self._sms_notes = {}        # (device id, thread) -> notification ids shown
         self._save_password = {}    # device id -> password to keep once it worked
         self._login_asked = set()   # devices whose login dialog the user filled in
         self.lines = {}             # device id -> SIM cards and SIP accounts
@@ -394,7 +395,14 @@ class PhoneBridgeApp(Adw.Application):
         target = GLib.Variant("(ss)", (dev.id, msg["thread"]))
         n.set_default_action_and_target("app.open-thread", target)
         n.add_button_with_target(_("Reply"), "app.open-thread", target)
-        self.send_notification("sms-%s-%s" % (dev.id, msg["id"]), n)
+        nid = "sms-%s-%s" % (dev.id, msg["id"])
+        self._sms_notes.setdefault((dev.id, msg["thread"]), []).append(nid)
+        self.send_notification(nid, n)
+
+    def _withdraw_sms(self, dev_id, thread):
+        """Read or deleted here: its notifications go from the desktop too."""
+        for nid in self._sms_notes.pop((dev_id, thread), []):
+            self.withdraw_notification(nid)
 
     def _sender_icon(self, dev, thread, key=None):
         """The sender's picture when PhoneBridge has it already."""
@@ -754,6 +762,7 @@ class PhoneBridgeApp(Adw.Application):
         return self.window.contacts.find_number(number)
 
     def mark_seen(self, dev_id, thread, message_id):
+        self._withdraw_sms(dev_id, thread)
         seen = config.seen_for(self.cfg, dev_id)
         if message_id <= seen["threads"].get(thread, 0):
             return
@@ -772,6 +781,7 @@ class PhoneBridgeApp(Adw.Application):
 
     def forget_thread(self, dev, thread):
         """A conversation deleted on the phone: gone here as well."""
+        self._withdraw_sms(dev.id, thread)
         seen = config.seen_for(self.cfg, dev.id)
         if seen["threads"].pop(thread, None) is not None:
             config.save(self.cfg)
@@ -1035,4 +1045,6 @@ def main():
     if "--quit" in sys.argv[1:]:
         return quit_running()
     _dumps = enable_stack_dumps()  # noqa: F841 - kept open for the handler
+    # the sender's name in desktop notifications (else the script's name)
+    GLib.set_application_name("PhoneBridge")
     return PhoneBridgeApp().run(sys.argv)
