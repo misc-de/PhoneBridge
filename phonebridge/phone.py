@@ -128,6 +128,18 @@ class PhonePage(Gtk.Box):
         self.match = Gtk.Label()
         self.match.add_css_class("dim-label")
         pad.append(self.match)
+        # the line to call on: SIM 1, SIM 2, SIP accounts
+        self.line_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        line_title = Gtk.Label(label=_("Call over"), xalign=0)
+        line_title.add_css_class("dim-label")
+        line_title.add_css_class("caption")
+        self.line_picker = Gtk.DropDown()
+        self.line_picker.connect("notify::selected", self._on_line)
+        self.line_box.append(line_title)
+        self.line_box.append(self.line_picker)
+        pad.append(self.line_box)
+        self._line_ids = []
+        self._picking_line = False
         grid = Gtk.Grid(row_spacing=8, column_spacing=8, halign=Gtk.Align.CENTER)
         for n, (digit, letters) in enumerate(KEYS):
             b = Gtk.Button()
@@ -206,6 +218,7 @@ class PhonePage(Gtk.Box):
             self.dev = dev
             self._loaded_for = None
             self._fill([])
+            self.lines_changed()
         self.device_changed()
 
     def device_changed(self):
@@ -358,6 +371,27 @@ class PhonePage(Gtk.Box):
 
         dialog.connect("response", answered)
         dialog.present(self.get_root())
+
+    def lines_changed(self):
+        dev = self.dev
+        lines = self.app.lines.get(dev.id, []) if dev else []
+        chosen = self.app.chosen_line(dev)
+        self._picking_line = True
+        self._line_ids = [l["id"] for l in lines]
+        self.line_picker.set_model(Gtk.StringList.new([self.app.line_label(l) for l in lines]))
+        if chosen is not None:
+            self.line_picker.set_selected(self._line_ids.index(chosen["id"]))
+        self._picking_line = False
+        self.line_box.set_visible(bool(lines))
+        # a single line is shown, not offered
+        self.line_picker.set_sensitive(len(lines) > 1)
+
+    def _on_line(self, *args):
+        if self._picking_line or self.dev is None:
+            return
+        n = self.line_picker.get_selected()
+        if 0 <= n < len(self._line_ids):
+            self.app.choose_line(self.dev, self._line_ids[n])
 
     def _press(self, key):
         pos = self.number.get_position()

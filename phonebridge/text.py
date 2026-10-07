@@ -22,7 +22,9 @@ ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("no modem"), N_("no modem with SMS support"),
           N_("number and text are needed"), N_("value out of range"),
           N_("the setting is read only"),
-          N_("the phone's microphone could not be muted"), N_("chatty did not stop"))
+          N_("the phone's microphone could not be muted"), N_("chatty did not stop"),
+          N_("this SIM card is not in the phone"), N_("no such SIP account"),
+          N_("unknown line"))
 DEVICE_STATES = {"online": N_("Connected"), "connecting": N_("Connecting …"),
                  "offline": N_("Not connected")}
 

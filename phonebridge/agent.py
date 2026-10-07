@@ -1031,7 +1031,12 @@ def cmd_ring_stop(agent, args):
 
 @command("call")
 def cmd_call(agent, args):
+    """Calls a number - on a chosen line (lines.list), or as GNOME Calls
+    would by default."""
     number = normalize(args["number"], args.get("country", "49"))
+    if args.get("line"):
+        dial_on_line(agent, number, args["line"])
+        return number
     env = dict(os.environ)
     env.setdefault("WAYLAND_DISPLAY", "wayland-0")
     subprocess.Popen(["gnome-calls", "--dial", number], env=env,
@@ -2366,6 +2371,100 @@ def cmd_delete_thread(agent, args):
     return {"deleted": deleted, "restarted": bool(procs)}
 
 
+# --- lines: the SIM cards and SIP accounts a call can go out on -----------------
+# A SIM is known by its ICCID, not its slot (as in VoiceBox): swap the cards
+# and the choice follows the card. GNOME Calls gives every SIM the same
+# origin id ("ofono"), so a SIM is dialled on its modem through ofono
+# directly - the way Calls itself dials, and Calls shows the call as usual.
+# SIP accounts are GNOME Calls' own (sip-account.cfg); they dial through
+# Calls' dial-sip action with the account's id.
+
+SIP_KEYFILE = os.environ.get("PHONEBRIDGE_SIP_KEYFILE", os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"),
+    "calls", "sip-account.cfg"))
+
+
+def _slot(modem):
+    m = re.search(r"(\d+)$", modem or "")
+    return int(m.group(1)) + 1 if m else 0
+
+
+def sim_lines(agent):
+    out = []
+    try:
+        modems = call(agent.system, "org.ofono", "/", "org.ofono.Manager", "GetModems",
+                      None, "(a(oa{sv}))")[0]
+    except RuntimeError:
+        return out
+    for modem, _props in sorted(modems):
+        try:
+            sim = call(agent.system, "org.ofono", modem, "org.ofono.SimManager",
+                       "GetProperties", None, "(a{sv})")[0]
+        except RuntimeError:
+            continue
+        if not sim.get("Present"):
+            continue
+        try:
+            reg = call(agent.system, "org.ofono", modem, "org.ofono.NetworkRegistration",
+                       "GetProperties", None, "(a{sv})")[0]
+        except RuntimeError:
+            reg = {}
+        numbers = [n for n in sim.get("SubscriberNumbers") or [] if re.search(r"\d", n)]
+        out.append({"id": "sim:" + (sim.get("CardIdentifier") or modem), "kind": "sim",
+                    "slot": _slot(modem), "modem": modem,
+                    "operator": reg.get("Name") or sim.get("ServiceProviderName") or "",
+                    "number": numbers[0] if numbers else "",
+                    "ready": reg.get("Status") in ("registered", "roaming")})
+    return out
+
+
+def sip_lines(path=None):
+    kf = GLib.KeyFile()
+    try:
+        kf.load_from_file(path or SIP_KEYFILE, GLib.KeyFileFlags.NONE)
+    except GLib.Error:
+        return []
+    out = []
+    for group in kf.get_groups()[0]:
+        def get(key):
+            try:
+                return kf.get_string(group, key)
+            except GLib.Error:
+                return ""
+        account_id = get("Id") or group
+        user, host = get("User"), get("Host")
+        out.append({"id": "sip:" + account_id, "kind": "sip", "account": account_id,
+                    "name": get("DisplayName"),
+                    "address": "%s@%s" % (user, host) if user and host else "",
+                    "ready": True})
+    return out
+
+
+@command("lines.list")
+def cmd_lines(agent, args):
+    return sim_lines(agent) + sip_lines()
+
+
+def dial_on_line(agent, number, line):
+    if line.startswith("sim:"):
+        sims = {l["id"]: l for l in sim_lines(agent)}
+        if line not in sims:
+            raise RuntimeError("this SIM card is not in the phone")
+        call(agent.system, "org.ofono", sims[line]["modem"], "org.ofono.VoiceCallManager",
+             "Dial", GLib.Variant("(ss)", (number, "default")), "(o)", timeout=30000)
+        return
+    if line.startswith("sip:"):
+        accounts = {l["id"] for l in sip_lines()}
+        if line not in accounts:
+            raise RuntimeError("no such SIP account")
+        call(agent.session, "org.gnome.Calls", "/org/gnome/Calls", "org.gtk.Actions",
+             "Activate", GLib.Variant("(sava{sv})", (
+                 "dial-sip", [GLib.Variant("(ss)", (number, line[4:]))], {})),
+             timeout=15000)
+        return
+    raise RuntimeError("unknown line")
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):
@@ -2379,8 +2478,14 @@ def main():
     agent = Agent(loop)
     threading.Thread(target=_reader, args=(agent,), daemon=True).start()
     agent.schedule_refresh(0)
+    try:                            # GLib 2.80 moved it
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+        signal_add = GLibUnix.signal_add
+    except (ImportError, ValueError):
+        signal_add = GLib.unix_signal_add
     for sig in (1, 2, 15):          # HUP (ssh gone), INT, TERM: end cleanly
-        GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, lambda: loop.quit() or False)
+        signal_add(GLib.PRIORITY_HIGH, sig, lambda: loop.quit() or False)
     try:
         loop.run()
     finally:

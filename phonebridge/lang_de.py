@@ -109,6 +109,8 @@ TRANSLATIONS = {
         'Anruf von %s',
     'Call from the phone':
         'Mit dem Phone anrufen',
+    'Call over':
+        'Anrufen über',
     'Call waiting':
         'Anklopfen',
     'Caller':
@@ -117,6 +119,8 @@ TRANSLATIONS = {
         'Lautstärke des Anrufers',
     'Calling %s on the phone …':
         'Das Phone ruft %s an …',
+    'Calling %s on the phone, over %s …':
+        'Das Phone ruft %s an, über %s …',
     'Calling …':
         'Wählt …',
     'Calls at the PC':
@@ -323,6 +327,8 @@ TRANSLATIONS = {
         'Kein Netz',
     'No phone set up':
         'Kein Phone eingerichtet',
+    'no such SIP account':
+        'dieses SIP-Konto gibt es nicht',
     'None':
         'Keine',
     'Normal':
@@ -529,6 +535,8 @@ TRANSLATIONS = {
         'Dieser Termin wiederholt sich – Änderungen gelten für die ganze Serie.',
     'This appointment repeats.':
         'Dieser Termin wiederholt sich.',
+    'this SIM card is not in the phone':
+        'diese SIM-Karte steckt nicht im Phone',
     'Thursday':
         'Donnerstag',
     'Title':
@@ -547,6 +555,8 @@ TRANSLATIONS = {
         'Zum Suchen tippen – mindestens drei Buchstaben.',
     'Type: %s':
         'Typ: %s',
+    'unknown line':
+        'unbekannte Leitung',
     'Unknown number':
         'Unbekannte Nummer',
     'User':

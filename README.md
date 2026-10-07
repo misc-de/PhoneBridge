@@ -8,7 +8,7 @@ Your Linux phone (FuriOS, Phosh, Mobian …) in the panel of your desktop.
 - **Window** (GTK 4 / libadwaita), opened from the icon:
   - *Overview*: battery, mobile network, Wi-Fi; mobile data, Wi-Fi, volume,
     ring profile, power profile, "ring the phone" to find it
-  - *Phone*: dial pad, call history of GNOME Calls (read only), VoiceBox's messages
+  - *Phone*: dial pad with the line to call over (SIM 1, SIM 2, GNOME Calls' SIP accounts), call history of GNOME Calls (read only), VoiceBox's messages
     when VoiceBox is installed, the call in progress
     with answer / hang up, and a notification with both for incoming calls; with the
     patched spa-droid plugin (droid-call-sink/-source), the call's sound on the PC:
@@ -45,6 +45,7 @@ store). It needs Python 3 and PyGObject on the phone – both are there on FuriO
 | Contacts, appointments | evolution-data-server over D-Bus (changes sync to the accounts) |
 | Call history | GNOME Calls' records.db, read only |
 | Calls in progress | ofono VoiceCallManager |
+| Lines | SIM cards by ICCID (ofono), SIP accounts from GNOME Calls' sip-account.cfg; a SIM is dialled on its modem through ofono, SIP through Calls' dial-sip action |
 
 Messages sent from PhoneBridge are kept in `~/.local/share/phonebridge/sent.jsonl`
 on the phone, because chatty does not list messages it did not send itself.

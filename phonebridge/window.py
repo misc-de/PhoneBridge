@@ -156,6 +156,10 @@ class MainWindow(Adw.ApplicationWindow):
         if dev is self.app.active_device():
             self.messages.sms_arrived(new)
 
+    def lines_changed(self, dev):
+        if dev is self.app.active_device():
+            self.phone.lines_changed()
+
     def voicebox_changed(self, dev, reload_calls=True):
         if dev is self.app.active_device():
             self.phone.voicebox_changed(reload_calls)

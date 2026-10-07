@@ -58,7 +58,8 @@ class PhoneBridgeApp(Adw.Application):
         self.avatars = Avatars()
         self.calls = {}
         self.voicebox = {}
-        self.pc_audio = {}          # device id -> CallAudio while the PC has the sound
+        self.pc_audio = {}
+        self.lines = {}             # device id -> SIM cards and SIP accounts          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
         self._was_online = {}
 
@@ -185,6 +186,7 @@ class PhoneBridgeApp(Adw.Application):
                 config.save(self.cfg)
             self.refresh_threads(dev)
             self.refresh_voicebox(dev)
+            self.refresh_lines(dev)
             dev.request("calls.active", {},
                         lambda r, e: e is None and self._on_calls(dev, r))
         if not online and self.calls.get(dev.id):
@@ -460,16 +462,54 @@ class PhoneBridgeApp(Adw.Application):
             dev.request("call.hangup", {"path": path},
                         lambda r, e: e is not None and self.toast(text.error(e)))
 
+    # -- lines: SIM cards and SIP accounts -------------------------------------
+    def refresh_lines(self, dev):
+        def done(result, error):
+            if error is None:
+                self.lines[dev.id] = result
+                if self.window is not None:
+                    self.window.lines_changed(dev)
+
+        dev.request("lines.list", {}, done)
+
+    def line_label(self, line):
+        if line["kind"] == "sim":
+            parts = ["SIM %d" % line["slot"] if line.get("slot") else "SIM"]
+            parts += [p for p in (line.get("operator"), line.get("number")) if p]
+        else:
+            parts = ["SIP", line.get("name") or line.get("address") or line["account"]]
+        return " · ".join(parts)
+
+    def chosen_line(self, dev):
+        """The line calls go out on: the one chosen for this phone while it
+        is there, else the first one."""
+        lines = self.lines.get(dev.id, []) if dev else []
+        wanted = self.cfg.get("lines", {}).get(dev.id) if dev else None
+        return next((l for l in lines if l["id"] == wanted), lines[0] if lines else None)
+
+    def choose_line(self, dev, line_id):
+        self.cfg.setdefault("lines", {})[dev.id] = line_id
+        config.save(self.cfg)
+
     def dial(self, number):
         dev = self.active_device()
         if dev is None or not number:
             return
+        line = self.chosen_line(dev)
 
         def done(result, error):
-            self.toast(text.error(error) if error is not None
-                       else _("Calling %s on the phone …") % result)
+            if error is not None:
+                self.toast(text.error(error))
+            elif line is not None and len(self.lines.get(dev.id, [])) > 1:
+                self.toast(_("Calling %s on the phone, over %s …")
+                           % (result, self.line_label(line)))
+            else:
+                self.toast(_("Calling %s on the phone …") % result)
 
-        dev.request("call", {"number": number, "country": self.cfg["country"]}, done)
+        args = {"number": number, "country": self.cfg["country"]}
+        if line is not None:
+            args["line"] = line["id"]
+        dev.request("call", args, done)
 
     def open_sms(self, number):
         if number:
