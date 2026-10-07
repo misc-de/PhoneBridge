@@ -22,6 +22,9 @@ export PHONEBRIDGE_ADDRESSBOOKS=/nonexistent PHONEBRIDGE_CACHE=/nonexistent
 export GSETTINGS_BACKEND=memory
 # and passwords in a keyring in memory - never in yours
 export PHONEBRIDGE_KEYRING=memory
+# caches (pictures for notifications, voice messages) never in yours
+export XDG_CACHE_HOME="${TMPDIR:-/tmp}/phonebridge-test-cache-$(id -u)"
+rm -rf "$XDG_CACHE_HOME"
 # no desktop portals, no gvfs on the private bus - quieter and faster
 export GDK_DEBUG=no-portals ADW_DISABLE_PORTAL=1 GIO_USE_VFS=local GTK_A11Y=none
 args=()

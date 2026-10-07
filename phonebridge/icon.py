@@ -146,3 +146,74 @@ def write_png(path, size, **state):
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
     draw(cairo.Context(surface), size, **state)
     surface.write_to_png(path)
+
+
+# --- a person's picture for notifications ------------------------------------
+# The look of the app's lists (Adw.Avatar): the photo in a circle, else the
+# initials on a colour chosen by the name, else a silhouette (a bare number).
+
+AVATAR_COLOURS = ((0.51, 0.71, 0.93), (0.48, 0.85, 0.95), (0.55, 0.90, 0.69),
+                  (0.71, 0.91, 0.54), (0.97, 0.89, 0.35), (1.00, 0.80, 0.38),
+                  (1.00, 0.66, 0.35), (0.97, 0.53, 0.45), (0.91, 0.45, 0.67),
+                  (0.80, 0.47, 0.83), (0.62, 0.57, 0.91), (0.89, 0.81, 0.61),
+                  (0.75, 0.57, 0.43), (0.75, 0.75, 0.74))
+
+
+def initials(name):
+    """"Anna Maria Beispiel" -> "AB"; "" or a number -> ""."""
+    words = [w for w in (name or "").replace("-", " ").split() if w[0].isalpha()]
+    if not words:
+        return ""
+    return (words[0][0] + (words[-1][0] if len(words) > 1 else "")).upper()
+
+
+def _colour(name):
+    h = 0
+    for ch in name or "":
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return AVATAR_COLOURS[h % len(AVATAR_COLOURS)]
+
+
+def avatar_png(name, size=128, photo_png=None):
+    """PNG bytes of a person's round picture."""
+    import io
+    import math
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+    cr = cairo.Context(surface)
+    cr.arc(size / 2, size / 2, size / 2, 0, 2 * math.pi)
+    cr.clip()
+    photo = None
+    if photo_png:
+        try:
+            photo = cairo.ImageSurface.create_from_png(io.BytesIO(photo_png))
+        except (cairo.Error, MemoryError):
+            photo = None
+    if photo is not None and photo.get_width() and photo.get_height():
+        # cover the circle, centred
+        scale = max(size / photo.get_width(), size / photo.get_height())
+        cr.translate((size - photo.get_width() * scale) / 2,
+                     (size - photo.get_height() * scale) / 2)
+        cr.scale(scale, scale)
+        cr.set_source_surface(photo, 0, 0)
+        cr.get_source().set_filter(cairo.FILTER_GOOD)
+        cr.paint()
+    else:
+        letters = initials(name)
+        cr.set_source_rgb(*(_colour(name) if letters else (0.60, 0.60, 0.65)))
+        cr.paint()
+        cr.set_source_rgba(1, 1, 1, 0.95)
+        if letters:
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+            cr.set_font_size(size * (0.42 if len(letters) == 1 else 0.36))
+            ext = cr.text_extents(letters)
+            cr.move_to(size / 2 - ext.width / 2 - ext.x_bearing,
+                       size / 2 - ext.height / 2 - ext.y_bearing)
+            cr.show_text(letters)
+        else:
+            cr.arc(size / 2, size * 0.38, size * 0.17, 0, 2 * math.pi)       # head
+            cr.fill()
+            cr.arc(size / 2, size * 0.98, size * 0.36, math.pi, 2 * math.pi)  # shoulders
+            cr.fill()
+    out = io.BytesIO()
+    surface.write_to_png(out)
+    return out.getvalue()

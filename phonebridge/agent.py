@@ -553,7 +553,8 @@ def new_incoming(after_id, store=None, book=BOOK):
             if contact and contact[0] and normalize(title) == normalize(r["name"]):
                 title = contact[0]
             out.append({"id": r["id"], "thread": r["name"], "title": title,
-                        "body": r["body"], "time": r["time"]})
+                        "body": r["body"], "time": r["time"],
+                        "avatar": avatar_key(contact[1]) if contact else None})
         return out
 
 

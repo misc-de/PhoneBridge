@@ -391,27 +391,46 @@ class PhoneBridgeApp(Adw.Application):
             title += " (%s)" % dev.name
         n = Gio.Notification.new(title)
         n.set_body(notification_text(msg["body"]))
-        n.set_icon(self._sender_icon(dev, msg["thread"]))
+
         target = GLib.Variant("(ss)", (dev.id, msg["thread"]))
         n.set_default_action_and_target("app.open-thread", target)
         n.add_button_with_target(_("Reply"), "app.open-thread", target)
         nid = "sms-%s-%s" % (dev.id, msg["id"])
         self._sms_notes.setdefault((dev.id, msg["thread"]), []).append(nid)
-        self.send_notification(nid, n)
+        self._send_with_picture(dev, nid, n, msg["title"], msg.get("avatar"), msg["thread"])
 
     def _withdraw_sms(self, dev_id, thread):
         """Read or deleted here: its notifications go from the desktop too."""
         for nid in self._sms_notes.pop((dev_id, thread), []):
             self.withdraw_notification(nid)
 
-    def _sender_icon(self, dev, thread, key=None):
-        """The sender's picture when PhoneBridge has it already."""
+    def _send_with_picture(self, dev, nid, notification, name, key=None, thread=None):
+        """Sends a notification with the person's picture as its icon: the
+        photo from the phone (waiting for it up to 1.5 s), else the look of
+        the app's lists - initials on a colour, a silhouette for a number."""
         key = key or next((t.get("avatar") for t in self.threads.get(dev.id, [])
-                           if t["thread"] == thread), None)
-        texture = self.avatars.textures.get(key) if key else None
-        if texture is not None:
-            return Gio.BytesIcon.new(texture.save_to_png_bytes())
-        return Gio.ThemedIcon.new(APP_ID)
+                           if thread and t["thread"] == thread), None)
+        sent = []
+
+        def send(texture=None):
+            if sent:
+                return False
+            sent.append(1)
+            photo = texture.save_to_png_bytes().get_data() if texture is not None else None
+            path = notification_picture(icon.avatar_png(name, 128, photo))
+            if path:
+                notification.set_icon(Gio.FileIcon.new(Gio.File.new_for_path(path)))
+            else:
+                notification.set_icon(Gio.ThemedIcon.new(APP_ID))
+            self.send_notification(nid, notification)
+            return False
+
+        if key:
+            self.avatars.get(dev, key, send)        # at once when it is known
+            if not sent:
+                GLib.timeout_add(1500, send)
+        else:
+            send()
 
     # -- VoiceBox -------------------------------------------------------------
     def refresh_voicebox(self, dev):
@@ -453,9 +472,10 @@ class PhoneBridgeApp(Adw.Application):
         if len(self.voicebox.get(dev.id, {}).get("boxes", [])) > 1:
             body += " · " + self.voicebox_box_name(dev.id, m["box"])
         n.set_body(body)
-        n.set_icon(self._sender_icon(dev, m["number"], m.get("avatar")))
+
         n.set_default_action("app.show-phone")
-        self.send_notification("vb-%s-%s" % (dev.id, m["id"]), n)
+        self._send_with_picture(dev, "vb-%s-%s" % (dev.id, m["id"]), n, m["name"],
+                                m.get("avatar"), m["number"])
 
     def voicebox_audio(self, dev, mid, callback):
         """callback(path or None, error) - fetched in pieces into a private
@@ -567,12 +587,13 @@ class PhoneBridgeApp(Adw.Application):
         if len(self.devices) > 1:
             n.set_body(dev.name)
         n.set_priority(Gio.NotificationPriority.URGENT)
-        n.set_icon(self._sender_icon(dev, c["number"], c.get("avatar")))
+
         target = GLib.Variant("(ss)", (dev.id, c["path"]))
         n.set_default_action("app.show-phone")
         n.add_button_with_target(_("Answer"), "app.call-answer", target)
         n.add_button_with_target(_("Hang up"), "app.call-hangup", target)
-        self.send_notification("call-%s-%s" % (dev.id, c["path"]), n)
+        self._send_with_picture(dev, "call-%s-%s" % (dev.id, c["path"]), n, c["name"],
+                                c.get("avatar"), c["number"])
 
     # -- the call's sound on the PC ---------------------------------------------
     def call_audio_possible(self, dev):
@@ -996,6 +1017,29 @@ def run_in_thread(fn, then=None):
             GLib.idle_add(lambda: then(result) and False)
 
     threading.Thread(target=work, daemon=True).start()
+
+
+def notification_picture(png, keep=50):
+    """A picture for a notification, as a file: GLib hands notification
+    servers a file or a theme icon - a picture in memory it silently drops.
+    Private, named by its content; only the newest few are kept."""
+    import hashlib
+    from .avatars import private_dir, write_private
+    d = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                     "phonebridge", "notify")
+    path = os.path.join(d, hashlib.sha1(png).hexdigest()[:20] + ".png")
+    try:
+        private_dir(d)
+        if not os.path.exists(path):
+            write_private(path, png)
+        os.utime(path)
+        files = sorted((os.path.join(d, f) for f in os.listdir(d) if f.endswith(".png")),
+                       key=os.path.getmtime)
+        for old in files[:-keep]:
+            os.remove(old)
+    except OSError:
+        return None
+    return path
 
 
 def voicebox_cache():

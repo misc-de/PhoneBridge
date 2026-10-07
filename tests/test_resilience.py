@@ -250,6 +250,20 @@ class PC(unittest.TestCase):
         self.assertIn(["pactl", "unload-module", "12"], runs)
         self.assertNotIn(["pactl", "unload-module", "13"], runs)
 
+    def test_notification_pictures_are_files(self):
+        from phonebridge import app, icon
+        home = Home()
+        self.addCleanup(home.cleanup)
+        with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": home.dir}):
+            a = app.notification_picture(icon.avatar_png("Anna", 32))
+            b = app.notification_picture(icon.avatar_png("Anna", 32))
+            self.assertEqual(a, b)                         # named by content
+            self.assertEqual(os.stat(a).st_mode & 0o777, 0o600)
+            self.assertEqual(os.stat(os.path.dirname(a)).st_mode & 0o777, 0o700)
+            for i in range(8):
+                app.notification_picture(icon.avatar_png("Name %d" % i, 32), keep=5)
+            self.assertEqual(len(os.listdir(os.path.dirname(a))), 5)
+
     def test_error_words(self):
         self.assertEqual(text.error("timeout"), "timeout")       # en in the tests
 
