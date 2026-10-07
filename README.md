@@ -12,9 +12,11 @@ install on the phone.
 
 <sub>The screenshot shows invented people and data (`tools/screenshot-demo.py`).</sub>
 
-Made for phones running FuriOS, Phosh or another GNOME-based mobile Linux (FuriLabs FLX1 /
-FLX1s, PinePhone, Librem 5 …) and desktops with a status tray (Xfce, KDE, Cinnamon, MATE,
-Budgie, waybar …).
+Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
+that is where it is developed and tested. Other Phosh phones with the same stack (ofono,
+chatty, GNOME Calls, evolution-data-server) may work, but are not tested; calls at the PC
+need the FLX1's call audio. On the PC it wants a desktop with a status tray (Xfce, KDE,
+Cinnamon, MATE, Budgie, waybar …).
 
 ## Features
 
@@ -75,10 +77,10 @@ PhoneBridge does that for a moment and starts it again exactly as it ran - never
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
 
 **On the phone** - an SSH server, Python 3 with PyGObject, and the usual mobile stack (ofono,
-ModemManager, chatty, GNOME Calls, evolution-data-server), as FuriOS and Phosh bring them.
+ModemManager, chatty, GNOME Calls, evolution-data-server), as FuriOS brings them.
 
 **Calls at the PC** need PipeWire running on the phone with the call audio nodes
-`droid-call-sink` / `droid-call-source` (a patched spa-droid plugin on FuriLabs phones);
+`droid-call-sink` / `droid-call-source` (a patched spa-droid plugin on the FLX1);
 without them the option is not offered.
 
 ## Install
