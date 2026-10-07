@@ -661,6 +661,15 @@ class Agent:
             self._monitor = None
         GLib.timeout_add_seconds(30, self._tick)
         GLib.timeout_add_seconds(20, self._sms_tick)
+        self._vb_signature = voicebox_signature()
+        self._vb_pending = 0
+        try:
+            self._vb_monitor = Gio.File.new_for_path(voicebox_dir()).monitor_directory(
+                Gio.FileMonitorFlags.NONE, None)
+            self._vb_monitor.connect("changed", lambda *a: self.schedule_voicebox_check())
+        except GLib.Error:
+            self._vb_monitor = None
+        GLib.timeout_add_seconds(30, lambda: self.check_voicebox() or True)
 
     def active_calls(self):
         if not self.modem:
@@ -712,6 +721,22 @@ class Agent:
         if status != self.status:
             self.status = status
             send({"event": "status", "data": status})
+        return False
+
+    def schedule_voicebox_check(self):
+        if not self._vb_pending:
+            self._vb_pending = GLib.timeout_add(600, self._voicebox_once)
+
+    def _voicebox_once(self):
+        self._vb_pending = 0
+        self.check_voicebox()
+        return False
+
+    def check_voicebox(self):
+        sig = voicebox_signature()
+        if sig != self._vb_signature:
+            self._vb_signature = sig
+            send({"event": "voicebox"})
         return False
 
     def schedule_sms_check(self):
@@ -774,7 +799,7 @@ def cmd_ping(agent, args):
 def cmd_hello(agent, args):
     return {"version": VERSION, "hostname": socket.gethostname(),
             "sms_last_id": agent.last_sms_id,
-            "has": {"sms": os.path.exists(CHATTY_DB),
+            "has": {"sms": os.path.exists(CHATTY_DB), "voicebox": voicebox_installed(),
                     "ofono": agent.modem is not None,
                     "calls": run("sh", "-c", "command -v gnome-calls") is not None}}
 
@@ -1937,7 +1962,11 @@ def cmd_event_delete(agent, args):
 
 @command("calls.history")
 def cmd_call_history(agent, args):
-    return call_history(args.get("limit", 200), country=args.get("country", "49"))
+    country = args.get("country", "49")
+    calls = call_history(args.get("limit", 200), country=country)
+    if voicebox_installed():
+        match_voicebox(calls, voicebox_messages(book=None), country)
+    return calls
 
 
 @command("calls.active")
@@ -1963,6 +1992,163 @@ def cmd_hangup(agent, args):
             raise
         call(agent.system, "org.ofono", agent.modem, "org.ofono.VoiceCallManager",
              "HangupAll", timeout=15000)
+    return True
+
+
+# --- VoiceBox (misc-de/VoiceBox), when it is installed ------------------------
+
+VOICEBOX_DATA = os.environ.get("PHONEBRIDGE_VOICEBOX",
+                               os.path.join(HOME, ".local/share/voicebox"))
+VOICEBOX_CONFIG = os.environ.get("PHONEBRIDGE_VOICEBOX_CONFIG",
+                                 os.path.join(HOME, ".config/voicebox/config.json"))
+VOICEBOX_AUDIO_MAX = 32 * 1024 * 1024
+
+
+def voicebox_dir():
+    return os.path.join(VOICEBOX_DATA, "messages")
+
+
+def voicebox_installed():
+    return os.path.isfile(VOICEBOX_CONFIG) or os.path.isdir(voicebox_dir())
+
+
+def _voicebox_id(mid):
+    """Message ids are file names VoiceBox made from the time - nothing else
+    gets near the file system."""
+    if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z_-]*", mid or ""):
+        raise RuntimeError("no such message")
+    return mid
+
+
+def voicebox_boxes():
+    try:
+        with open(VOICEBOX_CONFIG, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [{"id": str(b.get("id")), "name": str(b.get("name") or ""),
+             "active": bool(b.get("active"))}
+            for b in cfg.get("boxes") or [] if isinstance(b, dict)]
+
+
+def voicebox_messages(book=BOOK, country="49"):
+    """VoiceBox's messages, newest first, read like VoiceBox's store.py: one
+    JSON per message, a WAV next to it unless VoiceBox answered and nobody
+    spoke ("missed"); hidden files are recordings in progress."""
+    out = []
+    try:
+        names = os.listdir(voicebox_dir())
+    except OSError:
+        return out
+    for fn in names:
+        if fn.startswith(".") or not fn.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(voicebox_dir(), fn), encoding="utf-8") as f:
+                m = json.load(f)
+            mid = fn[:-5]
+            number = str(m.get("number", ""))
+            name = str(m.get("name", ""))
+            contact = book.lookup(number, country) if (book is not None and number) else None
+            out.append({"id": mid, "number": number,
+                        "name": name or (contact[0] if contact else ""),
+                        "time": float(m.get("time", 0)),
+                        "duration": float(m.get("duration", 0)),
+                        "new": bool(m.get("new")), "box": str(m.get("box") or "global"),
+                        "missed": bool(m.get("missed")),
+                        "audio": os.path.exists(os.path.join(voicebox_dir(), mid + ".wav")),
+                        "avatar": avatar_key(contact[1]) if contact else None})
+        except (OSError, ValueError, TypeError):
+            continue
+    out.sort(key=lambda m: m["time"], reverse=True)
+    return out
+
+
+def voicebox_signature():
+    try:
+        return tuple(sorted((fn, os.stat(os.path.join(voicebox_dir(), fn)).st_mtime_ns)
+                            for fn in os.listdir(voicebox_dir()) if not fn.startswith(".")))
+    except OSError:
+        return ()
+
+
+def voicebox_mark_read(mid):
+    path = os.path.join(voicebox_dir(), _voicebox_id(mid) + ".json")
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+    if meta.get("new"):
+        meta["new"] = False
+        tmp = path + ".tmp"     # as VoiceBox writes it: whole, then in place
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False)
+        os.replace(tmp, path)
+
+
+def voicebox_delete(mid):
+    base = os.path.join(voicebox_dir(), _voicebox_id(mid))
+    for p in (base + ".json", base + ".wav"):      # the JSON first, like VoiceBox
+        try:
+            os.remove(p)
+        except FileNotFoundError:
+            pass
+
+
+def match_voicebox(calls, messages, country="49"):
+    """Marks the calls VoiceBox answered: same number, and the message
+    written between the call's start and a few minutes after it ended."""
+    used = set()
+    for c in calls:
+        if not c.get("start"):
+            continue
+        number = normalize(c["number"], country)
+        end = c["start"] + c.get("duration", 0) + 300
+        best = None
+        for m in messages:
+            if m["id"] in used or normalize(m["number"], country) != number:
+                continue
+            if c["start"] - 30 <= m["time"] <= end:
+                if best is None or abs(m["time"] - c["start"]) < abs(best["time"] - c["start"]):
+                    best = m
+        if best is not None:
+            used.add(best["id"])
+            c["voicebox"] = {"id": best["id"], "missed": best["missed"],
+                             "audio": best["audio"], "duration": best["duration"],
+                             "new": best["new"]}
+    return calls
+
+
+@command("voicebox.list")
+def cmd_voicebox(agent, args):
+    if not voicebox_installed():
+        return {"installed": False, "boxes": [], "messages": []}
+    return {"installed": True, "boxes": voicebox_boxes(),
+            "messages": voicebox_messages(country=args.get("country", "49"))}
+
+
+@command("voicebox.audio")
+def cmd_voicebox_audio(agent, args):
+    path = os.path.join(voicebox_dir(), _voicebox_id(args["id"]) + ".wav")
+    try:
+        if os.path.getsize(path) > VOICEBOX_AUDIO_MAX:
+            raise RuntimeError("recording too large")
+        with open(path, "rb") as f:
+            return {"data": base64.b64encode(f.read()).decode("ascii")}
+    except FileNotFoundError:
+        raise RuntimeError("no such message")
+
+
+@command("voicebox.read")
+def cmd_voicebox_read(agent, args):
+    try:
+        voicebox_mark_read(args["id"])
+    except FileNotFoundError:
+        raise RuntimeError("no such message")
+    return True
+
+
+@command("voicebox.delete")
+def cmd_voicebox_delete(agent, args):
+    voicebox_delete(args["id"])
     return True
 
 

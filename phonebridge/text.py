@@ -121,6 +121,10 @@ def activity(timestamp, now=None):
     return time.strftime(_("%Y-%m-%d, %H:%M"), t)
 
 
+def n_voicemails(n):
+    return (_("%d new voice message") if n == 1 else _("%d new voice messages")) % n
+
+
 def when_long(timestamp):
     return time.strftime(_("%Y-%m-%d, %H:%M"), time.localtime(timestamp))
 

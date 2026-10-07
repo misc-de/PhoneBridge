@@ -17,6 +17,10 @@ TRANSLATIONS = {
         '%d min',
     '%d minutes before':
         '%d Minuten vorher',
+    '%d new voice message':
+        '%d neue Sprachnachricht',
+    '%d new voice messages':
+        '%d neue Sprachnachrichten',
     '%d s':
         '%d s',
     '%d unread message':
@@ -95,6 +99,8 @@ TRANSLATIONS = {
         'Kalender',
     'Calendar: %s':
         'Kalender: %s',
+    'Call back from the phone':
+        'Mit dem Phone zurückrufen',
     'Call from %s':
         'Anruf von %s',
     'Call from the phone':
@@ -105,6 +111,8 @@ TRANSLATIONS = {
         'Das Phone ruft %s an …',
     'Calling …':
         'Wählt …',
+    'Calls':
+        'Anrufe',
     'Cancel':
         'Abbrechen',
     'Change':
@@ -157,6 +165,8 @@ TRANSLATIONS = {
         'Löschen',
     'Delete %s?':
         '%s löschen?',
+    'Delete the message from %s?':
+        'Nachricht von %s löschen?',
     'Delete “%s”?':
         '„%s“ löschen?',
     'Dial':
@@ -189,6 +199,8 @@ TRANSLATIONS = {
         'voll',
     'full in %s':
         'voll in %s',
+    'General':
+        'Allgemein',
     'GNOME settings of %s':
         'GNOME-Einstellungen von %s',
     'Hang up':
@@ -205,6 +217,8 @@ TRANSLATIONS = {
         'Eingehender Anruf',
     'Input':
         'Eingabe',
+    'It is deleted on the phone as well.':
+        'Sie wird auch auf dem Phone gelöscht.',
     'It is removed from the phone and from the account the calendar syncs with.':
         'Er wird vom Phone und aus dem Konto gelöscht, mit dem der Kalender synchronisiert.',
     'January':
@@ -223,6 +237,8 @@ TRANSLATIONS = {
         'Am größten',
     'Last name':
         'Nachname',
+    'Listen':
+        'Anhören',
     'Loading appointments …':
         'Termine werden geladen …',
     'Loading contacts …':
@@ -251,6 +267,8 @@ TRANSLATIONS = {
         'Name',
     'Never':
         'Nie',
+    'new':
+        'neu',
     'New appointment':
         'Neuer Termin',
     'New contact':
@@ -497,6 +515,14 @@ TRANSLATIONS = {
         'Wert außerhalb des erlaubten Bereichs',
     'Vibration only':
         'Nur Vibration',
+    'Voice message from %s':
+        'Sprachnachricht von %s',
+    'Voicebox':
+        'Voicebox',
+    'Voicebox: %s':
+        'Voicebox: %s',
+    'Voicebox: no message':
+        'Voicebox: keine Nachricht',
     'Volume':
         'Lautstärke',
     'Wednesday':

@@ -45,6 +45,7 @@ class Device(GObject.Object):
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "sms": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "calls": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "voicebox": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self, info):
@@ -217,6 +218,8 @@ class Device(GObject.Object):
                 self.emit("sms", msg.get("new") or [])
             elif msg["event"] == "calls":
                 self.emit("calls", msg.get("calls") or [])
+            elif msg["event"] == "voicebox":
+                self.emit("voicebox")
             return
         cb = self._pending.pop(msg.get("id"), None)
         if cb is not None:

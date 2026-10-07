@@ -130,6 +130,7 @@ class MainWindow(Adw.ApplicationWindow):
             page.set_device(dev)
         self._update_banner(dev)
         self.calls_changed(dev)
+        self.update_badges()
 
     def _on_pick(self, *args):
         if self._picking:
@@ -149,10 +150,24 @@ class MainWindow(Adw.ApplicationWindow):
     def threads_changed(self, dev):
         if dev is self.app.active_device():
             self.messages.threads_changed()
+        self.update_badges()
 
     def sms_arrived(self, dev, new):
         if dev is self.app.active_device():
             self.messages.sms_arrived(new)
+
+    def voicebox_changed(self, dev, reload_calls=True):
+        if dev is self.app.active_device():
+            self.phone.voicebox_changed(reload_calls)
+        self.update_badges()
+
+    def update_badges(self):
+        dev = self.app.active_device()
+        for page, count in ((self.messages, self.app.unread(dev.id) if dev else 0),
+                            (self.phone, self.app.new_voicemails(dev.id) if dev else 0)):
+            p = self.stack.get_page(page)
+            p.set_badge_number(count)
+            p.set_needs_attention(count > 0)
 
     def calls_changed(self, dev):
         if dev is not None and dev is self.app.active_device():

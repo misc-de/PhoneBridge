@@ -57,6 +57,8 @@ class PhoneBridgeApp(Adw.Application):
         self.ringing = {}
         self.avatars = Avatars()
         self.calls = {}
+        self.voicebox = {}
+        self._vb_known = {}
         self._was_online = {}
 
     # -- start ------------------------------------------------------------
@@ -141,6 +143,7 @@ class PhoneBridgeApp(Adw.Application):
                 dev.connect("changed", self._on_device_changed)
                 dev.connect("sms", self._on_sms)
                 dev.connect("calls", self._on_calls)
+                dev.connect("voicebox", lambda d: self.refresh_voicebox(d))
                 self.devices[dev_id] = dev
                 dev.start()
         if self.cfg["active"] not in self.devices:
@@ -178,6 +181,7 @@ class PhoneBridgeApp(Adw.Application):
                 seen["baseline"] = (dev.hello or {}).get("sms_last_id", 0)
                 config.save(self.cfg)
             self.refresh_threads(dev)
+            self.refresh_voicebox(dev)
             dev.request("calls.active", {},
                         lambda r, e: e is None and self._on_calls(dev, r))
         if not online and self.calls.get(dev.id):
@@ -232,6 +236,100 @@ class PhoneBridgeApp(Adw.Application):
         if texture is not None:
             return Gio.BytesIcon.new(texture.save_to_png_bytes())
         return Gio.ThemedIcon.new(APP_ID)
+
+    # -- VoiceBox -------------------------------------------------------------
+    def refresh_voicebox(self, dev):
+        def done(result, error):
+            if error is not None:
+                return
+            known = self._vb_known.get(dev.id)
+            if known is not None and self.cfg["notify"]:
+                for m in result["messages"]:
+                    if m["new"] and m["audio"] and m["id"] not in known:
+                        self.notify_voicemail(dev, m)
+            self._vb_known[dev.id] = {m["id"] for m in result["messages"]}
+            self.voicebox[dev.id] = result
+            self.update_tray()
+            if self.window is not None:
+                self.window.voicebox_changed(dev)
+
+        dev.request("voicebox.list", {"country": self.cfg["country"]}, done)
+
+    def voicemails(self, dev_id):
+        """VoiceBox's recordings on that phone (not the calls it answered
+        without one)."""
+        return [m for m in self.voicebox.get(dev_id, {}).get("messages", []) if m["audio"]]
+
+    def new_voicemails(self, dev_id=None):
+        ids = [dev_id] if dev_id else list(self.voicebox)
+        return sum(1 for i in ids for m in self.voicemails(i) if m["new"])
+
+    def voicebox_box_name(self, dev_id, box_id):
+        if box_id == "global":
+            return _("General")
+        boxes = self.voicebox.get(dev_id, {}).get("boxes", [])
+        return next((b["name"] for b in boxes if b["id"] == box_id), "")
+
+    def notify_voicemail(self, dev, m):
+        who = m["name"] or m["number"] or _("Withheld number")
+        n = Gio.Notification.new(_("Voice message from %s") % who)
+        body = phone.duration(int(round(m["duration"])))
+        if len(self.voicebox.get(dev.id, {}).get("boxes", [])) > 1:
+            body += " · " + self.voicebox_box_name(dev.id, m["box"])
+        n.set_body(body)
+        n.set_icon(self._sender_icon(dev, m["number"], m.get("avatar")))
+        n.set_default_action("app.show-phone")
+        self.send_notification("vb-%s-%s" % (dev.id, m["id"]), n)
+
+    def voicebox_audio(self, dev, mid, callback):
+        """callback(path or None, error)."""
+        import base64
+        cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                             "phonebridge", "voicebox")
+        path = os.path.join(cache, "%s-%s.wav" % (dev.id, mid))
+        if os.path.exists(path):
+            callback(path, None)
+            return
+
+        def done(result, error):
+            if error is not None:
+                callback(None, error)
+                return
+            os.makedirs(cache, exist_ok=True)
+            tmp = path + ".part"
+            with open(tmp, "wb") as f:
+                f.write(base64.b64decode(result["data"]))
+            os.replace(tmp, path)
+            callback(path, None)
+
+        dev.request("voicebox.audio", {"id": mid}, done)
+
+    def voicebox_read(self, dev, mid):
+        for m in self.voicebox.get(dev.id, {}).get("messages", []):
+            if m["id"] == mid and m["new"]:
+                m["new"] = False
+                self.withdraw_notification("vb-%s-%s" % (dev.id, mid))
+                self.update_tray()
+                if self.window is not None:
+                    self.window.voicebox_changed(dev, reload_calls=False)
+                dev.request("voicebox.read", {"id": mid})
+
+    def voicebox_delete(self, dev, mid, done=None):
+        def deleted(result, error):
+            if error is not None:
+                self.toast(_("Not deleted: %s") % text.error(error))
+            else:
+                self.withdraw_notification("vb-%s-%s" % (dev.id, mid))
+                cache = os.path.join(os.environ.get("XDG_CACHE_HOME")
+                                     or os.path.expanduser("~/.cache"),
+                                     "phonebridge", "voicebox", "%s-%s.wav" % (dev.id, mid))
+                try:
+                    os.remove(cache)
+                except FileNotFoundError:
+                    pass
+            self.refresh_voicebox(dev)
+
+        dev.request("voicebox.delete", {"id": mid}, deleted)
 
     # -- calls --------------------------------------------------------------
     def _on_calls(self, dev, calls):
@@ -378,11 +476,14 @@ class PhoneBridgeApp(Adw.Application):
         dev = self.active_device()
         status = dev.status if dev is not None and dev.online else None
         bat = (status or {}).get("battery") or {}
-        unread = self.unread()
+        unread = self.unread() + self.new_voicemails()
         self.tray.set_icon(icon.pixmaps(
             percent=bat.get("percent"), charging=bat.get("state") == "charging",
             online=status is not None, unread=unread))
-        self.tray.set_tooltip(*text.tooltip(dev, unread))
+        title, tip = text.tooltip(dev, self.unread())
+        if self.new_voicemails():
+            tip += "\n" + text.n_voicemails(self.new_voicemails())
+        self.tray.set_tooltip(title, tip)
         self.tray.set_menu(self.menu_items())
 
     def menu_items(self):
@@ -398,6 +499,8 @@ class PhoneBridgeApp(Adw.Application):
             unread = self.unread()
             if unread:
                 items.append({"id": "messages", "label": text.n_unread(unread)})
+            if self.new_voicemails():
+                items.append({"id": "phone", "label": text.n_voicemails(self.new_voicemails())})
             call = self.current_call(dev.id)
             if call is not None:
                 who = call["name"] or call["number"] or _("Unknown number")
@@ -434,6 +537,8 @@ class PhoneBridgeApp(Adw.Application):
             self.show_window()
         elif item_id == "messages":
             self.show_window("messages")
+        elif item_id == "phone":
+            self.show_window("phone")
         elif item_id == "compose":
             self.show_window("messages")
             self.window.messages.compose()
