@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stand-in for ssh: runs the remote command here, as the phone would.
+# The last argument is the command; everything before it is ssh options.
+[ -n "$FAKE_SSH_FAIL" ] && { echo "ssh: connect to host phone port 22: No route to host" >&2; exit 255; }
+exec sh -c "${@: -1}"

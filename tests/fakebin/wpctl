@@ -1,0 +1,6 @@
+#!/bin/bash
+# Stand-in for wpctl.
+case "$1" in
+    get-volume) echo "Volume: 0.40" ;;
+    *) echo "wpctl $*" >> "${FAKE_LOG:-/dev/null}" ;;
+esac

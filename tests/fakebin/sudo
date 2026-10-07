@@ -1,0 +1,4 @@
+#!/bin/sh
+# Never in a test.
+echo "sudo is not allowed in tests" >&2
+exit 1

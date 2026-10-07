@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=PhoneBridge
+GenericName=Phone
+GenericName[de]=Smartphone
+Comment=Battery, messages and settings of your Linux phone
+Comment[de]=Akku, Nachrichten und Einstellungen deines Linux-Phones
+Exec=phonebridge
+Icon=io.github.miscde.PhoneBridge
+Terminal=false
+Categories=Utility;Network;
+Keywords=phone;sms;battery;furios;phosh;Handy;Smartphone;
+StartupNotify=true
