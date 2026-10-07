@@ -83,7 +83,7 @@ class MainWindow(Adw.ApplicationWindow):
         bp.add_setter(bar, "reveal", True)
         bp.add_setter(header, "title-widget", Adw.WindowTitle(title="PhoneBridge"))
         # narrow: list and content one after the other instead of side by side
-        for page in (self.phone, self.messages, self.contacts, self.calendar):
+        for page in (self.phone, self.messages, self.contacts, self.calendar, self.settings):
             bp.add_setter(page.split, "collapsed", True)
         self.add_breakpoint(bp)
 

@@ -39,18 +39,24 @@ TRANSLATIONS = {
         '1 Tag vorher',
     '1 hour before':
         '1 Stunde vorher',
+    '12 hours (AM/PM)':
+        '12 Stunden (AM/PM)',
     '15 minutes before':
         '15 Minuten vorher',
     '2 days before':
         '2 Tage vorher',
     '2 hours before':
         '2 Stunden vorher',
+    '24 hours':
+        '24 Stunden',
     '30 minutes before':
         '30 Minuten vorher',
     '5 minutes before':
         '5 Minuten vorher',
     'About PhoneBridge':
         'Über PhoneBridge',
+    'Accent colour':
+        'Akzentfarbe',
     'Add email address':
         'E-Mail-Adresse hinzufügen',
     'Add number':
@@ -63,14 +69,22 @@ TRANSLATIONS = {
         'Adresse (IP oder Hostname)',
     'Address book':
         'Adressbuch',
+    'After':
+        'Nach',
+    'Agenda':
+        'Agenda',
     'All %d messages of this conversation are deleted on the phone, for good. Chatty restarts for it for a moment.':
         'Alle %d Nachrichten dieser Unterhaltung werden auf dem Phone endgültig gelöscht. Chatty startet dafür kurz neu.',
     'All day':
         'Ganztägig',
-    'All settings':
-        'Alle Einstellungen',
+    'All GNOME settings':
+        'Alle GNOME-Einstellungen',
     'Allowed: %s':
         'Erlaubt: %s',
+    'Also for events already past':
+        'Auch für vergangene Termine',
+    'Always':
+        'Immer',
     'Always take calls to the PC':
         'Anrufe immer am PC führen',
     'Answer':
@@ -79,10 +93,24 @@ TRANSLATIONS = {
         'Darstellung',
     'Appointments':
         'Termine',
+    'Apps may use the camera':
+        'Apps dürfen die Kamera nutzen',
+    'Apps may use the microphone':
+        'Apps dürfen das Mikrofon nutzen',
     'April':
         'April',
     'As soon as a call is connected':
         'Sobald ein Gespräch zustande kommt',
+    'As the language has it':
+        'Wie in der Sprache üblich',
+    'Ask for delivery reports':
+        'Zustellberichte anfordern',
+    'Ask for the PIN to unlock':
+        'Zum Entsperren nach der PIN fragen',
+    'At most':
+        'Höchstens',
+    'At once':
+        'Sofort',
     'At the start':
         'Zu Beginn',
     'August':
@@ -91,18 +119,28 @@ TRANSLATIONS = {
         'Automatische Helligkeit',
     'Balanced':
         'Ausgeglichen',
+    'Banners':
+        'Banner',
     'Battery':
         'Akku',
-    'Battery percentage in the top bar':
-        'Akkustand in Prozent in der oberen Leiste',
+    'Battery percentage':
+        'Akkustand in Prozent',
     'Birthday':
         'Geburtstag',
     'Birthday (e.g. 24.12.1990)':
         'Geburtstag (z. B. 24.12.1990)',
     'Birthdays & Anniversaries':
         'Geburts- und Jahrestage',
+    'Birthdays and anniversaries':
+        'Geburts- und Jahrestage',
+    'Blue':
+        'Blau',
+    'Bright light from':
+        'Helles Licht ab',
     'Calendar':
         'Kalender',
+    'Calendar (GNOME Calendar)':
+        'Kalender (GNOME Kalender)',
     'Calendar: %s':
         'Kalender: %s',
     'Call %s':
@@ -113,6 +151,8 @@ TRANSLATIONS = {
         'Mit dem Phone anrufen',
     'Call over':
         'Anrufen über',
+    'Call over the default line by itself':
+        'Automatisch über die Standardleitung anrufen',
     'Call waiting':
         'Anklopfen',
     'Caller':
@@ -127,16 +167,26 @@ TRANSLATIONS = {
         'Wählt …',
     'Calls':
         'Anrufe',
+    'Calls (GNOME Calls)':
+        'Anrufe (GNOME Calls)',
     'Calls at the PC':
         'Telefonieren am PC',
+    'Camera flash instead of the notification light':
+        'Kamerablitz statt Benachrichtigungs-LED',
+    'Camera may keep running in the background':
+        'Kamera darf im Hintergrund weiterlaufen',
     'Cancel':
         'Abbrechen',
+    'Cell broadcast warnings':
+        'Warnmeldungen (Cell Broadcast)',
     'Change':
         'Ändern',
     'Change phone':
         'Phone ändern',
     'charging':
         'lädt',
+    'Chat accounts':
+        'Chat-Konten',
     'chatty did not stop':
         'Chatty ließ sich nicht beenden',
     'Choose a contact':
@@ -147,6 +197,12 @@ TRANSLATIONS = {
         'Foto auswählen',
     'Choose photo …':
         'Foto auswählen …',
+    'City':
+        'Stadt',
+    'Clear out stuck SMS':
+        'Hängende SMS aufräumen',
+    'Clock':
+        'Uhr',
     'Close':
         'Schließen',
     'Company':
@@ -169,18 +225,30 @@ TRANSLATIONS = {
         'Geburtstage der Kontakte',
     'Contacts':
         'Kontakte',
+    'Contacts (GNOME Contacts)':
+        'Kontakte (GNOME Kontakte)',
     'Conversation':
         'Unterhaltung',
     'Conversation with %s deleted':
         'Unterhaltung mit %s gelöscht',
     'Conversations':
         'Unterhaltungen',
+    'Country':
+        'Land',
     'Dark style':
         'Dunkles Design',
+    'Date in the clock':
+        'Datum in der Uhr',
+    'days':
+        'Tage',
+    'Days ahead':
+        'Tage im Voraus',
     'December':
         'Dezember',
     'Default':
         'Standard',
+    'Default reminder for all events':
+        'Standard-Erinnerung für alle Termine',
     'Delete':
         'Löschen',
     'Delete %s?':
@@ -195,8 +263,14 @@ TRANSLATIONS = {
         'Sprachnachricht löschen',
     'Delete “%s”?':
         '„%s“ löschen?',
+    'Details on the lock screen':
+        'Details auf dem Sperrbildschirm',
+    'Devices':
+        'Geräte',
     'Dial':
         'Wählen',
+    'Dim the screen first':
+        'Bildschirm vorher abdunkeln',
     "During a call, “Sound on the PC” in the call bar puts the caller on the PC's speakers and the PC's microphone on the line; the phone's microphone is muted meanwhile.":
         'Während eines Anrufs legt „Ton am PC“ in der Anrufleiste den Anrufer auf die Lautsprecher des PCs und das Mikrofon des PCs in die Leitung; das Mikrofon des Phones ist so lange stumm.',
     'Echo cancellation':
@@ -209,18 +283,44 @@ TRANSLATIONS = {
         'Kontakt bearbeiten',
     'Email':
         'E-Mail',
+    'Emergency calls from the lock screen':
+        'Notrufe vom Sperrbildschirm',
+    'Emergency information':
+        'Notfallinformationen',
     'empty':
         'leer',
+    'Empty the trash by itself':
+        'Papierkorb automatisch leeren',
     'Ends':
         'Ende',
+    'Enlarge the key pressed':
+        'Gedrückte Taste vergrößern',
+    'Enter sends':
+        'Eingabetaste sendet',
+    'Even with a keyboard attached':
+        'Auch mit angeschlossener Tastatur',
     'Event sounds':
         'Systemklänge',
+    'Every GSettings key of the phone, searchable and changeable - for what the other sections leave out.':
+        'Jede GSettings-Einstellung des Phones, durchsuchbar und änderbar – für alles, was die anderen Bereiche nicht abdecken.',
+    'Everything':
+        'Alles',
+    'Exact':
+        'Genau',
+    'Experimental features':
+        'Experimentelle Funktionen',
     'February':
         'Februar',
     'Find phone':
         'Phone suchen',
+    'First day of the week':
+        'Erster Tag der Woche',
     'First name':
         'Vorname',
+    'For every notification':
+        'Bei jeder Benachrichtigung',
+    'For urgent notifications':
+        'Bei dringenden Benachrichtigungen',
     'Friday':
         'Freitag',
     'From %s to %s':
@@ -231,14 +331,28 @@ TRANSLATIONS = {
         'voll in %s',
     'General':
         'Allgemein',
+    'Gestures and sensors':
+        'Gesten & Sensoren',
+    'Glove mode':
+        'Handschuh-Modus',
     'GNOME settings of %s':
         'GNOME-Einstellungen von %s',
+    'Green':
+        'Grün',
     'Hang up':
         'Auflegen',
+    'High contrast in bright light':
+        'Hoher Kontrast bei hellem Licht',
+    'History and clean-up':
+        'Verlauf & Aufräumen',
     'Home':
         'Privat',
+    'hours':
+        'Stunden',
     'If PhoneBridge reaches the phone over Wi-Fi, the connection drops and only comes back once Wi-Fi is on again – on the phone.':
         'Erreicht PhoneBridge das Phone über WLAN, bricht die Verbindung ab und kommt erst wieder, wenn WLAN wieder an ist – und das geht dann nur am Phone.',
+    'Ignore the palm of the hand':
+        'Handballen ignorieren',
     'Images':
         'Bilder',
     'In a call':
@@ -247,6 +361,8 @@ TRANSLATIONS = {
         'Eingehender Anruf',
     'Input':
         'Eingabe',
+    'Internet calls (SIP)':
+        'Internet-Anrufe (SIP)',
     'It is deleted on the phone as well.':
         'Sie wird auch auf dem Phone gelöscht.',
     'It is removed from the phone and from the account the calendar syncs with.':
@@ -257,6 +373,10 @@ TRANSLATIONS = {
         'Juli',
     'June':
         'Juni',
+    'Key sounds':
+        'Tastentöne',
+    'Keyboard size (Squeekboard)':
+        'Tastaturgröße (Squeekboard)',
     'Language':
         'Sprache',
     'Large':
@@ -267,34 +387,62 @@ TRANSLATIONS = {
         'Am größten',
     'Last name':
         'Nachname',
+    'Leave out days without events':
+        'Tage ohne Termine auslassen',
     'Listen':
         'Anhören',
+    'Load the history from the server':
+        'Verlauf vom Server laden',
     'Loading appointments …':
         'Termine werden geladen …',
     'Loading contacts …':
         'Kontakte werden geladen …',
+    'Location':
+        'Standort',
+    'Location services':
+        'Standortdienste',
+    'Lock after':
+        'Sperren nach',
+    'Lock screen':
+        'Sperrbildschirm',
+    'Lock when the screen goes off':
+        'Sperren, wenn der Bildschirm ausgeht',
     'March':
         'März',
+    'Mark unknown senders':
+        'Unbekannte Absender kennzeichnen',
     'May':
         'Mai',
     'Menu':
         'Menü',
     'Messages':
         'Nachrichten',
+    'Messages (Chatty)':
+        'Nachrichten (Chatty)',
+    'Messages on all my devices (carbons)':
+        'Nachrichten auf allen meinen Geräten (Carbons)',
+    'minutes':
+        'Minuten',
     'Mobile':
         'Mobilfunk',
     'Mobile data':
         'Mobile Daten',
     'Mobile network':
         'Mobilfunknetz',
+    'Mobile network calls':
+        'Anrufe über das Mobilfunknetz',
     'Monday':
         'Montag',
+    'Month':
+        'Monat',
     'Mute':
         'Stumm',
     'Name':
         'Name',
     'Needed with speakers, not with a headset':
         'Nötig mit Lautsprechern, nicht mit Headset',
+    'Neighbourhood':
+        'Stadtteil',
     'Never':
         'Nie',
     'new':
@@ -339,6 +487,8 @@ TRANSLATIONS = {
         'Keine',
     'Normal':
         'Normal',
+    'Normal and critical':
+        'Normal und kritisch',
     'not charging':
         'lädt nicht',
     'Not connected':
@@ -365,8 +515,8 @@ TRANSLATIONS = {
         'Auf dem Phone ändert sich dadurch nichts.',
     'Notification banners':
         'Benachrichtigungsbanner',
-    'Notifications and sounds':
-        'Benachrichtigungen und Klänge',
+    'Notifications':
+        'Benachrichtigungen',
     'Notify about new messages':
         'Bei neuen Nachrichten benachrichtigen',
     'November':
@@ -385,12 +535,16 @@ TRANSLATIONS = {
         'Akkubetrieb',
     'On hold':
         'Gehalten',
+    'On the lock screen':
+        'Auf dem Sperrbildschirm',
     'On the PC':
         'Über den Rechner',
     'On the phone':
         'Über das Smartphone',
     'On-screen keyboard':
         'Bildschirmtastatur',
+    'Only critical':
+        'Nur kritisch',
     'Only the first 200 hits.':
         'Nur die ersten 200 Treffer.',
     'Only this day':
@@ -399,10 +553,14 @@ TRANSLATIONS = {
         'PhoneBridge öffnen',
     'or write a new message':
         'oder eine neue Nachricht schreiben',
+    'Orange':
+        'Orange',
     'Other':
         'Sonstige',
     'Overview':
         'Übersicht',
+    'Per app':
+        'Pro App',
     'Performance':
         'Leistung',
     'Personal':
@@ -419,32 +577,62 @@ TRANSLATIONS = {
         'Phones',
     'Phones …':
         'Phones …',
+    'Pink':
+        'Rosa',
     'Place':
         'Ort',
     'Place: %s':
         'Ort: %s',
+    'Play a sound':
+        'Ton abspielen',
+    'Power':
+        'Energie',
     'Power profile':
         'Energieprofil',
     'Power saver':
         'Energiesparen',
+    'Power saver when the battery runs low':
+        'Energiesparen bei niedrigem Akkustand',
+    'Privacy and location':
+        'Datenschutz & Standort',
+    'Purple':
+        'Lila',
     'Quick settings':
         'Schnelleinstellungen',
+    'Quick silence':
+        'Schnell stummschalten',
     'Quit':
         'Beenden',
     'Recent calls':
         'Letzte Anrufe',
+    'Red':
+        'Rot',
+    'Reject new USB devices':
+        'Neue USB-Geräte ablehnen',
     'Reload':
         'Neu laden',
+    'Remember app usage':
+        'App-Nutzung merken',
+    'Remember recently used files':
+        'Zuletzt benutzte Dateien merken',
+    'Remind me':
+        'Erinnern',
     'Reminder':
         'Erinnerung',
     'Reminder: %s':
         'Erinnerung: %s',
+    'Reminders':
+        'Erinnerungen',
     'Remove':
         'Entfernen',
     'Remove %s?':
         '%s entfernen?',
     'Remove photo':
         'Foto entfernen',
+    'Remove temporary files by themselves':
+        'Temporäre Dateien automatisch löschen',
+    'Remove tracking from links':
+        'Tracking aus Links entfernen',
     'Repeats':
         'Wiederholt sich',
     'Reply':
@@ -467,6 +655,8 @@ TRANSLATIONS = {
         'Speichern',
     'Screen':
         'Bildschirm',
+    'Screen and power':
+        'Bildschirm & Energie',
     'Screen off after':
         'Bildschirm aus nach',
     'Search all GNOME settings …':
@@ -477,8 +667,12 @@ TRANSLATIONS = {
         'Unterhaltungen durchsuchen',
     'Search, e.g. “dark” or “interface”':
         'Suchen, z. B. „dark“ oder „interface“',
+    'Seconds in the clock':
+        'Sekunden in der Uhr',
     'Send':
         'Senden',
+    'Send read receipts':
+        'Lesebestätigungen senden',
     'September':
         'September',
     'Set up a phone …':
@@ -487,20 +681,44 @@ TRANSLATIONS = {
         'Einstellungen',
     'Show all':
         'Alle anzeigen',
+    'Show attachments':
+        'Anhänge anzeigen',
+    'Show reminders':
+        'Erinnerungen anzeigen',
+    'Show week numbers':
+        'Kalenderwochen anzeigen',
+    'Show when I am typing':
+        'Anzeigen, wenn ich tippe',
+    'Shuffle the keypad':
+        'Ziffernfeld mischen',
+    'Sideways':
+        'Quer',
     'signal %d %%':
         'Signal %d %%',
+    'Silence a ringing call with the volume keys':
+        'Einen klingelnden Anruf mit den Lautstärketasten stummschalten',
     'Silent':
         'Lautlos',
+    'SIP: allow the unsafe key exchange (SDES)':
+        'SIP: unsicheren Schlüsselaustausch erlauben (SDES)',
+    'Slate':
+        'Schiefer',
     'Small':
         'Klein',
     'SMS from %s':
         'SMS von %s',
+    'Sort by last name':
+        'Nach Nachname sortieren',
+    'Sound':
+        'Ton',
     'Sound and vibration':
         'Ton und Vibration',
     'Sound on the PC':
         'Ton am PC',
     'Sound on the PC ended: %s':
         'Ton am PC beendet: %s',
+    'Sounds':
+        'Klänge',
     "Speak and listen at the PC; the phone's microphone is muted meanwhile":
         'Am PC sprechen und hören; das Mikrofon des Phones ist so lange stumm',
     'SSH port':
@@ -513,14 +731,22 @@ TRANSLATIONS = {
         'Stopp',
     'Stop ringing':
         'Klingeln beenden',
+    'Street':
+        'Straße',
     'Sunday':
         'Sonntag',
+    'Suspend in the power menu':
+        'Bereitschaft im Ausschaltmenü',
+    'Swipe over the keys':
+        'Über die Tasten wischen',
     'Switch off':
         'Ausschalten',
     'Switch off Wi-Fi?':
         'WLAN ausschalten?',
     'System':
         'System',
+    'Teal':
+        'Petrol',
     'Telephone':
         'Telefon',
     'Test':
@@ -529,6 +755,8 @@ TRANSLATIONS = {
         'Tonweg testen',
     'Text size':
         'Textgröße',
+    'The apps that have shown notifications on the phone.':
+        'Die Apps, die auf dem Phone schon Benachrichtigungen gezeigt haben.',
     'The contact is removed from “%s” – on the phone and in the account it syncs with.':
         'Der Kontakt wird aus „%s“ gelöscht – auf dem Phone und in dem Konto, mit dem es synchronisiert.',
     'The message of this conversation is deleted on the phone, for good. Chatty restarts for it for a moment.':
@@ -545,10 +773,14 @@ TRANSLATIONS = {
         'Dieser Termin wiederholt sich – Änderungen gelten für die ganze Serie.',
     'This appointment repeats.':
         'Dieser Termin wiederholt sich.',
+    'This long before':
+        'So lange vorher',
     'this SIM card is not in the phone':
         'diese SIM-Karte steckt nicht im Phone',
     'Thursday':
         'Donnerstag',
+    'Tickets':
+        'Tickets',
     'Title':
         'Titel',
     'To which number?':
@@ -559,32 +791,64 @@ TRANSLATIONS = {
         'Heute, %s',
     'Tomorrow':
         'Morgen',
+    'Top bar':
+        'Obere Leiste',
     'Tuesday':
         'Dienstag',
+    'Turn :-) into emoji':
+        ':-) in Emoji umwandeln',
     'Type to search – at least three letters.':
         'Zum Suchen tippen – mindestens drei Buchstaben.',
     'Type: %s':
         'Typ: %s',
+    'Unit':
+        'Einheit',
     'unknown line':
         'unbekannte Leitung',
     'Unknown number':
         'Unbekannte Nummer',
+    'Upcoming events':
+        'Anstehende Termine',
+    'Upright':
+        'Hochkant',
+    'Urgent is':
+        'Als dringend gilt',
+    'USB protection':
+        'USB-Schutz',
     'User':
         'Benutzer',
     'value out of range':
         'Wert außerhalb des erlaubten Bereichs',
     'Vibration only':
         'Nur Vibration',
+    'Vibration strength':
+        'Vibrationsstärke',
+    'View':
+        'Ansicht',
     'Voice message from %s':
         'Sprachnachricht von %s',
     'Voicebox: %s':
         'Voicebox: %s',
     'Volume':
         'Lautstärke',
+    'Volume above 100 %':
+        'Lautstärke über 100 %',
+    'Wake by lifting':
+        'Durch Anheben aufwecken',
+    'Wake by tapping':
+        'Durch Antippen aufwecken',
+    'Wake the screen':
+        'Bildschirm aufwecken',
     'Wednesday':
         'Mittwoch',
+    'Week':
+        'Woche',
+    'Weekday in the clock':
+        'Wochentag in der Uhr',
     'Where do you want to talk?':
         'Wo möchtest du telefonieren?',
+    'While locked':
+        'Wenn gesperrt',
     'Whole series':
         'Ganze Serie',
     'Wi-Fi':
@@ -593,12 +857,16 @@ TRANSLATIONS = {
         'Unterdrückte Nummer',
     "Without a call: the PC's microphone on the phone's speaker, the phone's microphone on the PC. Keep them apart, or it whistles.":
         'Ohne Anruf: das PC-Mikrofon auf den Lautsprecher des Phones, das Mikrofon des Phones auf den PC. Beides auseinanderhalten, sonst pfeift es.',
+    'Word suggestions':
+        'Wortvorschläge',
     'Work':
         'Arbeit',
     'Write':
         'Schreiben',
     'Write a message':
         'Nachricht schreiben',
+    'Yellow':
+        'Gelb',
     'Yesterday':
         'Gestern',
     'Yesterday, %s':

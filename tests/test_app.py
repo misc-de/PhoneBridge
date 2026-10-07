@@ -134,8 +134,14 @@ class App(unittest.TestCase):
         msgs.entry.set_text("")
         self.assertFalse(msgs.send_button.get_sensitive())
 
-        win.settings.load()
+        from phonebridge.settings_spec import SECTIONS
+        appearance = next(sec for sec in SECTIONS if sec["id"] == "appearance")
+        win.settings.load(appearance)
         self.assertTrue(run_loop_until(lambda: win.settings.values, 10))
+        dark = next(r for r in win.settings.rows["appearance"] if r.key == "color-scheme")
+        self.assertTrue(dark.widget.get_visible())          # the PC has the key, too
+        missing = next(r for r in win.settings.rows["calls"])
+        self.assertFalse(missing.widget.get_visible())      # no GNOME Calls here: hidden
 
     def test_4_offline(self):
         win = self.window()

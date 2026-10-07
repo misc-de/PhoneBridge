@@ -888,11 +888,19 @@ def _schema_key(schema, key):
     return s, s.get_key(key)
 
 
-def _describe(schema, key, settings=None):
+def _settings(schema, path=None):
+    """Gio.Settings of a schema - at `path` for a relocatable one (the
+    notification settings of one app, say)."""
+    return Gio.Settings.new_with_path(schema, path) if path else Gio.Settings.new(schema)
+
+
+def _describe(schema, key, settings=None, path=None):
     s, k = _schema_key(schema, key)
     if k is None:
         return None
-    settings = settings or Gio.Settings.new(schema)
+    if s.get_path() is None and not path:
+        return None                     # relocatable, but no path given
+    settings = settings or _settings(schema, path)
     value = settings.get_value(key)
     rng = k.get_range().unpack()
     return {"schema": schema, "key": key, "value": value.unpack(),
@@ -902,15 +910,24 @@ def _describe(schema, key, settings=None):
             "default": not settings.get_user_value(key)}
 
 
+def key_id(entry):
+    """"schema key" or "schema key path" - how gsettings.get names a key."""
+    return " ".join(entry)
+
+
 @command("gsettings.get")
 def cmd_gs_get(agent, args):
-    return {"%s %s" % (schema, key): _describe(schema, key)
-            for schema, key in args["keys"]}
+    out = {}
+    for entry in args["keys"]:
+        schema, key = entry[0], entry[1]
+        path = entry[2] if len(entry) > 2 else None
+        out[key_id(entry)] = _describe(schema, key, path=path)
+    return out
 
 
 @command("gsettings.set")
 def cmd_gs_set(agent, args):
-    schema, key = args["schema"], args["key"]
+    schema, key, path = args["schema"], args["key"], args.get("path")
     s, k = _schema_key(schema, key)
     if k is None:
         raise RuntimeError("no such setting: %s %s" % (schema, key))
@@ -924,22 +941,58 @@ def cmd_gs_set(agent, args):
         v = args["value"]
         if vtype == "d":
             v = float(v)
+        elif vtype in ("i", "u", "x", "t", "n", "q", "y"):
+            v = int(v)
         value = GLib.Variant(vtype, v)
     if not k.range_check(value):
         raise RuntimeError("value out of range")
-    settings = Gio.Settings.new(schema)
+    settings = _settings(schema, path)
     if not settings.set_value(key, value):
         raise RuntimeError("the setting is read only")
     Gio.Settings.sync()
-    return _describe(schema, key, settings)
+    return _describe(schema, key, settings, path)
 
 
 @command("gsettings.reset")
 def cmd_gs_reset(agent, args):
-    settings = Gio.Settings.new(args["schema"])
+    settings = _settings(args["schema"], args.get("path"))
     settings.reset(args["key"])
     Gio.Settings.sync()
-    return _describe(args["schema"], args["key"], settings)
+    return _describe(args["schema"], args["key"], settings, args.get("path"))
+
+
+NOTIFY_APP_SCHEMA = "org.gnome.desktop.notifications.application"
+NOTIFY_APP_KEYS = ("enable", "show-banners", "enable-sound-alerts", "show-in-lock-screen",
+                   "details-in-lock-screen", "force-expanded")
+
+
+@command("notifications.apps")
+def cmd_notification_apps(agent, args):
+    """The apps that have shown notifications, with their notification
+    settings - GNOME keeps them per app under a path of their own."""
+    if _schema_key("org.gnome.desktop.notifications", "application-children")[1] is None:
+        return []
+    children = Gio.Settings.new("org.gnome.desktop.notifications").get_strv(
+        "application-children")
+    out = []
+    for child in children:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", child):
+            continue
+        path = "/org/gnome/desktop/notifications/application/%s/" % child
+        st = _settings(NOTIFY_APP_SCHEMA, path)
+        app_id = st.get_string("application-id")
+        name = app_id[:-8] if app_id.endswith(".desktop") else app_id or child
+        try:
+            info = Gio.DesktopAppInfo.new(app_id) if app_id else None
+        except TypeError:
+            info = None
+        if info is not None:
+            name = info.get_name() or name
+        out.append({"child": child, "path": path, "app_id": app_id, "name": name,
+                    "installed": info is not None,
+                    "values": {k: st.get_boolean(k) for k in NOTIFY_APP_KEYS}})
+    out.sort(key=lambda a: a["name"].lower())
+    return out
 
 
 @command("gsettings.search")

@@ -1,180 +1,371 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
-"""The phone's GNOME settings (GSettings): the common ones as switches and
-choices, and every other one through a search.
+"""The phone's settings: the quick switches, calls at the PC, and the
+settings of GNOME, Phosh, feedbackd, FuriOS and the apps (settings_spec),
+section by section - and every other GSettings key through a search.
 
-A setting the phone does not have is left out."""
+A setting the phone does not have is left out; a section is read when it
+is opened, and a change goes to the phone at once."""
 
 from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import N_, _
 from .quick import QuickSettings
+from .settings_spec import SECTIONS, keys_of
 
-IDLE_CHOICES = ((30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"),
-                (600, "10 min"), (900, "15 min"), (0, N_("Never")))
-TEXT_SIZES = ((0.85, N_("Small")), (1.0, N_("Normal")), (1.15, N_("Large")),
-              (1.3, N_("Larger")), (1.5, N_("Largest")))
-
-# (kind, schema, key, title, extra)
-#   switch: extra = (value when on, value when off), or None for a boolean
-#   choice: extra = ((value, label), ...)
-COMMON = (
-    (N_("Appearance"), (
-        ("switch", "org.gnome.desktop.interface", "color-scheme", N_("Dark style"),
-         ("prefer-dark", "default")),
-        ("choice", "org.gnome.desktop.interface", "text-scaling-factor",
-         N_("Text size"), TEXT_SIZES),
-        ("switch", "org.gnome.desktop.interface", "show-battery-percentage",
-         N_("Battery percentage in the top bar"), None),
-    )),
-    (N_("Screen"), (
-        ("switch", "org.gnome.settings-daemon.plugins.power", "ambient-enabled",
-         N_("Automatic brightness"), None),
-        ("switch", "org.gnome.settings-daemon.plugins.color", "night-light-enabled",
-         N_("Night light"), None),
-        ("choice", "org.gnome.desktop.session", "idle-delay",
-         N_("Screen off after"), IDLE_CHOICES),
-    )),
-    (N_("Notifications and sounds"), (
-        ("switch", "org.gnome.desktop.notifications", "show-banners",
-         N_("Notification banners"), None),
-        ("switch", "org.gnome.desktop.sound", "event-sounds",
-         N_("Event sounds"), None),
-    )),
-    (N_("Input"), (
-        ("switch", "org.gnome.desktop.a11y.applications", "screen-keyboard-enabled",
-         N_("On-screen keyboard"), None),
-    )),
-)
+NOTIFY_APP_KEYS = (("show-banners", N_("Banners")), ("enable-sound-alerts", N_("Sound")),
+                   ("show-in-lock-screen", N_("On the lock screen")),
+                   ("details-in-lock-screen", N_("Details on the lock screen")))
 
 
-def key_id(schema, key):
-    return "%s %s" % (schema, key)
+def key_id(schema, key, path=None):
+    return " ".join([schema, key] + ([path] if path else []))
 
 
-class PhoneSettingsPage(Adw.PreferencesPage):
+class SettingRow:
+    """One row of settings_spec: its widget, and how a value shows in it
+    and gets back from it."""
+
+    def __init__(self, page, kind, schema, key, label, extra, opts):
+        self.page = page
+        self.kind, self.schema, self.key = kind, schema, key
+        self.extra, self.opts = extra, opts
+        self.path = opts.get("path")
+        self.id = key_id(schema, key, self.path)
+        self.values = []
+        if kind in ("switch", "flag"):
+            self.widget = Adw.SwitchRow(title=_(label))
+            self.widget.connect("notify::active", self._changed)
+        elif kind in ("choice", "enum"):
+            self.widget = Adw.ComboRow(title=_(label))
+            self.widget.connect("notify::selected", self._changed)
+            if kind == "choice":
+                self._set_choices([(v, _(l)) for v, l in extra])
+        elif kind == "spin":
+            low, high, step, digits = extra
+            self.widget = Adw.SpinRow.new_with_range(low, high, step)
+            self.widget.set_title(_(label))
+            self.widget.set_digits(digits)
+            if opts.get("unit"):
+                self.widget.set_subtitle(_(opts["unit"]))
+            self.widget.connect("notify::value", self._changed_later)
+        elif kind == "scale":
+            self.widget = Adw.ActionRow(title=_(label))
+            self.scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,
+                                                  extra[0], extra[1], (extra[1] - extra[0]) / 20)
+            self.scale.set_hexpand(True)
+            self.scale.set_size_request(180, -1)
+            self.scale.set_valign(Gtk.Align.CENTER)
+            self.scale.connect("value-changed", self._changed_later)
+            self.widget.add_suffix(self.scale)
+        else:
+            self.widget = Adw.EntryRow(title=_(label), show_apply_button=True)
+            self.widget.connect("apply", self._changed)
+        if opts.get("subtitle") and kind != "spin":
+            self.widget.set_subtitle(_(opts["subtitle"]))
+        self.widget.set_visible(False)
+        self._source = 0
+
+    def _set_choices(self, pairs):
+        self.values = [v for v, _l in pairs]
+        self.widget.set_model(Gtk.StringList.new([l for _v, l in pairs]))
+
+    def show(self, info, required=True):
+        """info: what gsettings.get said about the key (None: not there)."""
+        self.widget.set_visible(info is not None and required)
+        if info is None:
+            return
+        v = info["value"]
+        if self.kind == "switch":
+            on = (v == self.extra[0]) if self.extra else bool(v)
+            self.widget.set_active(not on if self.opts.get("invert") else on)
+        elif self.kind == "flag":
+            self.widget.set_active(self.extra in (v or []))
+        elif self.kind == "enum":
+            options = info["range"][1] if info["range"][0] == "enum" else [v]
+            self._set_choices([(o, _(self.extra[o]) if o in self.extra else o)
+                               for o in options])
+            if v in self.values:
+                self.widget.set_selected(self.values.index(v))
+        elif self.kind == "choice":
+            if v not in self.values:
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    pairs = [(x, _(l)) for x, l in self.extra] + [(v, str(v))]
+                    self._set_choices(sorted(pairs, key=lambda p: (p[0] == 0, p[0])))
+                else:
+                    self._set_choices([(x, _(l)) for x, l in self.extra] + [(v, str(v))])
+            self.widget.set_selected(self.values.index(v))
+        elif self.kind == "spin":
+            self.widget.set_value(v)
+        elif self.kind == "scale":
+            self.scale.set_value(v)
+        else:
+            self.widget.set_text(str(v))
+
+    def value(self, info):
+        if self.kind == "switch":
+            on = self.widget.get_active()
+            if self.opts.get("invert"):
+                on = not on
+            return (self.extra[0] if on else self.extra[1]) if self.extra else on
+        if self.kind == "flag":
+            current = list((info or {}).get("value") or [])
+            if self.widget.get_active() and self.extra not in current:
+                current.append(self.extra)
+            elif not self.widget.get_active():
+                current = [x for x in current if x != self.extra]
+            return current
+        if self.kind in ("choice", "enum"):
+            return self.values[self.widget.get_selected()]
+        if self.kind == "spin":
+            return self.widget.get_value()
+        if self.kind == "scale":
+            return round(self.scale.get_value(), 3)
+        return self.widget.get_text()
+
+    def _changed(self, *args):
+        if not self.page.updating:
+            self.page.set_value(self)
+
+    def _changed_later(self, *args):
+        if self.page.updating:
+            return
+        if self._source:
+            GLib.source_remove(self._source)
+        self._source = GLib.timeout_add(400, self._fire)
+
+    def _fire(self):
+        self._source = 0
+        self.page.set_value(self)
+        return False
+
+
+class PhoneSettingsPage(Gtk.Box):
     def __init__(self, app):
         super().__init__()
         self.app = app
         self.dev = None
-        self.rows = {}
         self.values = {}
-        self._updating = False
-        self._loaded_for = None
+        self.rows = {}           # section id -> [SettingRow]
+        self.pages = {}
+        self.updating = False
+        self._loaded = {}        # section id -> device it was read from
+        self.notify_apps = []
 
         self.quick = QuickSettings(app)
-        for group in self.quick.groups:
-            self.add(group)
+        self.section_list = Gtk.ListBox()
+        self.section_list.add_css_class("navigation-sidebar")
+        self.section_list.connect("row-selected", self._on_section)
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        for section in SECTIONS:
+            row = Gtk.ListBoxRow()
+            box = Gtk.Box(spacing=12, margin_top=8, margin_bottom=8, margin_start=6)
+            box.append(Gtk.Image(icon_name=section["icon"]))
+            box.append(Gtk.Label(label=_(section["title"]), xalign=0))
+            row.set_child(box)
+            row.section = section
+            self.section_list.append(row)
+            self.stack.add_named(self._build(section), section["id"])
+        side_view = Adw.ToolbarView(content=Gtk.ScrolledWindow(
+            child=self.section_list, hscrollbar_policy=Gtk.PolicyType.NEVER))
+        side_view.add_top_bar(Adw.HeaderBar(show_end_title_buttons=False,
+                                            show_start_title_buttons=False))
+        sidebar = Adw.NavigationPage(title=_("Settings"), child=side_view)
+        content_view = Adw.ToolbarView(content=self.stack)
+        content_view.add_top_bar(Adw.HeaderBar(show_end_title_buttons=False,
+                                               show_start_title_buttons=False))
+        self.content = Adw.NavigationPage(title=_(SECTIONS[0]["title"]), child=content_view)
+        self.split = Adw.NavigationSplitView(sidebar=sidebar, content=self.content,
+                                             hexpand=True, min_sidebar_width=240,
+                                             max_sidebar_width=300)
+        self.append(self.split)
+        self.section_list.select_row(self.section_list.get_row_at_index(0))
 
-        for title, entries in COMMON:
-            group = Adw.PreferencesGroup(title=_(title))
-            self.add(group)
-            for kind, schema, key, label, extra in entries:
-                if kind == "switch":
-                    row = Adw.SwitchRow(title=_(label))
-                    row.connect("notify::active", self._on_switch, schema, key, extra)
-                else:
-                    row = Adw.ComboRow(title=_(label))
-                    row.set_model(Gtk.StringList.new([_(l) for _v, l in extra]))
-                    row.connect("notify::selected", self._on_choice, schema, key, extra)
-                row.set_visible(False)
-                group.add(row)
-                self.rows[key_id(schema, key)] = (kind, row, extra)
+    # -- building -------------------------------------------------------------------
+    def _build(self, section):
+        page = Adw.PreferencesPage()
+        special = section.get("special")
+        if special == "quick":
+            page.add(self.quick.groups[0])
+        elif special == "pc":
+            page.add(self.quick.groups[1])
+        elif special == "browse":
+            group = Adw.PreferencesGroup(
+                description=_("Every GSettings key of the phone, searchable and "
+                              "changeable - for what the other sections leave out."))
+            self.browse_row = Adw.ButtonRow(title=_("Search all GNOME settings …"),
+                                            end_icon_name="go-next-symbolic")
+            self.browse_row.connect("activated", lambda *a: self.browse())
+            group.add(self.browse_row)
+            page.add(group)
+        rows = []
+        for title, desc, specs in section.get("groups", ()):
+            group = Adw.PreferencesGroup(title=_(title) if title else "",
+                                         description=_(desc) if desc else "")
+            group.rows = []
+            for spec in specs:
+                row = SettingRow(self, *spec)
+                group.add(row.widget)
+                group.rows.append(row)
+                rows.append(row)
+            page.add(group)
+        if special == "notify_apps":
+            self.apps_group = Adw.PreferencesGroup(
+                title=_("Per app"),
+                description=_("The apps that have shown notifications on the phone."))
+            page.add(self.apps_group)
+        self.rows[section["id"]] = rows
+        self.pages[section["id"]] = page
+        return page
 
-        more = Adw.PreferencesGroup(title=_("All settings"))
-        self.add(more)
-        browse = Adw.ButtonRow(title=_("Search all GNOME settings …"),
-                               end_icon_name="go-next-symbolic")
-        browse.connect("activated", lambda *a: self.browse())
-        more.add(browse)
-        self.browse_row = browse
-
+    # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):
         self.dev = dev
-        self._loaded_for = None
+        self._loaded = {}
         self.quick.set_device(dev)
         self.device_changed()
 
     def device_changed(self):
         self.quick.update()
         online = self.dev is not None and self.dev.online
-        self.browse_row.set_sensitive(online)
+        if hasattr(self, "browse_row"):
+            self.browse_row.set_sensitive(online)
         if not online:
-            self._loaded_for = None
-            for _kind, row, _extra in self.rows.values():
-                row.set_sensitive(False)
-        elif self.get_mapped():
+            self._loaded = {}
+        for rows in self.rows.values():
+            for r in rows:
+                r.widget.set_sensitive(online)
+        if online and self.get_mapped():
             self.load()
 
-    def load(self):
-        dev = self.dev
-        if dev is None or not dev.online or self._loaded_for is dev:
+    def current_section(self):
+        row = self.section_list.get_selected_row()
+        return row.section if row is not None else SECTIONS[0]
+
+    def _on_section(self, listbox, row):
+        if row is None:
             return
-        self._loaded_for = dev
-        keys = [k.split(" ", 1) for k in self.rows]
+        self.stack.set_visible_child_name(row.section["id"])
+        self.content.set_title(_(row.section["title"]))
+        self.split.set_show_content(True)
+        self.load()
 
-        def done(result, error):
-            if dev is not self.dev:
-                return
-            if error is not None:
-                self._loaded_for = None
-                self.app.toast(text.error(error))
-                return
-            self.values = result
-            self._show_values()
-
-        dev.request("gsettings.get", {"keys": keys}, done)
-
-    def _show_values(self):
-        self._updating = True
-        try:
-            for kid, (kind, row, extra) in self.rows.items():
-                info = self.values.get(kid)
-                row.set_visible(info is not None)
-                row.set_sensitive(info is not None)
-                if info is None:
-                    continue
-                value = info["value"]
-                if kind == "switch":
-                    row.set_active(value == extra[0] if extra else bool(value))
-                else:
-                    values = [v for v, _l in extra]
-                    if value in values:
-                        best = values.index(value)
-                    else:  # set elsewhere: the nearest choice, never "Never"
-                        best = min((i for i, v in enumerate(values) if v),
-                                   key=lambda i: abs(values[i] - value))
-                    row.set_selected(best)
-        finally:
-            self._updating = False
-
-    def _set(self, schema, key, value):
+    def load(self, section=None):
+        section = section or self.current_section()
         dev = self.dev
+        if dev is None or not dev.online or self._loaded.get(section["id"]) is dev:
+            return
+        self._loaded[section["id"]] = dev
+        keys = keys_of(section)
+        if keys:
+            def done(result, error):
+                if dev is not self.dev:
+                    return
+                if error is not None:
+                    self._loaded.pop(section["id"], None)
+                    self.app.toast(text.error(error))
+                    return
+                self.values.update(result)
+                self._show(section)
+
+            dev.request("gsettings.get", {"keys": keys}, done)
+        if section.get("special") == "notify_apps":
+            dev.request("notifications.apps", {}, self._got_apps)
+
+    def _required(self, row):
+        req = row.opts.get("requires")
+        if not req:
+            return True
+        info = self.values.get(key_id(*req))
+        return bool(info and info["value"])
+
+    def _show(self, section):
+        self.updating = True
+        try:
+            for row in self.rows[section["id"]]:
+                row.show(self.values.get(row.id), self._required(row))
+            # groups without a row the phone has are left out
+            page = self.pages[section["id"]]
+            for group in _groups(page):
+                if getattr(group, "rows", None):
+                    group.set_visible(any(r.widget.get_visible() for r in group.rows))
+        finally:
+            self.updating = False
+
+    def set_value(self, row):
+        dev = self.dev
+        if dev is None or not dev.online:
+            return
+        args = {"schema": row.schema, "key": row.key,
+                "value": row.value(self.values.get(row.id))}
+        if row.path:
+            args["path"] = row.path
 
         def done(result, error):
             if error is not None:
                 self.app.toast(text.error(error))
             elif result is not None:
-                self.values[key_id(schema, key)] = result
-            self._show_values()
+                self.values[row.id] = result
+            self.updating = True
+            try:
+                row.show(self.values.get(row.id), self._required(row))
+            finally:
+                self.updating = False
 
-        dev.request("gsettings.set", {"schema": schema, "key": key, "value": value},
-                    done)
+        dev.request("gsettings.set", args, done)
 
-    def _on_switch(self, row, _pspec, schema, key, extra):
-        if self._updating:
+    # -- notifications per app -------------------------------------------------------
+    def _got_apps(self, result, error):
+        if error is not None:
             return
-        on = row.get_active()
-        self._set(schema, key, (extra[0] if on else extra[1]) if extra else on)
+        self.notify_apps = result
+        for row in list(getattr(self.apps_group, "app_rows", [])):
+            self.apps_group.remove(row)
+        self.apps_group.app_rows = []
+        for app in result:
+            if not app["installed"]:
+                continue
+            exp = Adw.ExpanderRow(title=GLib.markup_escape_text(app["name"]),
+                                  show_enable_switch=True,
+                                  enable_expansion=app["values"]["enable"])
+            exp.connect("notify::enable-expansion",
+                        lambda e, _p, a=app: self._set_app(a, "enable", e.get_enable_expansion()))
+            for key, label in NOTIFY_APP_KEYS:
+                sw = Adw.SwitchRow(title=_(label), active=app["values"][key])
+                sw.connect("notify::active",
+                           lambda w, _p, a=app, k=key: self._set_app(a, k, w.get_active()))
+                exp.add_row(sw)
+            self.apps_group.add(exp)
+            self.apps_group.app_rows.append(exp)
+        self.apps_group.set_visible(bool(self.apps_group.app_rows))
 
-    def _on_choice(self, row, _pspec, schema, key, extra):
-        if not self._updating:
-            self._set(schema, key, extra[row.get_selected()][0])
+    def _set_app(self, app, key, value):
+        if app["values"].get(key) == value or self.dev is None:
+            return
+        app["values"][key] = value
+        self.dev.request("gsettings.set", {
+            "schema": "org.gnome.desktop.notifications.application", "key": key,
+            "path": app["path"], "value": value},
+            lambda r, e: e is not None and self.app.toast(text.error(e)))
 
     def browse(self):
         if self.dev is not None and self.dev.online:
             SettingsBrowser(self.app, self.dev).present(self.get_root())
+
+
+def _groups(page):
+    out, stack = [], [page]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, Adw.PreferencesGroup):
+            out.append(w)
+            continue
+        c = w.get_first_child()
+        while c is not None:
+            stack.append(c)
+            c = c.get_next_sibling()
+    return out
 
 
 class SettingsBrowser(Adw.Dialog):

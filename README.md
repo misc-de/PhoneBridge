@@ -20,8 +20,11 @@ Your Linux phone (FuriOS, Phosh, Mobian …) in the panel of your desktop.
     delete, set a photo
   - *Appointments*: all calendars of the phone as month and agenda; add, change and
     delete appointments, with reminders; recurring ones as a series or a single day
-  - *Phone settings*: common GNOME settings as switches, every other GSettings key
-    through a search
+  - *Settings*: the quick switches, calls at the PC, and the phone's own settings
+    section by section - appearance, screen and power (FuriOS gestures included),
+    lock screen, notifications (per app as well), sound and vibration, GNOME Calls,
+    Chatty, GNOME Contacts, GNOME Calendar and reminders, the on-screen keyboard,
+    privacy and location - and every other GSettings key through a search
 - Several phones, one of them shown in the panel.
 
 ## How it works
