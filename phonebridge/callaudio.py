@@ -112,9 +112,10 @@ class CallAudio(GObject.Object):
 
     __gsignals__ = {"stopped": (GObject.SignalFlags.RUN_FIRST, None, (object,))}
 
-    def __init__(self, device_info, gain=2.0, echo_cancel=True, test=False):
+    def __init__(self, device_info, gain=2.0, echo_cancel=True, test=False, password=None):
         super().__init__()
         self.info = device_info
+        self.password = password
         self.gain = gain
         self.echo_cancel = echo_cancel
         self.test = test
@@ -142,9 +143,14 @@ class CallAudio(GObject.Object):
             self.speaker = subprocess.Popen(
                 ["pw-play"] + FORMAT + ["--latency", "40ms"] + speaker_target + ["-"],
                 stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            env = None
+            if self.password is not None:
+                from .secrets import ssh_env
+                env = ssh_env(self.password)
             self.ssh = subprocess.Popen(
-                ssh_argv(self.info, remote_command(sink, source), low_delay=True),
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                ssh_argv(self.info, remote_command(sink, source), low_delay=True,
+                         password=self.password is not None),
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         except OSError as e:
             self._procs = [p for p in (getattr(self, n, None) for n in ("mic", "speaker", "ssh"))
                            if p is not None]

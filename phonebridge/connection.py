@@ -33,11 +33,18 @@ PING_EVERY = 20
 PING_TIMEOUT = 20
 
 
-def ssh_argv(device, command=BOOTSTRAP, low_delay=False):
+def ssh_argv(device, command=BOOTSTRAP, low_delay=False, password=False):
+    """ssh to the phone. With password=True it may ask for one - and gets it
+    from SSH_ASKPASS (secrets.ssh_env), once; else only the key counts.
+    An unknown phone is learnt on first contact, a changed host key is
+    still refused."""
     ssh = shlex.split(os.environ.get("PHONEBRIDGE_SSH", "ssh"))
     extra = ["-o", "IPQoS=lowdelay", "-o", "Compression=no"] if low_delay else []
-    return ssh + [
-        "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+    auth = (["-o", "BatchMode=no", "-o", "NumberOfPasswordPrompts=1",
+             "-o", "PreferredAuthentications=publickey,keyboard-interactive,password"]
+            if password else ["-o", "BatchMode=yes"])
+    return ssh + ["-T"] + auth + [
+        "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=8",
         "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"] + extra + [
         "-p", str(device.get("port") or 22),
         "--", "%s@%s" % (device["user"], device["host"]), command]
@@ -57,6 +64,8 @@ class Device(GObject.Object):
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "sms": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "calls": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        # the key is refused (and no password, or a wrong one): bool wrong
+        "auth-needed": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
         "voicebox": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
@@ -67,6 +76,8 @@ class Device(GObject.Object):
         self.error = None
         self.status = None
         self.hello = None
+        self.password = None        # from the keyring, or typed in; never stored here
+        self.needs_password = False
         self._proc = None
         self._cancel = None
         self._stdin = None
@@ -140,10 +151,14 @@ class Device(GObject.Object):
         self._stderr = []
         self._cancel = Gio.Cancellable()
         try:
-            proc = Gio.Subprocess.new(
-                ssh_argv(self.info),
+            launcher = Gio.SubprocessLauncher.new(
                 Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE
                 | Gio.SubprocessFlags.STDERR_PIPE)
+            if self.password is not None:
+                from .secrets import ssh_env
+                launcher.set_environ([
+                    "%s=%s" % kv for kv in ssh_env(self.password).items()])
+            proc = launcher.spawnv(ssh_argv(self.info, password=self.password is not None))
         except GLib.Error as e:
             self._set_state("offline", e.message)
             self._schedule_retry()
@@ -188,6 +203,7 @@ class Device(GObject.Object):
             return
         self.hello = result
         self._retry = 0
+        self.needs_password = False
         self._set_state("online")
         self._stop_ping()
         self._ping_source = GLib.timeout_add_seconds(PING_EVERY, self._ping)
@@ -234,8 +250,23 @@ class Device(GObject.Object):
         reason = self._stderr[-1] if self._stderr else None
         if reason is None and proc.get_if_exited() and proc.get_exit_status() != 0:
             reason = "ssh exited with %d" % proc.get_exit_status()
+        if self.state != "online" and any("Permission denied" in l for l in self._stderr):
+            # the key is not taken - a password is needed (or was wrong):
+            # no retries until there is one, they would only be refused
+            wrong = self.password is not None
+            self.password = None
+            self.needs_password = True
+            self._set_state("offline", "login refused")
+            self.emit("auth-needed", wrong)
+            return
         self._set_state("offline", reason or "connection closed")
         self._schedule_retry()
+
+    def set_password(self, password):
+        """Log in with this password from now on (None: the key only)."""
+        self.password = password
+        self.needs_password = False
+        self.reconnect()
 
     # -- reading ----------------------------------------------------------
     def _on_line(self, stream, res, proc):

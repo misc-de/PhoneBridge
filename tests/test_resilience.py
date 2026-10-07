@@ -251,7 +251,7 @@ class PC(unittest.TestCase):
         self.assertNotIn(["pactl", "unload-module", "13"], runs)
 
     def test_error_words(self):
-        self.assertEqual(text.error("timeout"), "timeout")
+        self.assertEqual(text.error("timeout"), "timeout")       # en in the tests
 
 
 if __name__ == "__main__":

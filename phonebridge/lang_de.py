@@ -27,8 +27,12 @@ TRANSLATIONS = {
         '%d ungelesene Nachricht',
     '%d unread messages':
         '%d ungelesene Nachrichten',
+    "%s does not take PhoneBridge's SSH key. Log in with the password of the phone's user instead.":
+        '%s nimmt den SSH-Schlüssel von PhoneBridge nicht an. Melde dich stattdessen mit dem Passwort des Benutzers auf dem Phone an.',
     '%s left':
         'noch %s',
+    '%s: login needed - the SSH key is not accepted':
+        '%s: Anmeldung nötig – der SSH-Schlüssel wird nicht angenommen',
     '%Y-%m-%d':
         '%d.%m.%Y',
     '%Y-%m-%d, %H:%M':
@@ -365,6 +369,8 @@ TRANSLATIONS = {
         'Internet-Anrufe (SIP)',
     'It is deleted on the phone as well.':
         'Sie wird auch auf dem Phone gelöscht.',
+    'It is removed from the keyring. Without a working SSH key, PhoneBridge then asks for it again.':
+        'Es wird aus dem Schlüsselbund gelöscht. Ohne funktionierenden SSH-Schlüssel fragt PhoneBridge dann erneut danach.',
     'It is removed from the phone and from the account the calendar syncs with.':
         'Er wird vom Phone und aus dem Konto gelöscht, mit dem der Kalender synchronisiert.',
     'January':
@@ -373,6 +379,8 @@ TRANSLATIONS = {
         'Juli',
     'June':
         'Juni',
+    'Keep in the keyring':
+        'Im Schlüsselbund speichern',
     'Key sounds':
         'Tastentöne',
     'Keyboard size (Squeekboard)':
@@ -407,6 +415,14 @@ TRANSLATIONS = {
         'Sperrbildschirm',
     'Lock when the screen goes off':
         'Sperren, wenn der Bildschirm ausgeht',
+    'Log in':
+        'Anmelden',
+    'Log in to %s':
+        'Bei %s anmelden',
+    'Log in to %s …':
+        'Bei %s anmelden …',
+    'login refused':
+        'Anmeldung abgelehnt',
     'March':
         'März',
     'Mark unknown senders':
@@ -559,6 +575,8 @@ TRANSLATIONS = {
         'Sonstige',
     'Overview':
         'Übersicht',
+    'Password':
+        'Passwort',
     'Per app':
         'Pro App',
     'Performance':
@@ -631,6 +649,10 @@ TRANSLATIONS = {
         'Foto entfernen',
     'Remove temporary files by themselves':
         'Temporäre Dateien automatisch löschen',
+    'Remove the password from the keyring':
+        'Passwort aus dem Schlüsselbund entfernen',
+    'Remove the password of %s?':
+        'Passwort von %s entfernen?',
     'Remove tracking from links':
         'Tracking aus Links entfernen',
     'Repeats':
@@ -761,8 +783,14 @@ TRANSLATIONS = {
         'Der Kontakt wird aus „%s“ gelöscht – auf dem Phone und in dem Konto, mit dem es synchronisiert.',
     'The message of this conversation is deleted on the phone, for good. Chatty restarts for it for a moment.':
         'Die Nachricht dieser Unterhaltung wird auf dem Phone endgültig gelöscht. Chatty startet dafür kurz neu.',
+    'The password could not be kept in the keyring: %s':
+        'Das Passwort ließ sich nicht im Schlüsselbund speichern: %s',
+    'The password was not accepted.':
+        'Das Passwort wurde nicht angenommen.',
     'The phone delivers the caller quietly':
         'Das Phone liefert den Anrufer leise',
+    'The phone does not take the SSH key - PhoneBridge needs the password.':
+        'Das Phone nimmt den SSH-Schlüssel nicht an – PhoneBridge braucht das Passwort.',
     "the phone's microphone could not be muted":
         'das Mikrofon des Phones ließ sich nicht stummschalten',
     'the setting is read only':
@@ -781,6 +809,8 @@ TRANSLATIONS = {
         'Donnerstag',
     'Tickets':
         'Tickets',
+    'timeout':
+        'keine Antwort',
     'Title':
         'Titel',
     'To which number?':

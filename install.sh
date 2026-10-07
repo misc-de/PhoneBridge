@@ -10,8 +10,8 @@ set -e
 cd "$(dirname "$0")"
 
 [ "$(id -u)" -ne 0 ] || { echo "Not as root - this installs into your home."; exit 1; }
-python3 -c "import gi; gi.require_version('Gtk','4.0'); gi.require_version('Adw','1'); import cairo" 2>/dev/null \
-  || { echo "missing: GTK 4, libadwaita and pycairo (Manjaro/Arch: pacman -S python-gobject libadwaita python-cairo)"; exit 1; }
+python3 -c "import gi; gi.require_version('Gtk','4.0'); gi.require_version('Adw','1'); gi.require_version('Secret','1'); import cairo" 2>/dev/null \
+  || { echo "missing: GTK 4, libadwaita, libsecret and pycairo (Manjaro/Arch: pacman -S python-gobject libadwaita libsecret python-cairo)"; exit 1; }
 command -v ssh >/dev/null || { echo "missing: ssh (openssh)"; exit 1; }
 
 LOCAL=$HOME/.local

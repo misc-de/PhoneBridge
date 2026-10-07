@@ -3,6 +3,15 @@
 # The last argument is the command; everything before it is ssh options.
 [ -n "$FAKE_SSH_SLOW" ] && { sleep "$FAKE_SSH_SLOW"; echo "ssh: connect to host phone port 22: No route to host" >&2; exit 255; }
 [ -n "$FAKE_SSH_FAIL" ] && { echo "ssh: connect to host phone port 22: No route to host" >&2; exit 255; }
+# a phone that wants a password: the key is refused; the password comes
+# from SSH_ASKPASS as real ssh would ask it (only with SSH_ASKPASS_REQUIRE)
+if [ -n "$FAKE_SSH_PASSWORD" ]; then
+    case " $* " in
+        *" BatchMode=yes "*) echo "furios@phone: Permission denied (publickey,password)." >&2; exit 255 ;;
+    esac
+    [ "$SSH_ASKPASS_REQUIRE" = force ] && given=$("$SSH_ASKPASS" "furios@phone's password: ")
+    [ "$given" = "$FAKE_SSH_PASSWORD" ] || { echo "furios@phone: Permission denied (publickey,password)." >&2; exit 255; }
+fi
 # a phone that takes everything and never answers
 [ -n "$FAKE_SSH_HANG" ] && exec cat > /dev/null
 cmd="${@: -1}"

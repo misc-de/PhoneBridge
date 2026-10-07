@@ -54,10 +54,19 @@ class DevicesDialog(Adw.PreferencesDialog):
                                 tooltip_text=_("Remove"))
             remove.add_css_class("flat")
             remove.connect("clicked", lambda b, i=info: self.remove(i))
+            key = Gtk.Button(icon_name="dialog-password-symbolic", valign=Gtk.Align.CENTER,
+                             tooltip_text=_("Remove the password from the keyring"),
+                             visible=False)
+            key.add_css_class("flat")
+            if dev is not None:
+                key.connect("clicked", lambda b, d=dev: self.forget(d))
+            row.add_suffix(key)
             row.add_suffix(edit)
             row.add_suffix(remove)
             self.group.add(row)
             self.rows.append(row)
+            from . import secrets
+            secrets.lookup(info, lambda pw, b=key: pw is not None and b.set_visible(True))
 
     def edit(self, info):
         dialog = Adw.AlertDialog(heading=_("Change phone") if info else _("Add phone"))
@@ -108,6 +117,23 @@ class DevicesDialog(Adw.PreferencesDialog):
                 devices = [entry if x["id"] == info["id"] else x for x in devices]
             self.app.set_devices(devices)
             self._rewire()
+
+        dialog.connect("response", answered)
+        dialog.present(self)
+
+    def forget(self, dev):
+        dialog = Adw.AlertDialog(
+            heading=_("Remove the password of %s?") % dev.name,
+            body=_("It is removed from the keyring. Without a working SSH key, "
+                   "PhoneBridge then asks for it again."))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("remove", _("Remove"))
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+
+        def answered(d, response):
+            if response == "remove":
+                self.app.forget_password(dev)
+                self.fill()
 
         dialog.connect("response", answered)
         dialog.present(self)

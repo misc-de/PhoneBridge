@@ -60,6 +60,8 @@ class PhoneBridgeApp(Adw.Application):
         self.calls = {}
         self.voicebox = {}
         self.pc_audio = {}
+        self._save_password = {}    # device id -> password to keep once it worked
+        self._login_asked = set()   # devices whose login dialog the user filled in
         self.lines = {}             # device id -> SIM cards and SIP accounts
         self._pc_wanted = {}        # device id -> when a call to talk at the PC was dialled          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
@@ -160,6 +162,7 @@ class PhoneBridgeApp(Adw.Application):
         add("call-hangup", lambda a, p: self.hangup_call(*p.unpack()), "(ss)")
         add("show-phone", lambda *a: self.show_window("phone"))
         add("devices", lambda *a: self.show_devices())
+        add("login", lambda a, p: self.ask_password(self.devices.get(p.get_string())), "s")
         add("about", lambda *a: self.show_about())
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
@@ -183,18 +186,37 @@ class PhoneBridgeApp(Adw.Application):
             if dev_id not in self.devices:
                 dev = Device(info)
                 dev.connect("changed", self._on_device_changed)
+                dev.connect("auth-needed", self._on_auth_needed)
                 dev.connect("sms", self._on_sms)
                 dev.connect("calls", self._on_calls)
                 dev.connect("voicebox", lambda d: self.refresh_voicebox(d))
                 self.devices[dev_id] = dev
-                dev.start()
+                self._start_with_keyring(dev)
         if self.cfg["active"] not in self.devices:
             self.cfg["active"] = next(iter(self.devices), None)
         if self.window is not None:
             self.window.devices_changed()
         self.update_tray()
 
+    def _start_with_keyring(self, dev):
+        """Starts a connection - with the password from the keyring, if one
+        is kept for this phone (otherwise the key alone)."""
+        from . import secrets
+
+        def found(password):
+            if self.devices.get(dev.id) is dev:
+                dev.password = password
+                dev.start()
+
+        secrets.lookup(dev.info, found)
+
     def set_devices(self, devices):
+        from . import secrets
+        for old in self.cfg["devices"]:
+            same = next((d for d in devices if d["id"] == old["id"]), None)
+            if same is None or (same["host"], same["user"], same.get("port")) != (
+                    old["host"], old["user"], old.get("port")):
+                secrets.clear(old)      # a phone gone (or moved): its password too
         self.cfg["devices"] = devices
         ids = {d["id"] for d in devices}
         # a phone that goes takes its voice messages along from the cache
@@ -221,8 +243,99 @@ class PhoneBridgeApp(Adw.Application):
             if self.window is not None:
                 self.window.active_changed()
 
+    # -- logging in with a password -------------------------------------------
+    def _on_auth_needed(self, dev, wrong):
+        """The phone does not take the key (or the password was wrong)."""
+        self.update_tray()
+        if self.window is not None:
+            self.window.device_changed(dev)
+        if dev.id in self._login_asked or (
+                self.window is not None and self.window.is_visible()
+                and self.window.is_active()):
+            self.ask_password(dev, wrong)       # the user is right here
+            return
+        n = Gio.Notification.new(_("Log in to %s") % dev.name)
+        n.set_body(_("The phone does not take the SSH key - PhoneBridge needs the password."))
+        n.set_default_action_and_target("app.login", GLib.Variant("s", dev.id))
+        self.send_notification("login-%s" % dev.id, n)
+
+    def ask_password(self, dev, wrong=False):
+        """User name and password for a phone without (working) key; kept in
+        the keyring if wanted, once the login has worked."""
+        if dev is None:
+            return
+        self.withdraw_notification("login-%s" % dev.id)
+        window = self.show_window()
+        info = dev.info
+        dialog = Adw.AlertDialog(
+            heading=_("Log in to %s") % dev.name,
+            body=(_("The password was not accepted.") + "\n\n" if wrong else "")
+            + _("%s does not take PhoneBridge's SSH key. Log in with the password "
+                "of the phone's user instead.") % info["host"])
+        box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        box.add_css_class("boxed-list")
+        user = Adw.EntryRow(title=_("User"), text=info["user"])
+        password = Adw.PasswordEntryRow(title=_("Password"), activates_default=True)
+        keep = Adw.SwitchRow(title=_("Keep in the keyring"), active=True)
+        for row in (user, password, keep):
+            box.append(row)
+        dialog.set_extra_child(box)
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("login", _("Log in"))
+        dialog.set_response_appearance("login", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("login")
+        dialog.set_close_response("cancel")
+
+        def check(*args):
+            dialog.set_response_enabled("login", bool(password.get_text())
+                                        and config.valid_user(user.get_text().strip()))
+
+        user.connect("changed", check)
+        password.connect("changed", check)
+        check()
+
+        def answered(d, response):
+            if response != "login":
+                self._login_asked.discard(dev.id)
+                return
+            self._login_asked.add(dev.id)
+            secret = password.get_text()
+            target = dev
+            name = user.get_text().strip()
+            if name != info["user"]:
+                devices = [dict(x, user=name) if x["id"] == dev.id else x
+                           for x in self.cfg["devices"]]
+                self.set_devices(devices)       # a new connection for the new user
+                target = self.devices.get(dev.id)
+                if target is None:
+                    return
+            if keep.get_active():
+                self._save_password[target.id] = secret
+            else:
+                self._save_password.pop(target.id, None)
+            target.set_password(secret)
+
+        dialog.connect("response", answered)
+        dialog.present(window)
+        password.grab_focus()
+
+    def forget_password(self, dev):
+        from . import secrets
+        secrets.clear(dev.info)
+        self._save_password.pop(dev.id, None)
+        dev.set_password(None)
+
     def _on_device_changed(self, dev):
         online = dev.online
+        if online and dev.id in self._save_password:
+            # the password worked: now it goes into the keyring
+            from . import secrets
+            secret = self._save_password.pop(dev.id)
+            secrets.store(dev.info, secret, lambda error: error and self.toast(
+                _("The password could not be kept in the keyring: %s") % error))
+        if online:
+            self._login_asked.discard(dev.id)
+            self.withdraw_notification("login-%s" % dev.id)
         if online and not self._was_online.get(dev.id):
             seen = config.seen_for(self.cfg, dev.id)
             if seen["baseline"] is None:
@@ -495,7 +608,8 @@ class PhoneBridgeApp(Adw.Application):
                 self._pc_audio_changed(dev)
                 return
             audio = CallAudio(dev.info, gain=float(self.cfg["call_audio_gain"]),
-                              echo_cancel=bool(self.cfg["call_audio_echo"]), test=test)
+                              echo_cancel=bool(self.cfg["call_audio_echo"]), test=test,
+                              password=dev.password)
             audio.connect("stopped", lambda a, why: self._pc_audio_stopped(dev, a, why))
             self.pc_audio[dev.id] = audio
             # starting means pactl and three programs: not on the GTK thread
@@ -760,7 +874,9 @@ class PhoneBridgeApp(Adw.Application):
                  "label": _("Stop ringing") if dev.id in self.ringing
                  else _("Ring the phone")},
             ]
-            if not online:
+            if dev.needs_password:
+                items.append({"id": "login", "label": _("Log in to %s …") % dev.name})
+            elif not online:
                 items.append({"id": "reconnect", "label": _("Connect now")})
         items += [{"type": "separator"}, {"id": "quit", "label": _("Quit")}]
         return items
@@ -784,6 +900,8 @@ class PhoneBridgeApp(Adw.Application):
             self.ring(dev)
         elif item_id == "reconnect" and dev is not None:
             dev.reconnect()
+        elif item_id == "login" and dev is not None:
+            self.ask_password(dev)
         elif item_id == "devices":
             self.show_devices()
         elif item_id == "quit":

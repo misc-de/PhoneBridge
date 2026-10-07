@@ -188,12 +188,22 @@ class MainWindow(Adw.ApplicationWindow):
         if dev is None or dev.online:
             self.banner.set_revealed(False)
             return
-        self.banner.set_title("%s: %s" % (dev.name, text.device_state(dev)))
+        if dev.needs_password:
+            self.banner.set_title(_("%s: login needed - the SSH key is not accepted")
+                                  % dev.name)
+            self.banner.set_button_label(_("Log in"))
+        else:
+            self.banner.set_title("%s: %s" % (dev.name, text.device_state(dev)))
+            self.banner.set_button_label(_("Connect now"))
         self.banner.set_revealed(True)
 
     def _on_reconnect(self, *args):
         dev = self.app.active_device()
-        if dev is not None:
+        if dev is None:
+            return
+        if dev.needs_password:
+            self.app.ask_password(dev)
+        else:
             dev.reconnect()
 
     # -- pages ------------------------------------------------------------

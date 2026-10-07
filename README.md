@@ -62,9 +62,14 @@ phonebridge                     # or from the menu
 phonebridge --calendar          # straight to a page: --phone, --messages, --contacts ...
 ```
 
-Needs GTK 4, libadwaita, PyGObject and pycairo (Manjaro/Arch:
-`pacman -S python-gobject libadwaita python-cairo`). Phones are added under
+Needs GTK 4, libadwaita, libsecret, PyGObject and pycairo (Manjaro/Arch:
+`pacman -S python-gobject libadwaita libsecret python-cairo`). Phones are added under
 *Menu → Phones …*.
+
+A phone that does not take the SSH key is logged in to with the user's password:
+PhoneBridge asks for it once and keeps it in the desktop's keyring (Secret Service -
+GNOME Keyring, KWallet), never in a file of its own; ssh gets it through SSH_ASKPASS.
+An unknown phone's host key is learnt on first contact; a changed one is refused.
 
 ## Tests
 
