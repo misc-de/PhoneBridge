@@ -40,6 +40,7 @@ CSS = """
                 border-radius: 10px; padding: 0 7px; font-weight: bold;
                 font-size: smaller; min-width: 8px; }
 .thread-unread { font-weight: bold; }
+row.fresh { box-shadow: inset 4px 0 #3584e4; }
 .call-bar { background: alpha(@accent_bg_color, 0.18); border-radius: 12px;
             padding: 6px 10px; }
 """

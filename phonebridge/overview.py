@@ -49,11 +49,10 @@ def tile(icon, title):
 class Card(Gtk.Box):
     """A card: title, a line under it, a short list, and "Show all"."""
 
-    def __init__(self, title, icon, on_all):
+    def __init__(self, title, on_all):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6,
                          valign=Gtk.Align.START)
         head = Gtk.Box(spacing=8)
-        head.append(Gtk.Image(icon_name=icon))
         label = Gtk.Label(label=title, xalign=0, hexpand=True)
         label.add_css_class("heading")
         head.append(label)
@@ -86,7 +85,8 @@ class Card(Gtk.Box):
         self.badge.set_visible(badge > 0)
 
 
-def entry_row(prefix, title, subtitle, on_click, bold=False, red=False):
+def entry_row(prefix, title, subtitle, on_click, bold=False, red=False, fresh=False):
+    """fresh: new or current - a blue edge on the left."""
     row = Adw.ActionRow(title=GLib.markup_escape_text(title or ""), activatable=True,
                         subtitle=GLib.markup_escape_text(subtitle or ""))
     row.set_title_lines(1)
@@ -97,6 +97,8 @@ def entry_row(prefix, title, subtitle, on_click, bold=False, red=False):
         row.add_css_class("thread-unread")
     if red:
         row.add_css_class("error")
+    if fresh:
+        row.add_css_class("fresh")
     row.on_click = on_click
     return row
 
@@ -133,12 +135,9 @@ class OverviewPage(Gtk.ScrolledWindow):
                                  max_children_per_line=3, min_children_per_line=1,
                                  column_spacing=18, row_spacing=18,
                                  valign=Gtk.Align.START)
-        self.calls_card = Card(_("Calls"), "call-start-symbolic",
-                               lambda: app.show_window("phone"))
-        self.messages_card = Card(_("Messages"), "mail-unread-symbolic",
-                                  lambda: app.show_window("messages"))
-        self.events_card = Card(_("Appointments"), "x-office-calendar-symbolic",
-                                lambda: app.show_window("calendar"))
+        self.calls_card = Card(_("Calls"), lambda: app.show_window("phone"))
+        self.messages_card = Card(_("Messages"), lambda: app.show_window("messages"))
+        self.events_card = Card(_("Appointments"), lambda: app.show_window("calendar"))
         for card in (self.calls_card, self.messages_card, self.events_card):
             card.set_size_request(300, -1)
             self.cards.append(card)
@@ -241,10 +240,13 @@ class OverviewPage(Gtk.ScrolledWindow):
             if vb and vb["audio"] and not vb["missed"]:
                 sub.append(_("Voicebox: %s") % duration(int(round(vb["duration"]))))
             name = c["name"] or c["number"] or _("Unknown number")
+            unheard = bool(vb and vb.get("new") and vb["audio"])
+            missed_now = missed and c.get("start") and \
+                dt.date.fromtimestamp(c["start"]) == today
             rows.append(entry_row(self._avatar(c["name"], c.get("avatar")), name,
                                   " · ".join(sub), lambda: self.app.show_window("phone"),
-                                  bold=bool(vb and vb.get("new") and vb["audio"]),
-                                  red=missed))
+                                  bold=unheard, red=missed,
+                                  fresh=unheard or bool(missed_now)))
         for c in entries:
             vb = c.get("voicebox")
             if c.get("start") and dt.date.fromtimestamp(c["start"]) == today and (
@@ -261,7 +263,7 @@ class OverviewPage(Gtk.ScrolledWindow):
             sub = text.activity(last["time"]) if last.get("time") else ""
             rows.append(entry_row(self._avatar(t["title"], t.get("avatar")), t["title"], sub,
                                   lambda th=t["thread"]: self._open_thread(th),
-                                  bold=bool(t["unread"])))
+                                  bold=bool(t["unread"]), fresh=bool(t["unread"])))
         unread = self.app.unread(dev.id) if dev is not None else 0
         self.messages_card.fill(rows, _("No messages"), unread)
 
@@ -296,11 +298,17 @@ class OverviewPage(Gtk.ScrolledWindow):
                 when += " · " + ev["location"]
             rows.append(entry_row(color_dot(ev.get("color")),
                                   ev["summary"] or _("(no title)"), when,
-                                  lambda d=day: self._open_day(d)))
-        today = sum(1 for ev in upcoming if (
-            dt.date.fromisoformat(ev["start"]) <= dt.date.today() if ev["allday"]
-            else dt.date.fromtimestamp(ev["start"]) == dt.date.today()))
+                                  lambda d=day: self._open_day(d),
+                                  fresh=self._is_today(ev)))
+        today = sum(1 for ev in upcoming if self._is_today(ev))
         self.events_card.fill(rows, _("No appointments in the next two weeks"), today)
+
+    @staticmethod
+    def _is_today(ev):
+        """Today's, or going on right now."""
+        if ev["allday"]:
+            return dt.date.fromisoformat(ev["start"]) <= dt.date.today()
+        return dt.date.fromtimestamp(ev["start"]) <= dt.date.today()
 
     def _open_day(self, day):
         self.app.show_window("calendar")
