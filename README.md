@@ -8,8 +8,12 @@ Your Linux phone (FuriOS, Phosh, Mobian …) in the panel of your desktop.
 - **Window** (GTK 4 / libadwaita), opened from the icon:
   - *Overview*: battery, mobile network, Wi-Fi; mobile data, Wi-Fi, volume,
     ring profile, power profile, "ring the phone" to find it
-  - *Phone*: dial pad, call history of GNOME Calls (read only), the call in progress
-    with answer / hang up, and a notification with both for incoming calls
+  - *Phone*: dial pad, call history of GNOME Calls (read only), VoiceBox's messages
+    when VoiceBox is installed, the call in progress
+    with answer / hang up, and a notification with both for incoming calls; with the
+    patched spa-droid plugin (droid-call-sink/-source), the call's sound on the PC:
+    the caller on the PC's speakers, the PC's microphone on the line, the phone's
+    microphone muted in the modem meanwhile
   - *Messages*: chatty's SMS conversations with profile pictures, reply, write new ones,
     call from the phone; a desktop notification for every new SMS
   - *Contacts*: all address books of the phone - look up, call, write to, add, change,

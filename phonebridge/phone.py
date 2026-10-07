@@ -434,11 +434,28 @@ class CallBar(Gtk.Revealer):
         self.hangup = Gtk.Button(label=_("Hang up"), valign=Gtk.Align.CENTER)
         self.hangup.add_css_class("destructive-action")
         self.hangup.connect("clicked", lambda *a: self.app.hangup_call(self.dev_id, self.call))
+        # the sound on the PC: switch and both levels
+        self.levels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
+                              valign=Gtk.Align.CENTER, width_request=90)
+        self.level_in = Gtk.LevelBar(tooltip_text=_("Caller"))
+        self.level_out = Gtk.LevelBar(tooltip_text=_("Your microphone"))
+        self.levels.append(self.level_in)
+        self.levels.append(self.level_out)
+        self.pc = Gtk.ToggleButton(valign=Gtk.Align.CENTER,
+                                   tooltip_text=_("Speak and listen at the PC; the phone's "
+                                                  "microphone is muted meanwhile"))
+        self.pc.set_child(Adw.ButtonContent(icon_name="audio-headset-symbolic",
+                                            label=_("Sound on the PC")))
+        self.pc.connect("toggled", self._on_pc)
+        box.append(self.levels)
+        box.append(self.pc)
         box.append(self.answer)
         box.append(self.hangup)
         self.set_child(box)
         self.dev_id = None
         self._tick = 0
+        self._level_tick = 0
+        self._syncing = False
 
     def show_call(self, dev, call):
         self.call = call
@@ -460,9 +477,37 @@ class CallBar(Gtk.Revealer):
             state += " · " + duration(int(time.time() - call["since"]))
         self.state.set_label(state)
         self.answer.set_visible(call["state"] in ("incoming", "waiting"))
+        possible = self.app.call_audio_possible(dev)
+        audio = self.app.pc_audio.get(dev.id)
+        on = audio is not None and not audio.test
+        self.pc.set_visible(possible and call["state"] in ("active", "dialing", "alerting",
+                                                           "held"))
+        self._syncing = True
+        self.pc.set_active(on)
+        self._syncing = False
+        self.levels.set_visible(on)
+        if on and not self._level_tick:
+            self._level_tick = GLib.timeout_add(100, self._update_levels)
         self.set_reveal_child(True)
         if call["state"] == "active" and not self._tick:
             self._tick = GLib.timeout_add_seconds(1, self._update_time)
+
+    def _on_pc(self, button):
+        if self._syncing:
+            return
+        dev = self.app.devices.get(self.dev_id)
+        self.app.set_pc_audio(dev, button.get_active())
+
+    def _update_levels(self):
+        audio = self.app.pc_audio.get(self.dev_id)
+        if audio is None or audio.test:
+            self._level_tick = 0
+            self.level_in.set_value(0)
+            self.level_out.set_value(0)
+            return False
+        self.level_in.set_value(min(1.0, audio.level_in))
+        self.level_out.set_value(min(1.0, audio.level_out))
+        return True
 
     def _update_time(self):
         if self.call is None or self.call["state"] != "active":

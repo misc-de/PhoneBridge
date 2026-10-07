@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stand-in for pactl: echo-cancel module loading, logged.
+case "$1" in
+    load-module) echo "load $*" >> "${FAKE_AUDIO_DIR:-/dev/null}/pactl.log"; echo 42 ;;
+    unload-module) echo "unload $2" >> "${FAKE_AUDIO_DIR:-/dev/null}/pactl.log" ;;
+    *) exit 1 ;;
+esac

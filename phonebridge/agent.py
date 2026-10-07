@@ -690,7 +690,10 @@ class Agent:
 
     def _send_calls(self):
         self._calls_pending = 0
-        send({"event": "calls", "calls": self.active_calls()})
+        calls = self.active_calls()
+        if not calls:
+            pc_audio_release(self)      # the call is over: the microphone as it was
+        send({"event": "calls", "calls": calls})
         return False
 
     def _on_signal(self, conn, sender, path, iface, signal, params):
@@ -800,6 +803,7 @@ def cmd_hello(agent, args):
     return {"version": VERSION, "hostname": socket.gethostname(),
             "sms_last_id": agent.last_sms_id,
             "has": {"sms": os.path.exists(CHATTY_DB), "voicebox": voicebox_installed(),
+                    "call_audio": call_audio_nodes(),
                     "ofono": agent.modem is not None,
                     "calls": run("sh", "-c", "command -v gnome-calls") is not None}}
 
@@ -2152,6 +2156,73 @@ def cmd_voicebox_delete(agent, args):
     return True
 
 
+# --- the call's sound on the PC: muting the phone's microphone ------------------
+# The stream itself does not pass the agent: the PC opens a second SSH
+# connection with pw-record/pw-play on droid-call-source/-sink (the patched
+# spa-droid plugin, as VoiceBox uses it). Here only the uplink is muted in
+# the modem - during a cellular call the microphone never passes PipeWire,
+# so this is the only mute that holds - read back, kept muted while the PC
+# has the sound, and handed back as it was when the PC lets go or the call
+# ends.
+
+def call_audio_nodes():
+    out = run("pw-cli", "ls", "Node") or ""
+    return "droid-call-sink" in out and "droid-call-source" in out
+
+
+def _uplink_muted(agent):
+    props = call(agent.system, "org.ofono", agent.modem, "org.ofono.CallVolume",
+                 "GetProperties", None, "(a{sv})")[0]
+    return bool(props.get("Muted"))
+
+
+def _set_uplink_muted(agent, on):
+    call(agent.system, "org.ofono", agent.modem, "org.ofono.CallVolume", "SetProperty",
+         GLib.Variant("(sv)", ("Muted", GLib.Variant("b", bool(on)))))
+
+
+def pc_audio_guard(agent):
+    """Polled while the PC has the sound: muted it stays."""
+    if not getattr(agent, "pc_audio", False):
+        return False
+    try:
+        if not _uplink_muted(agent):
+            _set_uplink_muted(agent, True)
+    except RuntimeError:
+        pass
+    return True
+
+
+def pc_audio_release(agent):
+    if not getattr(agent, "pc_audio", False):
+        return
+    agent.pc_audio = False
+    try:
+        _set_uplink_muted(agent, agent.pc_audio_was_muted)
+    except RuntimeError:
+        pass
+
+
+@command("callaudio.mute")
+def cmd_callaudio_mute(agent, args):
+    """on: mute the phone's microphone for the PC and confirm it;
+    off: hand back what it was before."""
+    if not agent.modem:
+        raise RuntimeError("no modem")
+    if args.get("on"):
+        if not getattr(agent, "pc_audio", False):
+            agent.pc_audio_was_muted = _uplink_muted(agent)
+        _set_uplink_muted(agent, True)
+        if not _uplink_muted(agent):
+            raise RuntimeError("the phone's microphone could not be muted")
+        if not getattr(agent, "pc_audio", False):
+            agent.pc_audio = True
+            GLib.timeout_add(1500, lambda: pc_audio_guard(agent))
+        return True
+    pc_audio_release(agent)
+    return False
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):
@@ -2165,7 +2236,12 @@ def main():
     agent = Agent(loop)
     threading.Thread(target=_reader, args=(agent,), daemon=True).start()
     agent.schedule_refresh(0)
-    loop.run()
+    for sig in (1, 2, 15):          # HUP (ssh gone), INT, TERM: end cleanly
+        GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, lambda: loop.quit() or False)
+    try:
+        loop.run()
+    finally:
+        pc_audio_release(agent)     # the PC is gone: never leave the phone muted
 
 
 if __name__ == "__main__":

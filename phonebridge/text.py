@@ -21,7 +21,8 @@ TECHNOLOGIES = {"gsm": "2G", "edge": "EDGE", "umts": "3G", "hspa": "3G+",
 ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("no modem"), N_("no modem with SMS support"),
           N_("number and text are needed"), N_("value out of range"),
-          N_("the setting is read only"))
+          N_("the setting is read only"),
+          N_("the phone's microphone could not be muted"))
 DEVICE_STATES = {"online": N_("Connected"), "connecting": N_("Connecting …"),
                  "offline": N_("Not connected")}
 

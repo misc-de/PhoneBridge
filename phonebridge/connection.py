@@ -22,13 +22,14 @@ BOOTSTRAP = ("python3 -u -c 'import sys;n=int(sys.stdin.buffer.readline());"
 BACKOFF = (3, 5, 10, 30, 60)
 
 
-def ssh_argv(device):
+def ssh_argv(device, command=BOOTSTRAP, low_delay=False):
     ssh = shlex.split(os.environ.get("PHONEBRIDGE_SSH", "ssh"))
+    extra = ["-o", "IPQoS=lowdelay", "-o", "Compression=no"] if low_delay else []
     return ssh + [
         "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
-        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
+        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"] + extra + [
         "-p", str(device.get("port") or 22),
-        "%s@%s" % (device["user"], device["host"]), BOOTSTRAP]
+        "%s@%s" % (device["user"], device["host"]), command]
 
 
 def agent_payload():

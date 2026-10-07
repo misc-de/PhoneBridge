@@ -76,6 +76,42 @@ class OverviewPage(Adw.PreferencesPage):
                     self.power, self.find):
             quick.add(row)
 
+        # the call's sound on the PC - only where the phone has the nodes for it
+        self.audio_group = Adw.PreferencesGroup(
+            title=_("Calls at the PC"),
+            description=_("During a call, “Sound on the PC” in the call bar puts the "
+                          "caller on the PC's speakers and the PC's microphone on the "
+                          "line; the phone's microphone is muted meanwhile."))
+        self.add(self.audio_group)
+        self.echo = Adw.SwitchRow(title=_("Echo cancellation"),
+                                  subtitle=_("Needed with speakers, not with a headset"))
+        self.echo.connect("notify::active", self._on_audio_setting)
+        self.gain = Adw.SpinRow.new_with_range(1.0, 8.0, 0.5)
+        self.gain.set_title(_("Caller's volume"))
+        self.gain.set_subtitle(_("The phone delivers the caller quietly"))
+        self.gain.set_digits(1)
+        self.gain.connect("notify::value", self._on_audio_setting)
+        self.auto = Adw.SwitchRow(title=_("Always take calls to the PC"),
+                                  subtitle=_("As soon as a call is connected"))
+        self.auto.connect("notify::active", self._on_audio_setting)
+        self.test = Adw.ActionRow(
+            title=_("Test the sound path"),
+            subtitle=_("Without a call: the PC's microphone on the phone's speaker, the "
+                       "phone's microphone on the PC. Keep them apart, or it whistles."))
+        self.test_levels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
+                                   valign=Gtk.Align.CENTER, width_request=90)
+        self.test_in = Gtk.LevelBar(tooltip_text=_("Phone's microphone"))
+        self.test_out = Gtk.LevelBar(tooltip_text=_("Your microphone"))
+        self.test_levels.append(self.test_in)
+        self.test_levels.append(self.test_out)
+        self.test_button = Gtk.Button(valign=Gtk.Align.CENTER)
+        self.test_button.connect("clicked", self._on_test)
+        self.test.add_suffix(self.test_levels)
+        self.test.add_suffix(self.test_button)
+        for row in (self.echo, self.gain, self.auto, self.test):
+            self.audio_group.add(row)
+        self._test_tick = 0
+
     def set_device(self, dev):
         self.dev = dev
         self.update()
@@ -112,6 +148,19 @@ class OverviewPage(Adw.PreferencesPage):
                 self.mute.set_active(vol["muted"])
             self._select(self.feedback, FEEDBACK_PROFILES, s.get("feedback_profile"))
             self._select(self.power, POWER_PROFILES, s.get("power_profile"))
+            cfg = self.app.cfg
+            self.audio_group.set_visible(dev is not None and self.app.call_audio_possible(dev))
+            self.echo.set_active(bool(cfg["call_audio_echo"]))
+            self.gain.set_value(float(cfg["call_audio_gain"]))
+            self.auto.set_active(bool(cfg["call_audio_auto"]))
+            audio = self.app.pc_audio.get(dev.id) if dev is not None else None
+            testing = audio is not None and audio.test
+            in_call = bool(dev is not None and self.app.calls.get(dev.id))
+            self.test_button.set_label(_("Stop") if testing else _("Test"))
+            self.test_button.set_sensitive(testing or (audio is None and not in_call))
+            self.test_levels.set_visible(testing)
+            if testing and not self._test_tick:
+                self._test_tick = GLib.timeout_add(100, self._test_levels)
             ringing = dev is not None and dev.id in self.app.ringing
             self.ring.set_label(_("Stop") if ringing else _("Ring"))
             self.find.set_sensitive(status is not None)
@@ -129,6 +178,31 @@ class OverviewPage(Adw.PreferencesPage):
         row.set_sensitive(value in keys)
         if value in keys:
             row.set_selected(keys.index(value))
+
+    def _test_levels(self):
+        audio = self.app.pc_audio.get(self.dev.id) if self.dev is not None else None
+        if audio is None or not audio.test:
+            self._test_tick = 0
+            return False
+        self.test_in.set_value(min(1.0, audio.level_in))
+        self.test_out.set_value(min(1.0, audio.level_out))
+        return True
+
+    def _on_test(self, *args):
+        audio = self.app.pc_audio.get(self.dev.id) if self.dev is not None else None
+        self.app.set_pc_audio(self.dev, audio is None, test=True)
+
+    def _on_audio_setting(self, *args):
+        if self._updating:
+            return
+        from . import config
+        cfg = self.app.cfg
+        cfg["call_audio_echo"] = self.echo.get_active()
+        cfg["call_audio_gain"] = self.gain.get_value()
+        cfg["call_audio_auto"] = self.auto.get_active()
+        config.save(cfg)
+        for audio in self.app.pc_audio.values():
+            audio.gain = cfg["call_audio_gain"]     # takes effect at once
 
     # -- changes ----------------------------------------------------------
     def _request(self, cmd, args):

@@ -10,6 +10,8 @@
   country   calling code for numbers typed with a leading 0
   notify    desktop notification for every new SMS
   language  "system", "en" or "de"
+  call_audio_*  the call's sound on the PC: gain for the caller, echo
+            cancellation, take every call to the PC by itself
 """
 
 import copy
@@ -33,6 +35,10 @@ DEFAULTS = {
     "active": None,
     "devices": [],
     "seen": {},
+    # the call's sound on the PC (callaudio.py)
+    "call_audio_gain": 2.0,
+    "call_audio_echo": True,
+    "call_audio_auto": False,
 }
 
 

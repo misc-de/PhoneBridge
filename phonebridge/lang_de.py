@@ -69,6 +69,8 @@ TRANSLATIONS = {
         'Alle Einstellungen',
     'Allowed: %s':
         'Erlaubt: %s',
+    'Always take calls to the PC':
+        'Anrufe immer am PC führen',
     'Answer':
         'Annehmen',
     'Appearance':
@@ -77,6 +79,8 @@ TRANSLATIONS = {
         'Termine',
     'April':
         'April',
+    'As soon as a call is connected':
+        'Sobald ein Gespräch zustande kommt',
     'At the start':
         'Zu Beginn',
     'August':
@@ -107,12 +111,18 @@ TRANSLATIONS = {
         'Mit dem Phone anrufen',
     'Call waiting':
         'Anklopfen',
+    'Caller':
+        'Anrufer',
+    "Caller's volume":
+        'Lautstärke des Anrufers',
     'Calling %s on the phone …':
         'Das Phone ruft %s an …',
     'Calling …':
         'Wählt …',
     'Calls':
         'Anrufe',
+    'Calls at the PC':
+        'Telefonieren am PC',
     'Cancel':
         'Abbrechen',
     'Change':
@@ -171,6 +181,10 @@ TRANSLATIONS = {
         '„%s“ löschen?',
     'Dial':
         'Wählen',
+    "During a call, “Sound on the PC” in the call bar puts the caller on the PC's speakers and the PC's microphone on the line; the phone's microphone is muted meanwhile.":
+        'Während eines Anrufs legt „Ton am PC“ in der Anrufleiste den Anrufer auf die Lautsprecher des PCs und das Mikrofon des PCs in die Leitung; das Mikrofon des Phones ist so lange stumm.',
+    'Echo cancellation':
+        'Echounterdrückung',
     'Edit':
         'Bearbeiten',
     'Edit appointment':
@@ -265,6 +279,8 @@ TRANSLATIONS = {
         'Stumm',
     'Name':
         'Name',
+    'Needed with speakers, not with a headset':
+        'Nötig mit Lautsprechern, nicht mit Headset',
     'Never':
         'Nie',
     'new':
@@ -373,6 +389,8 @@ TRANSLATIONS = {
         'Persönlich',
     'Phone':
         'Phone',
+    "Phone's microphone":
+        'Mikrofon des Phones',
     'PhoneBridge logs in over SSH with your key. Set it up once with “ssh-copy-id user@address”.':
         'PhoneBridge meldet sich per SSH mit deinem Schlüssel an. Einmal einrichten mit „ssh-copy-id benutzer@adresse“.',
     'PhoneBridge reaches your phone over SSH with your key.':
@@ -457,6 +475,12 @@ TRANSLATIONS = {
         'SMS von %s',
     'Sound and vibration':
         'Ton und Vibration',
+    'Sound on the PC':
+        'Ton am PC',
+    'Sound on the PC ended: %s':
+        'Ton am PC beendet: %s',
+    "Speak and listen at the PC; the phone's microphone is muted meanwhile":
+        'Am PC sprechen und hören; das Mikrofon des Phones ist so lange stumm',
     'SSH port':
         'SSH-Port',
     'Start at login':
@@ -479,12 +503,22 @@ TRANSLATIONS = {
         'System',
     'Telephone':
         'Telefon',
+    'Test':
+        'Testen',
+    'Test the sound path':
+        'Tonweg testen',
     'Text size':
         'Textgröße',
     'The contact is removed from “%s” – on the phone and in the account it syncs with.':
         'Der Kontakt wird aus „%s“ gelöscht – auf dem Phone und in dem Konto, mit dem es synchronisiert.',
+    'The phone delivers the caller quietly':
+        'Das Phone liefert den Anrufer leise',
+    "the phone's microphone could not be muted":
+        'das Mikrofon des Phones ließ sich nicht stummschalten',
     'the setting is read only':
         'die Einstellung ist schreibgeschützt',
+    'The sound stays on the phone: %s':
+        'Der Ton bleibt am Phone: %s',
     'This appointment repeats – changes apply to the whole series.':
         'Dieser Termin wiederholt sich – Änderungen gelten für die ganze Serie.',
     'This appointment repeats.':
@@ -533,6 +567,8 @@ TRANSLATIONS = {
         'WLAN',
     'Withheld number':
         'Unterdrückte Nummer',
+    "Without a call: the PC's microphone on the phone's speaker, the phone's microphone on the PC. Keep them apart, or it whistles.":
+        'Ohne Anruf: das PC-Mikrofon auf den Lautsprecher des Phones, das Mikrofon des Phones auf den PC. Beides auseinanderhalten, sonst pfeift es.',
     'Work':
         'Arbeit',
     'Write':
@@ -545,4 +581,6 @@ TRANSLATIONS = {
         'Gestern, %s',
     'Your Linux phone in the panel: battery, messages and settings of your FuriOS/Phosh phone, over SSH.':
         'Dein Linux-Phone in der Leiste: Akku, Nachrichten und Einstellungen deines FuriOS-/Phosh-Phones, per SSH.',
+    'Your microphone':
+        'Dein Mikrofon',
 }

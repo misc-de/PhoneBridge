@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+# Stand-in for pw-record: raw s16 to stdout, a value per source, so the
+# tests can tell who said what. Keeps going until it is stopped.
+import os, struct, sys, time
+args = sys.argv[1:]
+target = args[args.index("--target") + 1] if "--target" in args else "default"
+value = {"droid-call-source": 1000, "droid-source": 1500}.get(target, 2000)
+log = os.environ.get("FAKE_AUDIO_DIR")
+if log:
+    with open(os.path.join(log, "record-" + target), "w") as f:
+        f.write(" ".join(args))
+chunk = struct.pack("<h", value) * 320
+try:
+    for _ in range(1500):
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+        time.sleep(0.02)
+except (BrokenPipeError, KeyboardInterrupt):
+    pass

@@ -58,6 +58,7 @@ class PhoneBridgeApp(Adw.Application):
         self.avatars = Avatars()
         self.calls = {}
         self.voicebox = {}
+        self.pc_audio = {}          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
         self._was_online = {}
 
@@ -93,6 +94,8 @@ class PhoneBridgeApp(Adw.Application):
         return 0
 
     def do_shutdown(self):
+        for dev_id in list(self.pc_audio):
+            self.set_pc_audio(self.devices.get(dev_id), False)
         for dev in self.devices.values():
             dev.stop()
         if self.tray is not None:
@@ -186,6 +189,8 @@ class PhoneBridgeApp(Adw.Application):
                         lambda r, e: e is None and self._on_calls(dev, r))
         if not online and self.calls.get(dev.id):
             self._on_calls(dev, [])
+        if not online and dev.id in self.pc_audio:
+            self.set_pc_audio(dev, False)
         self._was_online[dev.id] = online
         self.update_tray()
         if self.window is not None:
@@ -348,6 +353,13 @@ class PhoneBridgeApp(Adw.Application):
         for path in set(old) - {c["path"] for c in now}:
             self.withdraw_notification("call-%s-%s" % (dev.id, path))
         self.calls[dev.id] = now
+        audio = self.pc_audio.get(dev.id)
+        if audio is not None and not audio.test and not now:
+            self.set_pc_audio(dev, False)           # the call is over
+        elif (self.cfg["call_audio_auto"] and audio is None and self.call_audio_possible(dev)
+              and any(c["state"] == "active" for c in now)
+              and not any(prev.get("state") == "active" for prev in old.values())):
+            self.set_pc_audio(dev, True)
         if self.window is not None:
             self.window.calls_changed(dev)
         if old and not now and self.window is not None:
@@ -370,6 +382,63 @@ class PhoneBridgeApp(Adw.Application):
         n.add_button_with_target(_("Answer"), "app.call-answer", target)
         n.add_button_with_target(_("Hang up"), "app.call-hangup", target)
         self.send_notification("call-%s-%s" % (dev.id, c["path"]), n)
+
+    # -- the call's sound on the PC ---------------------------------------------
+    def call_audio_possible(self, dev):
+        from . import callaudio
+        return (dev is not None and dev.online and callaudio.available()
+                and bool((dev.hello or {}).get("has", {}).get("call_audio")))
+
+    def set_pc_audio(self, dev, on, test=False):
+        """The call's sound (or, test=True, the phone's own speaker and
+        microphone) on the PC - or back on the phone."""
+        from .callaudio import CallAudio
+        if dev is None:
+            return
+        current = self.pc_audio.get(dev.id)
+        if not on:
+            if current is not None:
+                del self.pc_audio[dev.id]
+                current.stop()
+                if not current.test:
+                    dev.request("callaudio.mute", {"on": False})
+            self._pc_audio_changed(dev)
+            return
+        if current is not None:
+            return
+
+        def go(result=None, error=None):
+            if error is not None:
+                self.toast(_("The sound stays on the phone: %s") % text.error(error))
+                self._pc_audio_changed(dev)
+                return
+            audio = CallAudio(dev.info, gain=float(self.cfg["call_audio_gain"]),
+                              echo_cancel=bool(self.cfg["call_audio_echo"]), test=test)
+            audio.connect("stopped", lambda a, why: self._pc_audio_stopped(dev, a, why))
+            self.pc_audio[dev.id] = audio
+            if not audio.start():
+                return      # "stopped" has told why
+            self._pc_audio_changed(dev)
+
+        if test:
+            go()
+        else:
+            # first the phone's microphone off - confirmed - then the stream
+            dev.request("callaudio.mute", {"on": True}, go)
+
+    def _pc_audio_stopped(self, dev, audio, why):
+        if self.pc_audio.get(dev.id) is audio:
+            del self.pc_audio[dev.id]
+            if not audio.test:
+                dev.request("callaudio.mute", {"on": False})
+            if why:
+                self.toast(_("Sound on the PC ended: %s") % why)
+        self._pc_audio_changed(dev)
+
+    def _pc_audio_changed(self, dev):
+        if self.window is not None:
+            self.window.calls_changed(dev)
+            self.window.overview.update()
 
     def current_call(self, dev_id):
         calls = self.calls.get(dev_id, [])
