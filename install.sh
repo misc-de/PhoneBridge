@@ -6,8 +6,20 @@
 #
 #   ./install.sh              program, launcher, icon, start at login
 #   NO_AUTOSTART=1 ./install.sh   without starting at login
+#   curl -fsSL https://raw.githubusercontent.com/misc-de/PhoneBridge/main/install.sh | bash
+#                             straight from the web: fetches the sources first
 set -e
-cd "$(dirname "$0")"
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)
+if [ ! -f "$here/phonebridge/agent.py" ]; then
+    command -v curl >/dev/null || { echo "missing: curl"; exit 1; }
+    here=$(mktemp -d)
+    trap 'rm -rf "$here"' EXIT
+    echo "Downloading PhoneBridge …"
+    curl -fsSL "${PHONEBRIDGE_SOURCE:-https://github.com/misc-de/PhoneBridge/archive/refs/heads/main.tar.gz}" \
+        | tar -xz -C "$here" --strip-components=1
+fi
+cd "$here"
 
 [ "$(id -u)" -ne 0 ] || { echo "Not as root - this installs into your home."; exit 1; }
 python3 -c "import gi; gi.require_version('Gtk','4.0'); gi.require_version('Adw','1'); gi.require_version('Secret','1'); import cairo" 2>/dev/null \

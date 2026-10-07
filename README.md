@@ -1,5 +1,11 @@
 # PhoneBridge
 
+---
+⚠️ **AI-assisted project**  
+Under active development. Features may change and instability is possible.
+
+---
+
 Your Linux phone on your Linux desktop: battery and messages in the panel, and a window for
 calls, SMS, contacts, appointments and the phone's settings - over SSH, with nothing to
 install on the phone.
@@ -85,9 +91,21 @@ without them the option is not offered.
 
 ## Install
 
+On the desktop, as your user (not root) - one line:
+
 ```sh
-./install.sh        # into ~/.local; starts at login (NO_AUTOSTART=1 to leave that out)
-phonebridge         # or from the menu
+curl -fsSL https://raw.githubusercontent.com/misc-de/PhoneBridge/main/install.sh | bash
+```
+
+It installs into `~/.local` only, puts PhoneBridge in the menu and starts it at login
+(`… | NO_AUTOSTART=1 bash` leaves that out). Running it again updates. Nothing is installed
+on the phone.
+
+Or from a checkout:
+
+```sh
+git clone https://github.com/misc-de/PhoneBridge.git
+cd PhoneBridge && ./install.sh
 ```
 
 At the first start PhoneBridge asks for the phone's address and user (`furios` on FuriOS) and
