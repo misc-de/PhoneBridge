@@ -257,8 +257,8 @@ class PhoneBridgeApp(Adw.Application):
             return
         n = Gio.Notification.new(_("Log in to %s") % dev.name)
         n.set_body(_("The phone does not take the SSH key - PhoneBridge needs the password."))
-        n.set_default_action_and_target("app.login", GLib.Variant("s", dev.id))
-        self.send_notification("login-%s" % dev.id, n)
+        set_click(n, _("Log in"), "app.login", GLib.Variant("s", dev.id))
+        self._send_briefly("login-%s" % dev.id, n)
 
     def ask_password(self, dev, wrong=False):
         """User name and password for a phone without (working) key; kept in
@@ -393,8 +393,7 @@ class PhoneBridgeApp(Adw.Application):
         n.set_body(notification_text(msg["body"]))
 
         target = GLib.Variant("(ss)", (dev.id, msg["thread"]))
-        n.set_default_action_and_target("app.open-thread", target)
-        n.add_button_with_target(_("Reply"), "app.open-thread", target)
+        set_click(n, _("Reply"), "app.open-thread", target)
         nid = "sms-%s-%s" % (dev.id, msg["id"])
         self._sms_notes.setdefault((dev.id, msg["thread"]), []).append(nid)
         self._send_with_picture(dev, nid, n, msg["title"], msg.get("avatar"), msg["thread"])
@@ -403,6 +402,13 @@ class PhoneBridgeApp(Adw.Application):
         """Read or deleted here: its notifications go from the desktop too."""
         for nid in self._sms_notes.pop((dev_id, thread), []):
             self.withdraw_notification(nid)
+
+    def _send_briefly(self, nid, notification):
+        """Sends a notification and takes it back after NOTIFY_SECONDS, so
+        it never stays on the desktop (the notification log keeps it)."""
+        self.send_notification(nid, notification)
+        GLib.timeout_add_seconds(NOTIFY_SECONDS, lambda: self.withdraw_notification(nid)
+                                 and False)
 
     def _send_with_picture(self, dev, nid, notification, name, key=None, thread=None):
         """Sends a notification with the person's picture as its icon: the
@@ -422,7 +428,7 @@ class PhoneBridgeApp(Adw.Application):
                 notification.set_icon(Gio.FileIcon.new(Gio.File.new_for_path(path)))
             else:
                 notification.set_icon(Gio.ThemedIcon.new(APP_ID))
-            self.send_notification(nid, notification)
+            self._send_briefly(nid, notification)
             return False
 
         if key:
@@ -473,7 +479,7 @@ class PhoneBridgeApp(Adw.Application):
             body += " · " + self.voicebox_box_name(dev.id, m["box"])
         n.set_body(body)
 
-        n.set_default_action("app.show-phone")
+        set_click(n, _("Listen"), "app.show-phone")
         self._send_with_picture(dev, "vb-%s-%s" % (dev.id, m["id"]), n, m["name"],
                                 m.get("avatar"), m["number"])
 
@@ -586,10 +592,12 @@ class PhoneBridgeApp(Adw.Application):
         n = Gio.Notification.new(_("Call from %s") % name)
         if len(self.devices) > 1:
             n.set_body(dev.name)
-        n.set_priority(Gio.NotificationPriority.URGENT)
+        # not urgent: an urgent notification stays until it is clicked away
+        n.set_priority(Gio.NotificationPriority.HIGH)
 
         target = GLib.Variant("(ss)", (dev.id, c["path"]))
-        n.set_default_action("app.show-phone")
+        if on_gnome():
+            n.set_default_action("app.show-phone")
         n.add_button_with_target(_("Answer"), "app.call-answer", target)
         n.add_button_with_target(_("Hang up"), "app.call-hangup", target)
         self._send_with_picture(dev, "call-%s-%s" % (dev.id, c["path"]), n, c["name"],
@@ -1019,6 +1027,28 @@ def run_in_thread(fn, then=None):
     threading.Thread(target=work, daemon=True).start()
 
 
+NOTIFY_SECONDS = 10
+
+
+def on_gnome():
+    return "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+
+
+def set_click(notification, label, action, target=None):
+    """What clicking does. GNOME takes the click on the notification itself;
+    other servers (xfce4-notifyd ...) show that as a button without text -
+    there it is a button with words instead."""
+    if on_gnome():
+        if target is None:
+            notification.set_default_action(action)
+        else:
+            notification.set_default_action_and_target(action, target)
+    if target is None:
+        notification.add_button(label, action)
+    else:
+        notification.add_button_with_target(label, action, target)
+
+
 def notification_picture(png, keep=50):
     """A picture for a notification, as a file: GLib hands notification
     servers a file or a theme icon - a picture in memory it silently drops.
@@ -1051,7 +1081,7 @@ def notification_text(body):
     """An SMS as a notification body: notification servers outside GNOME
     (KDE, xfce4-notifyd, dunst ...) read body markup - a stranger's SMS
     must not bring links or formatting of its own."""
-    if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
+    if on_gnome():
         return body
     return GLib.markup_escape_text(body)
 
