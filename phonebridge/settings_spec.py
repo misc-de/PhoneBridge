@@ -183,7 +183,8 @@ SECTIONS = (
              ("switch", "org.gnome.Calls", "always-allow-sdes",
               N_("SIP: allow the unsafe key exchange (SDES)"), None, {}),
          )),
-     )},
+     ),
+     "special": "sip"},
     {"id": "messages", "title": N_("Messages"), "icon": "mail-unread-symbolic",
      "groups": (
          (N_("Messages (Chatty)"), None, (

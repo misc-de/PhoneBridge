@@ -2511,8 +2511,8 @@ def cmd_callaudio_mute(agent, args):
 BACKUPS = 3
 
 
-def chatty_processes():
-    """(pid, argv, environ) of the user's running chatty processes."""
+def processes_named(name):
+    """(pid, argv, environ) of the user's running processes called `name`."""
     out = []
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
@@ -2522,7 +2522,7 @@ def chatty_processes():
             if st.st_uid != UID:
                 continue
             with open("/proc/%s/comm" % pid) as f:
-                if f.read().strip() != "chatty":
+                if f.read().strip() != name[:15]:
                     continue
             with open("/proc/%s/cmdline" % pid, "rb") as f:
                 argv = [a.decode() for a in f.read().split(b"\0") if a]
@@ -2533,6 +2533,10 @@ def chatty_processes():
         except (OSError, ValueError):
             continue
     return out
+
+
+def chatty_processes():
+    return processes_named("chatty")
 
 
 def _gone(pid):
@@ -2547,8 +2551,8 @@ def _gone(pid):
         return True
 
 
-def stop_chatty(timeout=8, procs=None):
-    procs = chatty_processes() if procs is None else procs
+def stop_chatty(timeout=8, procs=None, name="chatty"):
+    procs = processes_named(name) if procs is None else procs
     for pid, _argv, _env in procs:
         try:
             os.kill(pid, 15)
@@ -2558,14 +2562,16 @@ def stop_chatty(timeout=8, procs=None):
     while time.time() < end and not all(_gone(pid) for pid, _a, _e in procs):
         time.sleep(0.1)
     if not all(_gone(pid) for pid, _a, _e in procs):
-        raise RuntimeError("chatty did not stop")
+        raise RuntimeError("%s did not stop" % name)
     return procs
 
 
-def start_chatty(procs):
+def start_chatty(procs, name="chatty"):
+    """Starts the programs again as they ran - argv and environment - in
+    the user's session."""
     for _pid, argv, env in procs:
-        if len(argv) > 1 and os.path.basename(argv[0]) != "chatty" \
-                and os.path.basename(argv[1]) == "chatty":
+        if len(argv) > 1 and os.path.basename(argv[0]) != name \
+                and os.path.basename(argv[1]) == name:
             argv = argv[1:]     # started through its interpreter (#!): start it as such
         if argv and shutil.which("systemd-run"):
             # in the user's session, not in this SSH login's scope (which may
@@ -2749,6 +2755,175 @@ def dial_on_line(agent, number, line):
              timeout=15000)
         return
     raise RuntimeError("unknown line")
+
+
+# --- SIP accounts of GNOME Calls ---------------------------------------------------
+# Written as Calls writes them: a group in sip-account.cfg, the password in
+# the phone's keyring (schema sm.puri.Calls, attributes server, username,
+# protocol "sip"). Calls reads the file only when it starts and writes it
+# whole from memory later - so it is ended for the change and started again
+# as it ran; never during a call.
+
+SIP_FIELDS = ("Id", "Host", "Proxy", "User", "DisplayName", "Protocol", "Port",
+              "AutoConnect", "DirectMode", "LocalPort", "CanTel", "MediaEncryption")
+
+
+def _calls_secret_schema():
+    gi.require_version("Secret", "1")
+    from gi.repository import Secret
+    return Secret, Secret.Schema.new(
+        "sm.puri.Calls", Secret.SchemaFlags.DONT_MATCH_NAME,
+        {"username": Secret.SchemaAttributeType.STRING,
+         "server": Secret.SchemaAttributeType.STRING,
+         "protocol": Secret.SchemaAttributeType.STRING})
+
+
+def _sip_secret(host, user, password=None, clear=False):
+    if os.environ.get("PHONEBRIDGE_KEYRING") == "memory":   # the tests: never a keyring
+        with open(os.environ.get("FAKE_LOG") or os.devnull, "a") as f:
+            f.write("secret %s %s@%s\n" % ("clear" if clear else "store", user, host))
+        return
+    Secret, schema = _calls_secret_schema()
+    attrs = {"server": host, "username": user, "protocol": "sip"}
+    if clear:
+        Secret.password_clear_sync(schema, attrs, None)
+    else:
+        Secret.password_store_sync(schema, attrs, Secret.COLLECTION_DEFAULT,
+                                   "Calls Password for %s" % password[0], password[1], None)
+
+
+def sip_accounts(path=None):
+    """GNOME Calls' SIP accounts with their settings (not the passwords)."""
+    kf = GLib.KeyFile()
+    try:
+        kf.load_from_file(path or SIP_KEYFILE, GLib.KeyFileFlags.KEEP_COMMENTS)
+    except GLib.Error:
+        return []
+    out = []
+    for group in kf.get_groups()[0]:
+        def get(key, kind=str, default=None):
+            try:
+                if kind is bool:
+                    return kf.get_boolean(group, key)
+                if kind is int:
+                    return kf.get_integer(group, key)
+                return kf.get_string(group, key)
+            except GLib.Error:
+                return default
+        out.append({"id": get("Id") or group, "host": get("Host", default=""),
+                    "user": get("User", default=""), "display_name": get("DisplayName", default=""),
+                    "protocol": get("Protocol", default="UDP") or "UDP",
+                    "port": get("Port", int, 0), "auto_connect": get("AutoConnect", bool, True),
+                    "can_tel": get("CanTel", bool, False),
+                    "media_encryption": get("MediaEncryption", int, 0)})
+    return out
+
+
+def write_sip_account(account, path=None, remove=False):
+    """Adds, changes (by "id") or removes one group of sip-account.cfg; the
+    other accounts stay as they are. -> the group written."""
+    path = path or SIP_KEYFILE
+    kf = GLib.KeyFile()
+    try:
+        kf.load_from_file(path, GLib.KeyFileFlags.KEEP_COMMENTS)
+    except GLib.Error:
+        pass
+    groups = kf.get_groups()[0]
+    group = None
+    for g in groups:
+        try:
+            gid = kf.get_string(g, "Id")
+        except GLib.Error:
+            gid = g
+        if gid == account.get("id"):
+            group = g
+    if remove:
+        if group is None:
+            raise RuntimeError("no such SIP account")
+        kf.remove_group(group)
+    else:
+        if group is None:
+            n = 0
+            while "sip-%02d" % n in groups:
+                n += 1
+            group = "sip-%02d" % n
+        host, user = account["host"].strip(), account["user"].strip()
+        if not host or not user or re.search(r"[\s\[\]=]", host + user):
+            raise RuntimeError("server and user are needed")
+        protocol = account.get("protocol", "UDP")
+        if protocol not in ("UDP", "TCP", "TLS"):
+            raise RuntimeError("unknown transport")
+        kf.set_string(group, "Id", account.get("id") or "%s@%s" % (user, host))
+        kf.set_string(group, "Host", host)
+        kf.set_string(group, "Proxy", account.get("proxy", "") or "")
+        kf.set_string(group, "User", user)
+        kf.set_string(group, "DisplayName", _one_line(account.get("display_name", "")))
+        kf.set_string(group, "Protocol", protocol)
+        kf.set_integer(group, "Port", max(0, min(65535, int(account.get("port") or 0))))
+        kf.set_boolean(group, "AutoConnect", bool(account.get("auto_connect", True)))
+        kf.set_boolean(group, "DirectMode", False)
+        kf.set_integer(group, "LocalPort", 0)
+        kf.set_boolean(group, "CanTel", bool(account.get("can_tel", False)))
+        kf.set_integer(group, "MediaEncryption", max(0, min(2, int(account.get("media_encryption") or 0))))
+    _private_dir(os.path.dirname(path))
+    data = kf.to_data()[0]
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return group
+
+
+def _with_calls_stopped(agent, change):
+    """Runs change() while GNOME Calls is ended, then starts Calls again."""
+    if agent.active_calls():
+        raise RuntimeError("not during a call")
+    procs = processes_named("gnome-calls")
+    try:
+        stop_chatty(procs=procs, name="gnome-calls")
+        return change()
+    finally:
+        start_chatty([p for p in procs if _gone(p[0])], name="gnome-calls")
+
+
+@command("sip.list", threaded=True)
+def cmd_sip_list(agent, args):
+    return sip_accounts()
+
+
+@command("sip.save", threaded=True)
+def cmd_sip_save(agent, args):
+    """Adds or changes a SIP account; "password" only when it changes."""
+    account = dict(args["account"])
+    old = next((a for a in sip_accounts() if a["id"] == account.get("id")), None)
+
+    def change():
+        if not account.get("id"):
+            account["id"] = "%s@%s" % (account["user"].strip(), account["host"].strip())
+        write_sip_account(account)
+        if old and (old["host"], old["user"]) != (account["host"], account["user"]):
+            _sip_secret(old["host"], old["user"], clear=True)
+        if args.get("password"):
+            _sip_secret(account["host"].strip(), account["user"].strip(),
+                        (account["id"], args["password"]))
+        return account["id"]
+
+    return {"id": _with_calls_stopped(agent, change)}
+
+
+@command("sip.delete", threaded=True)
+def cmd_sip_delete(agent, args):
+    old = next((a for a in sip_accounts() if a["id"] == args["id"]), None)
+    if old is None:
+        raise RuntimeError("no such SIP account")
+
+    def change():
+        write_sip_account({"id": args["id"]}, remove=True)
+        _sip_secret(old["host"], old["user"], clear=True)
+        return True
+
+    return _with_calls_stopped(agent, change)
 
 
 # --- main ------------------------------------------------------------------

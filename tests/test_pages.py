@@ -76,6 +76,8 @@ class Pages(unittest.TestCase):
         cls.answer = Answer()
         cls.patches = [
             mock.patch.dict(os.environ, dict(cls.home.env(), PHONEBRIDGE_VOICEBOX=cls.vb,
+                                             PHONEBRIDGE_SIP_KEYFILE=os.path.join(
+                                                 cls.home.dir, "calls", "sip-account.cfg"),
                                              XDG_CACHE_HOME=os.path.join(cls.home.dir, "c"))),
             mock.patch.object(config, "CONFIG_DIR", cls.home.config),
             mock.patch.object(config, "AUTOSTART", os.path.join(cls.home.dir, "auto.desktop")),
@@ -282,6 +284,32 @@ class Pages(unittest.TestCase):
         self.wait(lambda: not self.app.voicemails("test"))
         self.assertFalse(os.path.exists(os.path.join(self.vb, "messages",
                                                      "20261007-080000.json")))
+
+
+    def test_sip_account(self):
+        page = self.win.settings
+        holder = {}
+        with mock.patch.object(Adw.Dialog, "present", lambda d, parent=None: holder.update(d=d)):
+            page.edit_sip(None)
+        editor = holder["d"]
+        self.assertFalse(editor.save.get_sensitive())        # server, user, password needed
+        editor.host.set_text("voip.example.net")
+        editor.user.set_text("me")
+        editor.password.set_text("geheim")
+        editor.name.set_text("Privat")
+        editor.protocol.set_selected(2)                       # TLS
+        self.assertTrue(editor.save.get_sensitive())
+        editor._save()
+        self.wait(lambda: page.sip_group.rows_)
+        row = page.sip_group.rows_[0]
+        self.assertEqual(row.get_title(), "Privat")
+        self.assertIn("TLS", row.get_subtitle())
+        self.wait(lambda: any(l["id"] == "sip:me@voip.example.net"
+                              for l in self.app.lines.get("test", [])))
+        self.answer.queue.append("remove")
+        page.delete_sip({"id": "me@voip.example.net", "display_name": "Privat",
+                         "user": "me", "host": "voip.example.net"})
+        self.wait(lambda: not page.sip_group.rows_)
 
 
 class Widgets(unittest.TestCase):

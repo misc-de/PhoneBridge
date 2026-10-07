@@ -27,7 +27,7 @@ TIMEOUT = 45
 TIMEOUTS = {"sms.send": 120, "pim.sources": 90, "contacts.list": 150,
             "contacts.save": 150, "contacts.delete": 150, "calendar.events": 150,
             "calendar.save": 150, "calendar.delete": 150, "voicebox.audio": 120,
-            "sms.delete_thread": 60}
+            "sms.delete_thread": 60, "sip.save": 60, "sip.delete": 60}
 # a ping this often; no answer in PING_TIMEOUT and the connection is dead
 PING_EVERY = 20
 PING_TIMEOUT = 20

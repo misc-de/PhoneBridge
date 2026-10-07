@@ -212,6 +212,18 @@ class PhoneSettingsPage(Gtk.Box):
                 group.rows.append(row)
                 rows.append(row)
             page.add(group)
+        if special == "sip":
+            self.sip_group = Adw.PreferencesGroup(
+                title=GLib.markup_escape_text(_("SIP accounts")),
+                description=GLib.markup_escape_text(_(
+                    "Internet telephony with GNOME Calls. Saving restarts Calls on the "
+                    "phone for a moment - not possible during a call.")))
+            self.sip_add = Adw.ButtonRow(title=_("Add SIP account …"),
+                                         start_icon_name="list-add-symbolic")
+            self.sip_add.connect("activated", lambda *a: self.edit_sip(None))
+            self.sip_group.add(self.sip_add)
+            self.sip_group.rows_ = []
+            page.add(self.sip_group)
         if special == "notify_apps":
             self.apps_group = Adw.PreferencesGroup(
                 title=_("Per app"),
@@ -272,6 +284,8 @@ class PhoneSettingsPage(Gtk.Box):
                 self._show(section)
 
             dev.request("gsettings.get", {"keys": keys}, done)
+        if section.get("special") == "sip":
+            self.load_sip()
         if section.get("special") == "notify_apps":
             dev.request("notifications.apps", {},
                         lambda r, e: self._got_apps(r, e, dev))
@@ -354,6 +368,66 @@ class PhoneSettingsPage(Gtk.Box):
             "path": app["path"], "value": value},
             lambda r, e: e is not None and self.app.toast(text.error(e)))
 
+    # -- SIP accounts --------------------------------------------------------------
+    def load_sip(self):
+        dev = self.dev
+        if dev is None or not dev.online:
+            return
+
+        def done(result, error):
+            if dev is not self.dev or error is not None:
+                return
+            for row in self.sip_group.rows_:
+                self.sip_group.remove(row)
+            self.sip_group.rows_ = []
+            for acc in result:
+                where = "%s@%s" % (acc["user"], acc["host"])
+                row = Adw.ActionRow(
+                    title=GLib.markup_escape_text(acc["display_name"] or where),
+                    subtitle=GLib.markup_escape_text("%s · %s" % (where, acc["protocol"])))
+                for icon_name, tip, cb in (
+                        ("document-edit-symbolic", _("Change"), self.edit_sip),
+                        ("user-trash-symbolic", _("Remove"), self.delete_sip)):
+                    b = Gtk.Button(icon_name=icon_name, valign=Gtk.Align.CENTER, tooltip_text=tip)
+                    b.add_css_class("flat")
+                    b.connect("clicked", lambda btn, f=cb, a=acc: f(a))
+                    row.add_suffix(b)
+                self.sip_group.remove(self.sip_add)
+                self.sip_group.add(row)
+                self.sip_group.add(self.sip_add)
+                self.sip_group.rows_.append(row)
+
+        dev.request("sip.list", {}, done)
+
+    def edit_sip(self, account):
+        if self.dev is not None and self.dev.online:
+            SipEditor(self, account).present(self.get_root())
+
+    def sip_changed(self):
+        self.load_sip()
+        if self.dev is not None:
+            self.app.refresh_lines(self.dev)
+
+    def delete_sip(self, account):
+        dialog = Adw.AlertDialog(
+            heading=_("Remove the SIP account %s?") % (
+                account["display_name"] or "%s@%s" % (account["user"], account["host"])),
+            body=_("It is removed from GNOME Calls on the phone, with its password. "
+                   "Calls restarts for a moment."))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("remove", _("Remove"))
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        dev = self.dev
+
+        def answered(d, response):
+            if response == "remove":
+                dev.request("sip.delete", {"id": account["id"]}, lambda r, e: (
+                    self.app.toast(_("Not removed: %s") % text.error(e)) if e is not None
+                    else self.sip_changed()))
+
+        dialog.connect("response", answered)
+        dialog.present(self.get_root())
+
     def browse(self):
         if self.dev is not None and self.dev.online:
             SettingsBrowser(self.app, self.dev).present(self.get_root())
@@ -371,6 +445,94 @@ def _groups(page):
             stack.append(c)
             c = c.get_next_sibling()
     return out
+
+
+PROTOCOLS = ("UDP", "TCP", "TLS")
+ENCRYPTION = (N_("None"), N_("When possible"), N_("Always"))
+
+
+class SipEditor(Adw.Dialog):
+    """A SIP account of GNOME Calls - the fields Calls' own dialog has."""
+
+    def __init__(self, page, account):
+        super().__init__(title=_("Change SIP account") if account else _("New SIP account"),
+                         content_width=500, content_height=620)
+        self.page = page
+        self.account = account
+        a = account or {"display_name": "", "host": "", "user": "", "protocol": "UDP",
+                        "port": 0, "auto_connect": True, "can_tel": False,
+                        "media_encryption": 0}
+        prefs = Adw.PreferencesPage()
+        main = Adw.PreferencesGroup()
+        self.name = Adw.EntryRow(title=_("Display name"), text=a["display_name"])
+        self.host = Adw.EntryRow(title=_("Server"), text=a["host"])
+        self.user = Adw.EntryRow(title=_("User"), text=a["user"])
+        self.password = Adw.PasswordEntryRow(
+            title=_("Password") if not account else _("Password (empty: unchanged)"))
+        for row in (self.name, self.host, self.user, self.password):
+            row.connect("changed", self._check)
+            main.add(row)
+        prefs.add(main)
+        more = Adw.PreferencesGroup(title=_("Connection"))
+        self.protocol = Adw.ComboRow(title=_("Transport"))
+        self.protocol.set_model(Gtk.StringList.new(list(PROTOCOLS)))
+        self.protocol.set_selected(PROTOCOLS.index(a["protocol"])
+                                   if a["protocol"] in PROTOCOLS else 0)
+        self.port = Adw.SpinRow.new_with_range(0, 65535, 1)
+        self.port.set_title(_("Port"))
+        self.port.set_subtitle(_("0: the standard port"))
+        self.port.set_value(a["port"] or 0)
+        self.auto = Adw.SwitchRow(title=_("Connect by itself"), active=a["auto_connect"])
+        self.tel = Adw.SwitchRow(title=_("Use for phone numbers"), active=a["can_tel"])
+        self.encryption = Adw.ComboRow(title=_("Encrypt calls"))
+        self.encryption.set_model(Gtk.StringList.new([_(e) for e in ENCRYPTION]))
+        self.encryption.set_selected(min(2, max(0, a["media_encryption"] or 0)))
+        for row in (self.protocol, self.port, self.auto, self.tel, self.encryption):
+            more.add(row)
+        prefs.add(more)
+
+        header = Adw.HeaderBar(show_end_title_buttons=False, show_start_title_buttons=False)
+        cancel = Gtk.Button(label=_("Cancel"))
+        cancel.connect("clicked", lambda *a: self.close())
+        self.save = Gtk.Button(label=_("Save"))
+        self.save.add_css_class("suggested-action")
+        self.save.connect("clicked", self._save)
+        header.pack_start(cancel)
+        header.pack_end(self.save)
+        view = Adw.ToolbarView(content=prefs)
+        view.add_top_bar(header)
+        self.set_child(view)
+        self._check()
+
+    def _check(self, *args):
+        ok = bool(self.host.get_text().strip() and self.user.get_text().strip()
+                  and (self.account or self.password.get_text()))
+        self.save.set_sensitive(ok)
+
+    def _save(self, *args):
+        account = {"id": (self.account or {}).get("id"),
+                   "display_name": self.name.get_text().strip(),
+                   "host": self.host.get_text().strip(), "user": self.user.get_text().strip(),
+                   "protocol": PROTOCOLS[self.protocol.get_selected()],
+                   "port": int(self.port.get_value()), "auto_connect": self.auto.get_active(),
+                   "can_tel": self.tel.get_active(),
+                   "media_encryption": self.encryption.get_selected()}
+        args = {"account": account}
+        if self.password.get_text():
+            args["password"] = self.password.get_text()
+        self.save.set_sensitive(False)
+
+        def done(result, error):
+            if error is not None:
+                self.save.set_sensitive(True)
+                alert = Adw.AlertDialog(heading=_("Not saved"), body=text.error(error))
+                alert.add_response("ok", _("OK"))
+                alert.present(self)
+                return
+            self.close()
+            self.page.sip_changed()
+
+        self.page.dev.request("sip.save", args, done)
 
 
 class SettingsBrowser(Adw.Dialog):

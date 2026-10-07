@@ -39,6 +39,8 @@ TRANSLATIONS = {
         '%d.%m.%Y, %H:%M',
     '(no title)':
         '(ohne Titel)',
+    '0: the standard port':
+        '0: Standard-Port',
     '1 day before':
         '1 Tag vorher',
     '1 hour before':
@@ -67,6 +69,8 @@ TRANSLATIONS = {
         'Nummer hinzufügen',
     'Add phone':
         'Phone hinzufügen',
+    'Add SIP account …':
+        'SIP-Konto hinzufügen …',
     'Add to contacts':
         'Zu den Kontakten hinzufügen',
     'Address (IP or host name)':
@@ -187,6 +191,8 @@ TRANSLATIONS = {
         'Ändern',
     'Change phone':
         'Phone ändern',
+    'Change SIP account':
+        'SIP-Konto ändern',
     'charging':
         'lädt',
     'Chat accounts':
@@ -211,6 +217,8 @@ TRANSLATIONS = {
         'Schließen',
     'Company':
         'Firma',
+    'Connect by itself':
+        'Automatisch verbinden',
     'Connect now':
         'Jetzt verbinden',
     'Connected':
@@ -275,6 +283,8 @@ TRANSLATIONS = {
         'Wählen',
     'Dim the screen first':
         'Bildschirm vorher abdunkeln',
+    'Display name':
+        'Anzeigename',
     "During a call, “Sound on the PC” in the call bar puts the caller on the PC's speakers and the PC's microphone on the line; the phone's microphone is muted meanwhile.":
         'Während eines Anrufs legt „Ton am PC“ in der Anrufleiste den Anrufer auf die Lautsprecher des PCs und das Mikrofon des PCs in die Leitung; das Mikrofon des Phones ist so lange stumm.',
     'Echo cancellation':
@@ -295,6 +305,8 @@ TRANSLATIONS = {
         'leer',
     'Empty the trash by itself':
         'Papierkorb automatisch leeren',
+    'Encrypt calls':
+        'Gespräche verschlüsseln',
     'Ends':
         'Ende',
     'Enlarge the key pressed':
@@ -341,6 +353,8 @@ TRANSLATIONS = {
         'Handschuh-Modus',
     'GNOME settings of %s':
         'GNOME-Einstellungen von %s',
+    'gnome-calls did not stop':
+        'GNOME Calls ließ sich nicht beenden',
     'Green':
         'Grün',
     'Hang up':
@@ -367,8 +381,12 @@ TRANSLATIONS = {
         'Eingabe',
     'Internet calls (SIP)':
         'Internet-Anrufe (SIP)',
+    'Internet telephony with GNOME Calls. Saving restarts Calls on the phone for a moment - not possible during a call.':
+        'Internet-Telefonie mit GNOME Calls. Beim Speichern startet Calls auf dem Phone kurz neu – während eines Anrufs nicht möglich.',
     'It is deleted on the phone as well.':
         'Sie wird auch auf dem Phone gelöscht.',
+    'It is removed from GNOME Calls on the phone, with its password. Calls restarts for a moment.':
+        'Es wird samt Passwort aus GNOME Calls auf dem Phone entfernt. Calls startet dafür kurz neu.',
     'It is removed from the keyring. Without a working SSH key, PhoneBridge then asks for it again.':
         'Es wird aus dem Schlüsselbund gelöscht. Ohne funktionierenden SSH-Schlüssel fragt PhoneBridge dann erneut danach.',
     'It is removed from the phone and from the account the calendar syncs with.':
@@ -471,6 +489,8 @@ TRANSLATIONS = {
         'Neue Nachricht',
     'New message …':
         'Neue Nachricht …',
+    'New SIP account':
+        'Neues SIP-Konto',
     'Night light':
         'Nachtlicht',
     'No address book can be changed':
@@ -513,8 +533,12 @@ TRANSLATIONS = {
         'nicht verbunden',
     'Not deleted: %s':
         'Nicht gelöscht: %s',
+    'not during a call':
+        'nicht während eines Anrufs',
     'Not possible right now: %s':
         'Derzeit nicht möglich: %s',
+    'Not removed: %s':
+        'Nicht entfernt: %s',
     'Not saved':
         'Nicht gespeichert',
     'not sent':
@@ -579,6 +603,8 @@ TRANSLATIONS = {
         'Übersicht',
     'Password':
         'Passwort',
+    'Password (empty: unchanged)':
+        'Passwort (leer: unverändert)',
     'Per app':
         'Pro App',
     'Performance':
@@ -609,6 +635,8 @@ TRANSLATIONS = {
         'Ort: %s',
     'Play a sound':
         'Ton abspielen',
+    'Port':
+        'Port',
     'Power':
         'Energie',
     'Power profile':
@@ -661,6 +689,8 @@ TRANSLATIONS = {
         'Passwort aus dem Schlüsselbund entfernen',
     'Remove the password of %s?':
         'Passwort von %s entfernen?',
+    'Remove the SIP account %s?':
+        'SIP-Konto %s entfernen?',
     'Remove tracking from links':
         'Tracking aus Links entfernen',
     'Repeats':
@@ -705,6 +735,10 @@ TRANSLATIONS = {
         'Lesebestätigungen senden',
     'September':
         'September',
+    'Server':
+        'Server',
+    'server and user are needed':
+        'Server und Benutzer fehlen',
     'Set up a phone …':
         'Phone einrichten …',
     'Settings':
@@ -729,6 +763,8 @@ TRANSLATIONS = {
         'Einen klingelnden Anruf mit den Lautstärketasten stummschalten',
     'Silent':
         'Lautlos',
+    'SIP accounts':
+        'SIP-Konten',
     'SIP: allow the unsafe key exchange (SDES)':
         'SIP: unsicheren Schlüsselaustausch erlauben (SDES)',
     'Slate':
@@ -835,6 +871,8 @@ TRANSLATIONS = {
         'Morgen',
     'Top bar':
         'Obere Leiste',
+    'Transport':
+        'Übertragung',
     'Tuesday':
         'Dienstag',
     'Turn :-) into emoji':
@@ -857,6 +895,8 @@ TRANSLATIONS = {
         'Als dringend gilt',
     'USB protection':
         'USB-Schutz',
+    'Use for phone numbers':
+        'Für Telefonnummern verwenden',
     'User':
         'Benutzer',
     'value out of range':
@@ -887,6 +927,8 @@ TRANSLATIONS = {
         'Woche',
     'Weekday in the clock':
         'Wochentag in der Uhr',
+    'When possible':
+        'Wenn möglich',
     'Where do you want to talk?':
         'Wo möchtest du telefonieren?',
     'While locked':

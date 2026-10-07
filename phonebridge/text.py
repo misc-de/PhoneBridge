@@ -26,7 +26,9 @@ ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("this SIM card is not in the phone"), N_("no such SIP account"),
           N_("unknown line"), N_("login refused"), N_("timeout"),
           N_("PipeWire is not running on the phone"),
-          N_("the phone has no call audio nodes (droid-call-sink/-source)"))
+          N_("the phone has no call audio nodes (droid-call-sink/-source)"),
+          N_("not during a call"), N_("server and user are needed"),
+          N_("gnome-calls did not stop"))
 DEVICE_STATES = {"online": N_("Connected"), "connecting": N_("Connecting …"),
                  "offline": N_("Not connected")}
 
