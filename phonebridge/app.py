@@ -897,7 +897,24 @@ def quit_running():
     return 0
 
 
+def enable_stack_dumps():
+    """kill -USR1 <pid> writes every thread's Python stack to
+    ~/.cache/phonebridge/stacks.txt - to see what a running instance does."""
+    import faulthandler
+    import signal
+    d = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                     "phonebridge")
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        f = open(os.path.join(d, "stacks.txt"), "a", encoding="utf-8")
+        faulthandler.register(signal.SIGUSR1, file=f, all_threads=True)
+        return f
+    except (OSError, AttributeError, ValueError):
+        return None
+
+
 def main():
     if "--quit" in sys.argv[1:]:
         return quit_running()
+    _dumps = enable_stack_dumps()  # noqa: F841 - kept open for the handler
     return PhoneBridgeApp().run(sys.argv)

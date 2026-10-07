@@ -85,6 +85,16 @@ MENU_XML = """
 </node>"""
 
 
+def pixmap_variant(pixmaps):
+    """a(iiay) of the icon's sizes, the bytes handed over as they are -
+    GLib.Variant("ay", ...) would go through them one by one in Python."""
+    items = [GLib.Variant.new_tuple(
+        GLib.Variant("i", w), GLib.Variant("i", h),
+        GLib.Variant.new_from_bytes(GLib.VariantType("ay"), GLib.Bytes.new(data), True))
+        for w, h, data in pixmaps]
+    return GLib.Variant.new_array(GLib.VariantType("(iiay)"), items)
+
+
 def item_props(item):
     """dbusmenu properties of one menu item."""
     if item.get("type") == "separator":
@@ -140,8 +150,9 @@ class Tray:
 
     # -- what the app sets ------------------------------------------------
     def set_icon(self, pixmaps):
-        if pixmaps != self.pixmaps:
+        if pixmaps is not self.pixmaps and pixmaps != self.pixmaps:
             self.pixmaps = pixmaps
+            self._pixmap_variant = pixmap_variant(pixmaps)
             self._signal(ITEM_PATH, "org.kde.StatusNotifierItem", "NewIcon")
 
     def set_tooltip(self, title, text):
@@ -183,22 +194,19 @@ class Tray:
                   None, Gio.DBusCallFlags.NONE, 5000, None, done)
 
     def _item_prop(self, conn, sender, path, iface, prop):
-        values = {
-            "Category": GLib.Variant("s", "Hardware"),
-            "Id": GLib.Variant("s", "phonebridge"),
-            "Title": GLib.Variant("s", self.title),
-            "Status": GLib.Variant("s", "Active"),
-            "WindowId": GLib.Variant("i", 0),
-            "IconName": GLib.Variant("s", "" if self.pixmaps else "phone"),
-            "IconPixmap": GLib.Variant("a(iiay)", self.pixmaps),
-            "OverlayIconName": GLib.Variant("s", ""),
-            "AttentionIconName": GLib.Variant("s", ""),
-            "ToolTip": GLib.Variant("(sa(iiay)ss)",
-                                    ("", [], self.tooltip[0], self.tooltip[1])),
-            "ItemIsMenu": GLib.Variant("b", False),
-            "Menu": GLib.Variant("o", MENU_PATH),
-        }
-        return values.get(prop)
+        # only what is asked for: the panel asks often (every tooltip change)
+        if prop == "IconPixmap":
+            return getattr(self, "_pixmap_variant", None) or pixmap_variant([])
+        if prop == "ToolTip":
+            return GLib.Variant("(sa(iiay)ss)", ("", [], self.tooltip[0], self.tooltip[1]))
+        simple = {
+            "Category": ("s", "Hardware"), "Id": ("s", "phonebridge"),
+            "Title": ("s", self.title), "Status": ("s", "Active"), "WindowId": ("i", 0),
+            "IconName": ("s", "" if self.pixmaps else "phone"),
+            "OverlayIconName": ("s", ""), "AttentionIconName": ("s", ""),
+            "ItemIsMenu": ("b", False), "Menu": ("o", MENU_PATH),
+        }.get(prop)
+        return GLib.Variant(*simple) if simple else None
 
     def _item_call(self, conn, sender, path, iface, method, params, invocation):
         if method == "Activate":
