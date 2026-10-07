@@ -134,3 +134,19 @@ def make_addressbook(root, cards):
         db.execute("INSERT INTO folder_id VALUES (?, 0, ?)", ("c%d" % n, card))
     db.commit()
     db.close()
+
+
+def make_cache_book(root, account, cards, deleted=()):
+    """A synced address book: <root>/<account>/cache.db with ECacheObjects."""
+    import sqlite3 as sq
+    d = os.path.join(root, account)
+    os.makedirs(d, exist_ok=True)
+    db = sq.connect(os.path.join(d, "cache.db"))
+    db.execute("CREATE TABLE ECacheObjects (ECacheUID TEXT, ECacheOBJ TEXT,"
+               " ECacheState INTEGER, is_list INTEGER)")
+    for n, card in enumerate(cards):
+        db.execute("INSERT INTO ECacheObjects VALUES (?, ?, ?, 0)",
+                   ("c%d" % n, card, 3 if n in deleted else 0))
+    db.commit()
+    db.close()
+    return d

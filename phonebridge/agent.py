@@ -57,9 +57,12 @@ CHATTY_DB = os.environ.get(
 DATA_DIR = os.environ.get(
     "PHONEBRIDGE_DATA", os.path.join(HOME, ".local/share/phonebridge"))
 SENT_LOG = os.path.join(DATA_DIR, "sent.jsonl")
+# Local address books keep contacts.db; synced ones (CardDAV, Google,
+# Nextcloud ...) keep a cache.db with the vCards in ECacheObjects.
 ADDRESSBOOKS = os.environ.get(
     "PHONEBRIDGE_ADDRESSBOOKS",
-    os.path.join(HOME, ".local/share/evolution/addressbook"))
+    os.pathsep.join((os.path.join(HOME, ".local/share/evolution/addressbook"),
+                     os.path.join(HOME, ".cache/evolution/addressbook"))))
 # where chatty keeps the files its store names by relative path
 CHATTY_FILES = [os.path.join(HOME, d) for d in
                 (".cache/chatty", ".local/share/chatty", ".purple/chatty")]
@@ -228,13 +231,17 @@ class Book:
     """Contacts with a phone number, by normalized number; read again when
     an address book changes."""
 
-    def __init__(self, root=None):
-        self.root = root or ADDRESSBOOKS
+    def __init__(self, roots=None):
+        self.roots = (roots or ADDRESSBOOKS).split(os.pathsep)
         self._stamp = None
         self._by_number = {}
 
     def _databases(self):
-        return sorted(glob.glob(os.path.join(self.root, "*", "contacts.db")))
+        found = []
+        for root in self.roots:
+            for name in ("contacts.db", "cache.db"):
+                found += glob.glob(os.path.join(root, "*", name))
+        return sorted(p for p in found if os.path.getsize(p) > 0)
 
     def _current_stamp(self):
         out = []
@@ -256,23 +263,39 @@ class Book:
                 self._read(db)
         return self._by_number.get(normalize(number, country))
 
+    def _vcards(self, db):
+        tables = {r[0] for r in db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "ECacheObjects" in tables:
+            # ECacheState 3: deleted here, not yet on the server
+            yield from db.execute(
+                "SELECT ECacheOBJ FROM ECacheObjects"
+                " WHERE ECacheState IS NOT 3 AND is_list IS NOT 1")
+        if "folders" in tables:
+            for (table,) in db.execute("SELECT folder_id FROM folders"):
+                cols = {r[1] for r in db.execute('PRAGMA table_info("%s")' % table)}
+                if "vcard" in cols:
+                    where = " WHERE is_list IS NOT 1" if "is_list" in cols else ""
+                    yield from db.execute('SELECT vcard FROM "%s"%s' % (table, where))
+
     def _read(self, path):
         try:
             db = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=2)
         except sqlite3.Error:
             return
         try:
-            for (table,) in db.execute("SELECT folder_id FROM folders"):
-                cols = {r[1] for r in db.execute('PRAGMA table_info("%s")' % table)}
-                if "vcard" not in cols:
-                    continue
-                where = " WHERE is_list IS NOT 1" if "is_list" in cols else ""
-                for (vcard,) in db.execute('SELECT vcard FROM "%s"%s' % (table, where)):
-                    if isinstance(vcard, bytes):
-                        vcard = vcard.decode("utf-8", "replace")
-                    name, numbers, photo = parse_vcard(vcard or "")
-                    for n in numbers:
-                        self._by_number.setdefault(normalize(n), (name, photo))
+            for (vcard,) in self._vcards(db):
+                if isinstance(vcard, bytes):
+                    vcard = vcard.decode("utf-8", "replace")
+                name, numbers, photo = parse_vcard(vcard or "")
+                if photo and photo[0] == "file" and not os.path.isfile(photo[1]):
+                    photo = None
+                for n in numbers:
+                    known = self._by_number.get(normalize(n))
+                    # the same person in two books: keep the one with a picture
+                    if known is None or (known[1] is None and photo is not None):
+                        self._by_number[normalize(n)] = (name or (known or ("",))[0],
+                                                         photo)
         except sqlite3.Error:
             pass
         finally:
@@ -351,7 +374,9 @@ def _person(name, title, unnamed, avatar_path, book, country):
     """(title, avatar key): chatty's name, else the contact's; chatty's
     picture, else the contact's."""
     contact = book.lookup(name, country) if book is not None else None
-    if unnamed and contact and contact[0]:
+    # chatty sometimes keeps the number itself as the alias - no name either
+    if contact and contact[0] and (unnamed or normalize(title, country)
+                                   == normalize(name, country)):
         title = contact[0]
     picture = None
     path = chatty_file(avatar_path)
@@ -459,7 +484,7 @@ def new_incoming(after_id, store=None, book=BOOK):
         for r in rows:
             title = r["title"]
             contact = book.lookup(r["name"]) if book is not None else None
-            if title == r["name"] and contact and contact[0]:
+            if contact and contact[0] and normalize(title) == normalize(r["name"]):
                 title = contact[0]
             out.append({"id": r["id"], "thread": r["name"], "title": title,
                         "body": r["body"], "time": r["time"]})

@@ -11,7 +11,8 @@ from unittest import mock
 from phonebridge import agent
 from phonebridge.connection import Device
 
-from .support import ANNA, BERND, GROUP, PNG, Home, make_addressbook, run_loop_until
+from .support import (ANNA, BERND, GROUP, PNG, Home, make_addressbook, make_cache_book,
+                      run_loop_until)
 
 B64 = base64.b64encode(PNG).decode()
 CARDS = [
@@ -63,6 +64,14 @@ class Pictures(unittest.TestCase):
         self.assertEqual(agent.AVATARS[t[ANNA]["avatar"]], ("data", PNG))
         self.assertIsNone(t[GROUP]["avatar"])
 
+    def test_number_as_alias_is_no_name(self):
+        tid = self.home.store.threads[ANNA]
+        self.home.store.db.execute("UPDATE users SET alias = ? WHERE id = ?",
+                                   ("+49 155 50000001", self.home.store.users[ANNA]))
+        self.home.store.db.commit()
+        self.assertTrue(tid)
+        self.assertEqual(self.threads()[ANNA]["title"], "Anna Beispiel")
+
     def test_same_picture_same_key(self):
         t = self.threads()
         self.assertEqual(t[ANNA]["avatar"], t[BERND]["avatar"])
@@ -75,6 +84,34 @@ class Pictures(unittest.TestCase):
         key = self.threads()[ANNA]["avatar"]
         self.assertEqual(agent.AVATARS[key], ("file", path))
         self.assertEqual(agent.picture_bytes(agent.AVATARS[key]), PNG + b"\0")
+
+    def test_synced_book_with_photo_files(self):
+        cache = os.path.join(self.home.dir, "cache-books")
+        d = os.path.join(cache, "acc1")
+        os.makedirs(d)
+        photo = os.path.join(d, "PHOTO-abc-1.image%2Fjpeg")
+        with open(photo, "wb") as f:
+            f.write(PNG)
+        uri = "file://" + photo.replace("%", "%25")
+        make_cache_book(cache, "acc1", [
+            "BEGIN:VCARD\nFN:Carla Sync\nTEL:+4915550000003\n"
+            "PHOTO;VALUE=uri:" + uri + "\nEND:VCARD",
+            "BEGIN:VCARD\nFN:Gelöscht\nTEL:+4915550000004\nEND:VCARD",
+            "BEGIN:VCARD\nFN:Ohne Datei\nTEL:+4915550000005\n"
+            "PHOTO;VALUE=uri:file:///nirgends.png\nEND:VCARD",
+        ], deleted=(1,))
+        book = agent.Book(os.pathsep.join((self.home.books, cache)))
+        self.assertEqual(book.lookup("015550000003"), ("Carla Sync", ("file", photo)))
+        self.assertIsNone(book.lookup("+4915550000004"))
+        self.assertEqual(book.lookup("+4915550000005"), ("Ohne Datei", None))
+        self.assertEqual(book.lookup(ANNA)[0], "Anna Beispiel")   # both kinds read
+
+    def test_picture_wins_across_books(self):
+        cache = os.path.join(self.home.dir, "cache-books")
+        make_cache_book(cache, "acc", [
+            "BEGIN:VCARD\nFN:Anna ohne Bild\nTEL:+4915550000001\nEND:VCARD"])
+        book = agent.Book(os.pathsep.join((cache, self.home.books)))
+        self.assertEqual(book.lookup(ANNA)[1], ("data", PNG))
 
     def test_no_book(self):
         t = {x["thread"]: x for x in agent.list_threads(
