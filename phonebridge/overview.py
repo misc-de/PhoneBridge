@@ -159,6 +159,11 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.update()
         self.load()
 
+    def take_calls(self, calls):
+        """The call history the phone page has just loaded - the newest first."""
+        self.calls = calls
+        self.show_calls()
+
     def update(self):
         dev = self.dev
         status = dev.status if dev is not None and dev.online else None
@@ -187,6 +192,8 @@ class OverviewPage(Gtk.ScrolledWindow):
             return
         if self._loaded_for is dev and not force and time.time() - self._stamp < 60:
             return
+        if dev is not self._loaded_for:
+            self._stamp = 0
         self._loaded_for = dev
         self._stamp = time.time()
         self._serial += 1

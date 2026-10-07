@@ -145,7 +145,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def device_changed(self, dev):
         if dev is self.app.active_device():
-            self.overview.update()
+            # the overview loads what it shows as well - a phone coming online
+            # after the window was built (the first connection) must fill it
+            self.overview.device_changed()
             for page in self.pages[1:]:
                 page.device_changed()
             self._update_banner(dev)

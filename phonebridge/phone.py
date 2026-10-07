@@ -252,6 +252,9 @@ class PhonePage(Gtk.Box):
     def _fill(self, calls):
         self.calls = calls
         self._refill()
+        root = self.get_root()
+        if calls and root is not None and hasattr(root, "overview"):
+            root.overview.take_calls(calls)     # the overview follows at once
 
     def entries(self):
         """The calls, with VoiceBox's messages in their places: on the call

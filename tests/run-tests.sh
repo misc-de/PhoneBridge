@@ -25,6 +25,10 @@ export PHONEBRIDGE_KEYRING=memory
 # caches (pictures for notifications, voice messages) never in yours
 export XDG_CACHE_HOME="${TMPDIR:-/tmp}/phonebridge-test-cache-$(id -u)"
 rm -rf "$XDG_CACHE_HOME"
+# and never your settings: the config (and autostart entry) live in the test
+# cache from the start - not only where a test redirects them
+export XDG_CONFIG_HOME="$XDG_CACHE_HOME/config"
+export PHONEBRIDGE_CONFIG="$XDG_CONFIG_HOME/phonebridge"
 # and never your ~/.ssh: neither the PC's keys nor authorized_keys (the
 # agent runs here in the tests)
 export PHONEBRIDGE_SSH_DIR="$XDG_CACHE_HOME/ssh"

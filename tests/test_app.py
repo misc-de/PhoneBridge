@@ -205,3 +205,34 @@ class App(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAVE_DISPLAY and Gtk.init_check(), "no display")
+class FirstConnection(unittest.TestCase):
+    """The window is there before the phone is online - as after setting a
+    phone up: the overview must fill by itself, without switching pages."""
+
+    def test_overview_fills_when_the_phone_comes(self):
+        from phonebridge.app import PhoneBridgeApp
+        from phonebridge.window import MainWindow
+        home = Home()
+        self.addCleanup(home.cleanup)
+        home.store.add(ANNA, "Hallo", member_alias="Anna")
+        for p in (mock.patch.dict(os.environ, home.env()),
+                  mock.patch.object(config, "CONFIG_DIR", home.config),
+                  mock.patch.object(Gtk.Widget, "get_mapped", lambda self: True)):
+            p.start()
+            self.addCleanup(p.stop)
+        config.save(dict(config.DEFAULTS, language="en"))
+        app = PhoneBridgeApp()
+        app.set_application_id("io.github.miscde.PhoneBridge.TestFirst")
+        app.send_notification = lambda *a: None
+        app.register(None)
+        app.window = win = MainWindow(app)           # built with no phone at all
+        self.addCleanup(lambda: (win.destroy(), app.do_shutdown()))
+        app.set_devices([{"id": "test", "name": "Test", "host": "phone", "user": "me"}])
+        dev = app.devices["test"]
+        self.assertTrue(run_loop_until(lambda: dev.online, 15))
+        rows = lambda card: card.list.get_row_at_index(0) is not None  # noqa: E731
+        self.assertTrue(run_loop_until(lambda: rows(win.overview.messages_card), 10))
+        self.assertTrue(run_loop_until(lambda: win.overview._loaded_for is dev, 10))

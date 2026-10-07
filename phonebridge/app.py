@@ -60,6 +60,7 @@ class PhoneBridgeApp(Adw.Application):
         self.calls = {}
         self.voicebox = {}
         self.pc_audio = {}
+        self._ending = False
         self._sms_notes = {}
         self._battery = {}          # device id -> what was last told about the battery        # (device id, thread) -> notification ids shown
         self._save_password = {}    # device id -> password to keep once it worked
@@ -138,6 +139,7 @@ class PhoneBridgeApp(Adw.Application):
         return 0
 
     def do_shutdown(self):
+        self._ending = True
         for dev_id, audio in list(self.pc_audio.items()):
             self.pc_audio.pop(dev_id, None)
             if audio is not PENDING:
@@ -212,7 +214,8 @@ class PhoneBridgeApp(Adw.Application):
         from . import secrets
 
         def found(password):
-            if self.devices.get(dev.id) is dev:
+            # the answer may come after the app ended or the phone went
+            if self.devices.get(dev.id) is dev and not self._ending:
                 dev.password = password
                 dev.start()
 

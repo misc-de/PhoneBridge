@@ -308,3 +308,20 @@ class Battery(unittest.TestCase):
 
     def test_low_when_met(self):
         self.assertEqual(self.run_states([(2, "discharging")]), ["low"])
+
+
+class Ending(unittest.TestCase):
+    def test_no_connection_after_the_app_ended(self):
+        """The keyring answers after the app has ended: no connection may
+        start then - one did, in a later test, and wrote the user's config."""
+        from phonebridge import app as app_mod, secrets
+        a = app_mod.PhoneBridgeApp.__new__(app_mod.PhoneBridgeApp)
+        dev = mock.Mock(id="t", info={"host": "h", "user": "u"})
+        a.devices = {"t": dev}
+        a._ending = False
+        answers = []
+        with mock.patch.object(secrets, "lookup", lambda info, cb: answers.append(cb)):
+            app_mod.PhoneBridgeApp._start_with_keyring(a, dev)
+        a._ending = True                     # the app ends before the answer
+        answers[0]("secret")
+        dev.start.assert_not_called()
