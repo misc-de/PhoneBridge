@@ -2,7 +2,7 @@
 # Stand-in for nmcli: reads only, changes nothing.
 case "$*" in
     "-t -f WIFI general") echo enabled ;;
-    *"device wifi list"*) echo "no:40:Neighbour"; echo "yes:57:Testnetz" ;;
+    *"device wifi list"*) echo "no:40:Neighbour"; echo "yes:57:Testnet" ;;
     "radio wifi"*) echo "nmcli $*" >> "${FAKE_LOG:-/dev/null}" ;;
     *) exit 1 ;;
 esac

@@ -20,8 +20,8 @@ from .support import PNG, Home, run_loop_until
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
-CARD = ("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:abc-1\r\nFN:Anna Beispiel\r\n"
-        "N:Beispiel;Anna;;;\r\nTEL;TYPE=CELL:+49 155 50000001\r\n"
+CARD = ("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:abc-1\r\nFN:Anna Example\r\n"
+        "N:Example;Anna;;;\r\nTEL;TYPE=CELL:+49 155 50000001\r\n"
         "TEL;TYPE=WORK,VOICE:030 1234\r\nEMAIL;TYPE=INTERNET:anna@example.org\r\n"
         "ADR;TYPE=HOME:;;Weg 1;Stadt;;12345;\r\nBDAY:1990-12-24\r\n"
         "NOTE:Zeile 1\\nZeile 2\r\nX-EVOLUTION-WEBDAV-ETAG:\"etag-7\"\r\n"
@@ -40,7 +40,7 @@ class VCards(unittest.TestCase):
     def test_read(self):
         c = agent.contact_from_vcard(CARD)
         self.assertEqual((c["uid"], c["name"], c["given"], c["family"]),
-                         ("abc-1", "Anna Beispiel", "Anna", "Beispiel"))
+                         ("abc-1", "Anna Example", "Anna", "Example"))
         self.assertEqual(c["phones"], [{"type": "mobile", "value": "+49 155 50000001"},
                                        {"type": "work", "value": "030 1234"}])
         self.assertEqual(c["emails"], ["anna@example.org"])
@@ -57,8 +57,8 @@ class VCards(unittest.TestCase):
         self.assertIn("UID:abc-1", out)
         self.assertIn('X-EVOLUTION-WEBDAV-ETAG:"etag-7"', out)
         self.assertIn("ADR;TYPE=HOME:;;Weg 1;Stadt;;12345;", out)
-        self.assertIn("FN:Anna-Lena Beispiel", out)
-        self.assertIn("N:Beispiel;Anna-Lena;;;", out)
+        self.assertIn("FN:Anna-Lena Example", out)
+        self.assertIn("N:Example;Anna-Lena;;;", out)
         self.assertIn("TEL;TYPE=HOME,VOICE:040 999", out)
         self.assertNotIn("030 1234", out)
         self.assertIn("NOTE:a\\;b\\,c", out)
@@ -76,11 +76,11 @@ class VCards(unittest.TestCase):
             self.assertLessEqual(len(line.encode()), 75, line[:30])
 
     def test_new_contact(self):
-        out = agent.vcard_from_contact({"given": "", "family": "", "org": "Firma GmbH",
+        out = agent.vcard_from_contact({"given": "", "family": "", "org": "Example Ltd",
                                         "phones": [{"type": "mobile", "value": "0155"}]})
         self.assertTrue(out.startswith("BEGIN:VCARD\r\nVERSION:3.0\r\n"))
-        self.assertIn("FN:Firma GmbH", out)
-        self.assertIn("ORG:Firma GmbH", out)
+        self.assertIn("FN:Example Ltd", out)
+        self.assertIn("ORG:Example Ltd", out)
         self.assertNotIn("UID", out)
 
 
@@ -133,13 +133,13 @@ class Events(unittest.TestCase):
     def test_expand_series_override_cancelled(self):
         series = vevent("UID:s1", "SUMMARY:Sport", "DTSTART;TZID=Europe/Berlin:20261005T180000",
                         "DTEND;TZID=Europe/Berlin:20261005T190000", "RRULE:FREQ=WEEKLY")
-        moved = vevent("UID:s1", "SUMMARY:Sport (später)",
+        moved = vevent("UID:s1", "SUMMARY:Sport (later)",
                        "RECURRENCE-ID;TZID=Europe/Berlin:20261012T180000",
                        "DTSTART;TZID=Europe/Berlin:20261012T200000",
                        "DTEND;TZID=Europe/Berlin:20261012T210000")
         gone = vevent("UID:c1", "SUMMARY:Abgesagt", "STATUS:CANCELLED",
                       "DTSTART:20261010T100000Z", "DTEND:20261010T110000Z")
-        allday = vevent("UID:a1", "SUMMARY:Urlaub", "DTSTART;VALUE=DATE:20261030",
+        allday = vevent("UID:a1", "SUMMARY:Holiday", "DTSTART;VALUE=DATE:20261030",
                         "DTEND;VALUE=DATE:20261103")
         got = agent.expand_events([series + moved, gone, allday], *self.RANGE)
         sport = sorted((s for ev, s, e, rid in got if ev["uid"] == "s1"),
@@ -158,7 +158,7 @@ class Events(unittest.TestCase):
 
     def test_new_event_in_local_zone(self):
         with mock.patch.object(agent, "local_zone_name", return_value="Europe/Berlin"):
-            text = agent.vevent_from_fields({"summary": "Arzt", "location": "Praxis",
+            text = agent.vevent_from_fields({"summary": "Doctor", "location": "Practice",
                                              "allday": False,
                                              "start": epoch(2026, 10, 7, 9),
                                              "end": epoch(2026, 10, 7, 10), "alarm": 30})
@@ -200,7 +200,7 @@ class Events(unittest.TestCase):
         self.assertIn("-PT60M", hour)
 
     def test_allday(self):
-        text = agent.vevent_from_fields({"summary": "Urlaub", "allday": True,
+        text = agent.vevent_from_fields({"summary": "Holiday", "allday": True,
                                          "start": "2026-10-30", "end": "2026-11-03",
                                          "alarm": None})
         self.assertIn("DTSTART;VALUE=DATE:20261030", text)
@@ -273,19 +273,19 @@ class OverEDS(unittest.TestCase):
     def test_contact_add_change_delete(self):
         from .fake_eds import BOOK_UID
         uid = self.ask("contacts.save", {"source": BOOK_UID, "contact": {
-            "given": "Carla", "family": "Neu", "org": "", "note": "",
+            "given": "Carla", "family": "Newman", "org": "", "note": "",
             "phones": [{"type": "mobile", "value": "0155 50000003"}], "emails": [],
             "birthday": "1985-05-01"},
             "photo": {"mime": "image/png", "data": base64.b64encode(PNG).decode()}})["uid"]
         contacts = self.ask("contacts.list")
-        self.assertEqual([(c["name"], c["uid"]) for c in contacts], [("Carla Neu", uid)])
+        self.assertEqual([(c["name"], c["uid"]) for c in contacts], [("Carla Newman", uid)])
         self.assertIsNotNone(contacts[0]["avatar"])
         self.assertEqual(contacts[0]["birthday"], "1985-05-01")
 
         self.ask("contacts.save", {"source": BOOK_UID, "uid": uid, "contact": dict(
             contacts[0], given="Carla Maria"), "photo": None})
         changed = self.ask("contacts.list")[0]
-        self.assertEqual(changed["name"], "Carla Maria Neu")
+        self.assertEqual(changed["name"], "Carla Maria Newman")
         self.assertIsNone(changed["avatar"])
         self.assertIn("UID:" + uid, self.eds.contacts[uid])
 
@@ -296,7 +296,7 @@ class OverEDS(unittest.TestCase):
         from .fake_eds import CAL_UID
         start = int(time.time()) // 3600 * 3600 + 86400
         uid = self.ask("calendar.save", {"source": CAL_UID, "event": {
-            "summary": "Sport", "location": "Halle", "description": "", "allday": False,
+            "summary": "Sport", "location": "Gym", "description": "", "allday": False,
             "start": start, "end": start + 3600, "alarm": 15}})["uid"]
         self.eds.events[uid] = self.eds.events[uid].replace(
             "END:VEVENT", "RRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT")

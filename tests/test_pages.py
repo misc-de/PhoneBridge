@@ -65,7 +65,7 @@ class Pages(unittest.TestCase):
         cls.addClassCleanup(cls.eds.close)       # also when setting up fails
         cls.home = Home()
         cls.addClassCleanup(cls.home.cleanup)
-        cls.home.store.add(ANNA, "Hallo", member_alias="Anna")
+        cls.home.store.add(ANNA, "Hello", member_alias="Anna")
         cls.vb = os.path.join(cls.home.dir, "voicebox")
         os.makedirs(os.path.join(cls.vb, "messages"))
         with open(os.path.join(cls.vb, "messages", "20261007-080000.json"), "w") as f:
@@ -128,7 +128,7 @@ class Pages(unittest.TestCase):
         editor = editor_holder["d"]
         self.assertFalse(editor.save.get_sensitive())        # a name is needed
         editor.given.set_text("Carla")
-        editor.family.set_text("Neu")
+        editor.family.set_text("Newman")
         editor.birthday.set_text("1.5.1985")
         self.assertTrue(editor.save.get_sensitive())
         editor.birthday.set_text("nonsense")
@@ -137,8 +137,8 @@ class Pages(unittest.TestCase):
         editor.emails.add("carla@example.org", None)
         editor._save()
         self.wait(lambda: any("Carla" in v for v in self.eds.contacts.values()))
-        self.wait(lambda: any(c["name"] == "Carla Neu" for c in page.contacts))
-        carla = next(c for c in page.contacts if c["name"] == "Carla Neu")
+        self.wait(lambda: any(c["name"] == "Carla Newman" for c in page.contacts))
+        carla = next(c for c in page.contacts if c["name"] == "Carla Newman")
         self.assertEqual(carla["birthday"], "1985-05-01")
         self.assertEqual(carla["phones"][0]["value"], "0155 50000003")
         self.assertIs(page.find_number("+4915550000003"), carla)
@@ -150,13 +150,13 @@ class Pages(unittest.TestCase):
         with mock.patch.object(Adw.Dialog, "present", capture):
             page.edit(carla)
         editor = editor_holder["d"]
-        editor.org.set_text("Firma")
+        editor.org.set_text("Work")
         editor._drop_photo()
         editor._save()
-        self.wait(lambda: any(c.get("org") == "Firma" for c in page.contacts))
+        self.wait(lambda: any(c.get("org") == "Work" for c in page.contacts))
 
         self.answer.queue.append("delete")
-        page.delete(next(c for c in page.contacts if c["org"] == "Firma"))
+        page.delete(next(c for c in page.contacts if c["org"] == "Work"))
         self.wait(lambda: not self.eds.contacts)
         self.wait(lambda: not page.contacts)
         Adw.Dialog.present = orig
@@ -172,7 +172,7 @@ class Pages(unittest.TestCase):
             page.edit(None)
         editor = holder["d"]
         self.assertFalse(editor.save.get_sensitive())        # a title is needed
-        editor.summary.set_text("Zahnarzt")
+        editor.summary.set_text("Dentist")
         tomorrow = dt.date.today() + dt.timedelta(days=1)
         editor.start_date.set_date(tomorrow)
         editor.start_time.set_time(10, 0)
@@ -183,15 +183,15 @@ class Pages(unittest.TestCase):
         self.assertFalse(editor.save.get_sensitive())        # ends before it starts
         editor.end_time.set_time(11, 0)
         editor._check()
-        editor.location.set_text("Praxis")
+        editor.location.set_text("Practice")
         editor._save()
-        self.wait(lambda: any("Zahnarzt" in v for v in self.eds.events.values()))
-        self.wait(lambda: any(e["summary"] == "Zahnarzt" for e in page.events))
+        self.wait(lambda: any("Dentist" in v for v in self.eds.events.values()))
+        self.wait(lambda: any(e["summary"] == "Dentist" for e in page.events))
         page.select(tomorrow)
         page._fill()
         self.assertEqual(page.agenda_stack.get_visible_child_name(), "agenda")
-        ev = next(e for e in page.events if e["summary"] == "Zahnarzt")
-        self.assertEqual(ev["location"], "Praxis")
+        ev = next(e for e in page.events if e["summary"] == "Dentist")
+        self.assertEqual(ev["location"], "Practice")
         self.assertEqual(time.localtime(ev["start"]).tm_hour, 10)
 
         self.answer.queue.append("delete")
@@ -217,7 +217,7 @@ class Pages(unittest.TestCase):
 
         def fill(d):
             name, host, user, port = entry_rows(d.get_extra_child())
-            name.set_text("Zweites")
+            name.set_text("Second one")
             host.set_text("phone")
             port.set_text("2222")
             return "save"
@@ -225,7 +225,7 @@ class Pages(unittest.TestCase):
         dialog.edit(None)
         self.wait(lambda: len(self.app.cfg["devices"]) == 2)
         added = self.app.cfg["devices"][1]
-        self.assertEqual((added["id"], added["port"], added["user"]), ("zweites", 2222, "furios"))
+        self.assertEqual((added["id"], added["port"], added["user"]), ("second-one", 2222, "furios"))
         self.answer.queue.append("remove")
         dialog.remove(added)
         self.wait(lambda: len(self.app.cfg["devices"]) == 1)
@@ -296,18 +296,18 @@ class Pages(unittest.TestCase):
         editor.host.set_text("voip.example.net")
         editor.user.set_text("me")
         editor.password.set_text("geheim")
-        editor.name.set_text("Privat")
+        editor.name.set_text("Private")
         editor.protocol.set_selected(2)                       # TLS
         self.assertTrue(editor.save.get_sensitive())
         editor._save()
         self.wait(lambda: page.sip_group.rows_)
         row = page.sip_group.rows_[0]
-        self.assertEqual(row.get_title(), "Privat")
+        self.assertEqual(row.get_title(), "Private")
         self.assertIn("TLS", row.get_subtitle())
         self.wait(lambda: any(l["id"] == "sip:me@voip.example.net"
                               for l in self.app.lines.get("test", [])))
         self.answer.queue.append("remove")
-        page.delete_sip({"id": "me@voip.example.net", "display_name": "Privat",
+        page.delete_sip({"id": "me@voip.example.net", "display_name": "Private",
                          "user": "me", "host": "voip.example.net"})
         self.wait(lambda: not page.sip_group.rows_)
 

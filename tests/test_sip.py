@@ -42,7 +42,7 @@ class KeyFile(unittest.TestCase):
 
     def test_add_change_remove_keeps_the_others(self):
         group = agent.write_sip_account({"host": "voip.example.net", "user": "me",
-                                         "display_name": "Privat", "protocol": "TLS",
+                                         "display_name": "Private", "protocol": "TLS",
                                          "port": 5061, "can_tel": False}, self.path)
         self.assertEqual(group, "sip-01")
         accounts = {a["id"]: a for a in agent.sip_accounts(self.path)}
@@ -52,9 +52,9 @@ class KeyFile(unittest.TestCase):
         self.assertEqual(accounts["work"]["display_name"], "Büro")
         self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
 
-        agent.write_sip_account(dict(accounts["work"], display_name="Firma"), self.path)
+        agent.write_sip_account(dict(accounts["work"], display_name="Work"), self.path)
         self.assertEqual({a["id"]: a["display_name"] for a in agent.sip_accounts(self.path)},
-                         {"work": "Firma", "me@voip.example.net": "Privat"})
+                         {"work": "Work", "me@voip.example.net": "Private"})
         agent.write_sip_account({"id": "work"}, self.path, remove=True)
         self.assertEqual([a["id"] for a in agent.sip_accounts(self.path)],
                          ["me@voip.example.net"])
@@ -116,13 +116,13 @@ class OverTheWire(unittest.TestCase):
 
     def test_add_and_remove(self):
         result, error = self.ask("sip.save", {"account": {
-            "host": "voip.example.net", "user": "me", "display_name": "Privat",
+            "host": "voip.example.net", "user": "me", "display_name": "Private",
             "protocol": "UDP", "port": 0, "auto_connect": True, "can_tel": True,
             "media_encryption": 1}, "password": "geheim"})
         self.assertIsNone(error)
         self.assertEqual(result["id"], "me@voip.example.net")
         accounts, _e = self.ask("sip.list")
-        self.assertEqual([a["display_name"] for a in accounts], ["Privat"])
+        self.assertEqual([a["display_name"] for a in accounts], ["Private"])
         lines, _e = self.ask("lines.list")
         self.assertIn("sip:me@voip.example.net", [l["id"] for l in lines])
         self.calls.wait(5)                                      # the first Calls ended ...

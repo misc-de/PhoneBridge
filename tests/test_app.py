@@ -43,7 +43,7 @@ class App(unittest.TestCase):
     def setUpClass(cls):
         from phonebridge.app import PhoneBridgeApp
         cls.home = Home()
-        cls.home.store.add(ANNA, "Alt", member_alias="Anna")
+        cls.home.store.add(ANNA, "Old", member_alias="Anna")
         cls.patches = [mock.patch.dict(os.environ, cls.home.env()),
                        mock.patch.object(config, "CONFIG_DIR", cls.home.config),
                        mock.patch.object(config, "AUTOSTART",
@@ -88,7 +88,7 @@ class App(unittest.TestCase):
         new = []
         hid = self.dev.connect("sms", lambda d, n: new.extend(n))
         self.addCleanup(self.dev.disconnect, hid)
-        mid = self.home.store.add(BERND, "Neu da")
+        mid = self.home.store.add(BERND, "Just in")
         self.assertTrue(run_loop_until(lambda: new and self.app.unread() == 1, 30))
         self.assertEqual(self.notified, ["sms-test-%d" % mid])
         labels = [i.get("label") for i in self.app.menu_items()]
@@ -105,7 +105,7 @@ class App(unittest.TestCase):
         win.devices_changed()
         self.assertEqual(win.body.get_visible_child_name(), "pages")
         self.assertEqual(win.overview.conn.value.get_label(), "Connected")
-        self.assertEqual(win.overview.wifi.value.get_label(), "Testnetz · 57 %")
+        self.assertEqual(win.overview.wifi.value.get_label(), "Testnet · 57 %")
         # the cards: conversations from the app; calls and appointments are
         # fetched when the page is on screen, so fill them by hand here
         # filled when the window is built - the newest, not only new ones
@@ -217,7 +217,7 @@ class FirstConnection(unittest.TestCase):
         from phonebridge.window import MainWindow
         home = Home()
         self.addCleanup(home.cleanup)
-        home.store.add(ANNA, "Hallo", member_alias="Anna")
+        home.store.add(ANNA, "Hello", member_alias="Anna")
         for p in (mock.patch.dict(os.environ, home.env()),
                   mock.patch.object(config, "CONFIG_DIR", home.config),
                   mock.patch.object(Gtk.Widget, "get_mapped", lambda self: True)):

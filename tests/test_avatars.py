@@ -16,9 +16,9 @@ from .support import (ANNA, BERND, GROUP, PNG, Home, make_addressbook, make_cach
 
 B64 = base64.b64encode(PNG).decode()
 CARDS = [
-    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Anna Beispiel\r\nTEL;TYPE=CELL:0155 50000001\r\n"
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Anna Example\r\nTEL;TYPE=CELL:0155 50000001\r\n"
     "PHOTO;ENCODING=b;TYPE=PNG:" + B64[:30] + "\r\n " + B64[30:] + "\r\nEND:VCARD",
-    "BEGIN:VCARD\r\nVERSION:4.0\r\nN:Muster;Bernd;;;\r\nTEL:tel:+4915550000002\r\n"
+    "BEGIN:VCARD\r\nVERSION:4.0\r\nN:Sample;Bernd;;;\r\nTEL:tel:+4915550000002\r\n"
     "PHOTO:data:image/png;base64," + B64 + "\r\nEND:VCARD",
 ]
 
@@ -26,13 +26,13 @@ CARDS = [
 class VCard(unittest.TestCase):
     def test_folded_base64_photo(self):
         name, numbers, photo = agent.parse_vcard(CARDS[0])
-        self.assertEqual(name, "Anna Beispiel")
+        self.assertEqual(name, "Anna Example")
         self.assertEqual(numbers, ["0155 50000001"])
         self.assertEqual(photo, ("data", PNG))
 
     def test_vcard4(self):
         name, numbers, photo = agent.parse_vcard(CARDS[1])
-        self.assertEqual(name, "Bernd Muster")
+        self.assertEqual(name, "Bernd Sample")
         self.assertEqual(numbers, ["+4915550000002"])
         self.assertEqual(photo, ("data", PNG))
 
@@ -46,9 +46,9 @@ class Pictures(unittest.TestCase):
     def setUp(self):
         self.home = Home()
         self.addCleanup(self.home.cleanup)
-        self.home.store.add(ANNA, "Hallo")
-        self.home.store.add(BERND, "Hi", member_alias="Bernd vom Chat")
-        self.home.store.add(GROUP, "Alle", kind=1)
+        self.home.store.add(ANNA, "Hello")
+        self.home.store.add(BERND, "Hi", member_alias="Bernd from chat")
+        self.home.store.add(GROUP, "Everyone", kind=1)
         make_addressbook(self.home.books, CARDS)
         self.book = agent.Book(self.home.books)
 
@@ -58,8 +58,8 @@ class Pictures(unittest.TestCase):
 
     def test_names_and_pictures_from_contacts(self):
         t = self.threads()
-        self.assertEqual(t[ANNA]["title"], "Anna Beispiel")      # chatty had none
-        self.assertEqual(t[BERND]["title"], "Bernd vom Chat")    # chatty's wins
+        self.assertEqual(t[ANNA]["title"], "Anna Example")      # chatty had none
+        self.assertEqual(t[BERND]["title"], "Bernd from chat")    # chatty's wins
         self.assertIsNotNone(t[ANNA]["avatar"])
         self.assertEqual(agent.AVATARS[t[ANNA]["avatar"]], ("data", PNG))
         self.assertIsNone(t[GROUP]["avatar"])
@@ -70,7 +70,7 @@ class Pictures(unittest.TestCase):
                                    ("+49 155 50000001", self.home.store.users[ANNA]))
         self.home.store.db.commit()
         self.assertTrue(tid)
-        self.assertEqual(self.threads()[ANNA]["title"], "Anna Beispiel")
+        self.assertEqual(self.threads()[ANNA]["title"], "Anna Example")
 
     def test_same_picture_same_key(self):
         t = self.threads()
@@ -96,15 +96,15 @@ class Pictures(unittest.TestCase):
         make_cache_book(cache, "acc1", [
             "BEGIN:VCARD\nFN:Carla Sync\nTEL:+4915550000003\n"
             "PHOTO;VALUE=uri:" + uri + "\nEND:VCARD",
-            "BEGIN:VCARD\nFN:Gelöscht\nTEL:+4915550000004\nEND:VCARD",
-            "BEGIN:VCARD\nFN:Ohne Datei\nTEL:+4915550000005\n"
+            "BEGIN:VCARD\nFN:Deleted\nTEL:+4915550000004\nEND:VCARD",
+            "BEGIN:VCARD\nFN:No File\nTEL:+4915550000005\n"
             "PHOTO;VALUE=uri:file:///nirgends.png\nEND:VCARD",
         ], deleted=(1,))
         book = agent.Book(os.pathsep.join((self.home.books, cache)))
         self.assertEqual(book.lookup("015550000003"), ("Carla Sync", ("file", photo)))
         self.assertIsNone(book.lookup("+4915550000004"))
-        self.assertEqual(book.lookup("+4915550000005"), ("Ohne Datei", None))
-        self.assertEqual(book.lookup(ANNA)[0], "Anna Beispiel")   # both kinds read
+        self.assertEqual(book.lookup("+4915550000005"), ("No File", None))
+        self.assertEqual(book.lookup(ANNA)[0], "Anna Example")   # both kinds read
 
     def test_picture_wins_across_books(self):
         cache = os.path.join(self.home.dir, "cache-books")
@@ -121,13 +121,13 @@ class Pictures(unittest.TestCase):
 
     def test_new_incoming_names_the_contact(self):
         new = agent.new_incoming(0, store=self.home.store_path, book=self.book)
-        self.assertEqual(new[0]["title"], "Anna Beispiel")
+        self.assertEqual(new[0]["title"], "Anna Example")
 
 
 class OverTheWire(unittest.TestCase):
     def setUp(self):
         self.home = Home()
-        self.home.store.add(ANNA, "Hallo")
+        self.home.store.add(ANNA, "Hello")
         make_addressbook(self.home.books, CARDS)
         patcher = mock.patch.dict(os.environ, self.home.env())
         patcher.start()

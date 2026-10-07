@@ -10,9 +10,9 @@ from phonebridge import text
 STATUS = {
     "battery": {"percent": 84, "state": "charging", "time_to_full": 2700,
                 "time_to_empty": 0},
-    "network": {"status": "registered", "operator": "Netz", "technology": "lte",
+    "network": {"status": "registered", "operator": "Telco", "technology": "lte",
                 "strength": 60},
-    "wifi": {"enabled": True, "ssid": "Zuhause", "signal": 70},
+    "wifi": {"enabled": True, "ssid": "Home", "signal": 70},
 }
 
 
@@ -35,11 +35,11 @@ class Words(unittest.TestCase):
         self.assertEqual(text.battery(wild), "100 % · on battery")
 
     def test_network(self):
-        self.assertEqual(text.network(STATUS), "Netz · LTE · signal 60 %")
+        self.assertEqual(text.network(STATUS), "Telco · LTE · signal 60 %")
         self.assertEqual(text.network({"network": {"status": "searching"}}), "No network")
 
     def test_wifi(self):
-        self.assertEqual(text.wifi(STATUS), "Zuhause · 70 %")
+        self.assertEqual(text.wifi(STATUS), "Home · 70 %")
         self.assertEqual(text.wifi({"wifi": {"enabled": False}}), "Off")
 
     def test_tooltip(self):

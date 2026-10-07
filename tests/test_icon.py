@@ -53,7 +53,7 @@ class Icon(unittest.TestCase):
             self.assertLessEqual(abs(left - right), 1, "size %d: %d|%d" % (size, left, right))
 
     def test_initials(self):
-        self.assertEqual(icon.initials("Anna Maria Beispiel"), "AB")
+        self.assertEqual(icon.initials("Anna Maria Example"), "AE")
         self.assertEqual(icon.initials("doctolib"), "D")
         self.assertEqual(icon.initials("+49 155 123"), "")
         self.assertEqual(icon.initials(""), "")
@@ -61,7 +61,7 @@ class Icon(unittest.TestCase):
     def test_person_pictures(self):
         import cairo
         import io
-        for name in ("Anna Beispiel", "+4915550000001", ""):
+        for name in ("Anna Example", "+4915550000001", ""):
             png = icon.avatar_png(name, 64)
             img = cairo.ImageSurface.create_from_png(io.BytesIO(png))
             self.assertEqual((img.get_width(), img.get_height()), (64, 64))

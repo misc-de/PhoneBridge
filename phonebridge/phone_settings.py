@@ -201,7 +201,7 @@ class PhoneSettingsPage(Gtk.Box):
             page.add(group)
         rows = []
         for title, desc, specs in section.get("groups", ()):
-            # titles are markup to libadwaita: "Verlauf & Aufräumen" must be escaped
+            # titles are markup to libadwaita: "History & clean-up" must be escaped
             group = Adw.PreferencesGroup(
                 title=GLib.markup_escape_text(_(title)) if title else "",
                 description=GLib.markup_escape_text(_(desc)) if desc else "")

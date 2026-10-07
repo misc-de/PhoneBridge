@@ -37,7 +37,7 @@ class FakeOfono:
             return ({"Present": iccid is not None, "CardIdentifier": iccid or "",
                      "SubscriberNumbers": ["+4915550000099"] if path == "/ril_1" else []},)
         if iface == "org.ofono.NetworkRegistration":
-            return ({"Name": "Netz %s" % path[-1], "Status": "registered"},)
+            return ({"Name": "Network %s" % path[-1], "Status": "registered"},)
         if method == "Dial":
             self.dialled.append((path, args.unpack()))
             return ("/ril_x/voicecall01",)

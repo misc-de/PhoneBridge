@@ -34,10 +34,10 @@ class StoreReading(unittest.TestCase):
         self.home = Home()
         self.s = self.home.store
         now = time.time()
-        self.a1 = self.s.add(ANNA, "Hallo!", at=now - 300, member_alias="Anna")
-        self.a2 = self.s.add(ANNA, "Bis später", incoming=False, at=now - 200)
-        self.b1 = self.s.add(BERND, "Paket ist da", at=now - 100)
-        self.g1 = self.s.add(GROUP, "Gruppe", at=now - 400, kind=1)
+        self.a1 = self.s.add(ANNA, "Hello!", at=now - 300, member_alias="Anna")
+        self.a2 = self.s.add(ANNA, "See you later", incoming=False, at=now - 200)
+        self.b1 = self.s.add(BERND, "Package is here", at=now - 100)
+        self.g1 = self.s.add(GROUP, "Group", at=now - 400, kind=1)
 
     def tearDown(self):
         self.home.cleanup()
@@ -50,7 +50,7 @@ class StoreReading(unittest.TestCase):
         self.assertEqual([t["thread"] for t in threads], [BERND, ANNA, GROUP])
         anna = threads[1]
         self.assertEqual(anna["title"], "Anna")
-        self.assertEqual(anna["last"]["body"], "Bis später")
+        self.assertEqual(anna["last"]["body"], "See you later")
         self.assertTrue(anna["last"]["out"])
         self.assertEqual(threads[0]["title"], BERND)
         self.assertTrue(threads[2]["group"])
@@ -68,30 +68,30 @@ class StoreReading(unittest.TestCase):
 
     def test_messages_oldest_first(self):
         msgs = agent.list_messages(ANNA, store=self.home.store_path, sent=self.home.sent)
-        self.assertEqual([m["body"] for m in msgs], ["Hallo!", "Bis später"])
+        self.assertEqual([m["body"] for m in msgs], ["Hello!", "See you later"])
         self.assertEqual([m["out"] for m in msgs], [False, True])
 
     def test_sent_log_merges_into_thread(self):
-        agent.append_sent({"id": "s1", "to": ANNA, "body": "Von PhoneBridge",
+        agent.append_sent({"id": "s1", "to": ANNA, "body": "From PhoneBridge",
                            "time": int(time.time()), "status": "sent"},
                           path=self.home.sent)
         msgs = agent.list_messages("0155 50000001", store=self.home.store_path,
                                    sent=self.home.sent)
-        self.assertEqual(msgs[-1]["body"], "Von PhoneBridge")
+        self.assertEqual(msgs[-1]["body"], "From PhoneBridge")
         threads = self.threads()
         self.assertEqual(threads[0]["thread"], ANNA)
-        self.assertEqual(threads[0]["last"]["body"], "Von PhoneBridge")
+        self.assertEqual(threads[0]["last"]["body"], "From PhoneBridge")
 
     def test_sent_log_is_dropped_when_chatty_has_it(self):
         now = int(time.time())
-        self.s.add(ANNA, "Doppelt", incoming=False, at=now)
-        agent.append_sent({"id": "s2", "to": ANNA, "body": "Doppelt", "time": now + 5},
+        self.s.add(ANNA, "Twice", incoming=False, at=now)
+        agent.append_sent({"id": "s2", "to": ANNA, "body": "Twice", "time": now + 5},
                           path=self.home.sent)
         msgs = agent.list_messages(ANNA, store=self.home.store_path, sent=self.home.sent)
-        self.assertEqual([m["body"] for m in msgs].count("Doppelt"), 1)
+        self.assertEqual([m["body"] for m in msgs].count("Twice"), 1)
 
     def test_sent_to_new_number_is_its_own_thread(self):
-        agent.append_sent({"id": "s3", "to": "+4915550000009", "body": "Neu",
+        agent.append_sent({"id": "s3", "to": "+4915550000009", "body": "New",
                            "time": int(time.time())}, path=self.home.sent)
         threads = self.threads()
         self.assertEqual(threads[0]["thread"], "+4915550000009")
@@ -99,7 +99,7 @@ class StoreReading(unittest.TestCase):
 
     def test_new_incoming(self):
         new = agent.new_incoming(self.a1, store=self.home.store_path)
-        self.assertEqual([m["body"] for m in new], ["Paket ist da", "Gruppe"])
+        self.assertEqual([m["body"] for m in new], ["Package is here", "Group"])
         self.assertEqual(new[0]["thread"], BERND)
         self.assertEqual(agent.new_incoming(0, store=self.home.store_path)[0]["title"],
                          "Anna")
@@ -115,7 +115,7 @@ class EndToEnd(unittest.TestCase):
 
     def setUp(self):
         self.home = Home()
-        self.home.store.add(ANNA, "Hallo!", member_alias="Anna")
+        self.home.store.add(ANNA, "Hello!", member_alias="Anna")
         patcher = mock.patch.dict(os.environ, self.home.env())
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -145,14 +145,14 @@ class EndToEnd(unittest.TestCase):
         self.assertTrue(self.dev.hello["has"]["sms"])
 
         self.assertTrue(run_loop_until(lambda: self.dev.status is not None, 10))
-        self.assertEqual(self.dev.status["wifi"]["ssid"], "Testnetz")
+        self.assertEqual(self.dev.status["wifi"]["ssid"], "Testnet")
         self.assertEqual(self.dev.status["volume"], {"level": 0.4, "muted": False})
 
         threads, error = self.ask("sms.threads", {"baseline": 0})
         self.assertIsNone(error)
         self.assertEqual(threads[0]["title"], "Anna")
         msgs, error = self.ask("sms.messages", {"thread": ANNA})
-        self.assertEqual([m["body"] for m in msgs], ["Hallo!"])
+        self.assertEqual([m["body"] for m in msgs], ["Hello!"])
 
         result, error = self.ask("gsettings.get", {"keys": [["no.such.schema", "key"]]})
         self.assertEqual(result, {"no.such.schema key": None})
@@ -163,9 +163,9 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(self.ask("ping")[0], "pong")
 
         # chatty stores a new message - the agent reports it by itself
-        self.home.store.add(BERND, "Neue Nachricht")
+        self.home.store.add(BERND, "New message")
         self.assertTrue(run_loop_until(lambda: self.events, 30), "no sms event")
-        self.assertEqual(self.events[0][0]["body"], "Neue Nachricht")
+        self.assertEqual(self.events[0][0]["body"], "New message")
 
     def test_unreachable_phone(self):
         with mock.patch.dict(os.environ, {"FAKE_SSH_FAIL": "1"}):

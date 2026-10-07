@@ -99,7 +99,7 @@ class OverTheWire(unittest.TestCase):
         cfg = os.path.join(self.home.dir, "vb-config.json")
         with open(cfg, "w") as f:
             json.dump({"boxes": [{"id": "global", "name": "General", "active": True},
-                                 {"id": "b1", "name": "Familie", "active": True}]}, f)
+                                 {"id": "b1", "name": "Family", "active": True}]}, f)
         env = dict(self.home.env(), PHONEBRIDGE_VOICEBOX=self.root,
                    PHONEBRIDGE_VOICEBOX_CONFIG=cfg)
         p = mock.patch.dict(os.environ, env)
@@ -123,7 +123,7 @@ class OverTheWire(unittest.TestCase):
         write_message(self.root, "20261007-100000", box="b1", audio=b"RIFFxxxxWAVE")
         self.assertTrue(run_loop_until(lambda: self.events, 40), "no voicebox event")
         result, error = self.ask("voicebox.list")
-        self.assertEqual([b["name"] for b in result["boxes"]], ["General", "Familie"])
+        self.assertEqual([b["name"] for b in result["boxes"]], ["General", "Family"])
         self.assertEqual(result["messages"][0]["box"], "b1")
         audio, error = self.ask("voicebox.audio", {"id": "20261007-100000"})
         import base64
@@ -155,7 +155,7 @@ class SortedIntoCalls(unittest.TestCase):
         ]
         app = types.SimpleNamespace(
             voicebox={"t": {"messages": msgs, "boxes": [{"id": "global"}, {"id": "b1"}]}},
-            voicebox_box_name=lambda dev_id, box: {"global": "General", "b1": "Familie"}[box])
+            voicebox_box_name=lambda dev_id, box: {"global": "General", "b1": "Family"}[box])
         page = types.SimpleNamespace(dev=types.SimpleNamespace(id="t"), app=app, calls=[
             {"number": NUMBER, "name": "", "inbound": True, "answered": True,
              "start": now - 130, "duration": 20, "voicebox": {"id": "m1", "missed": False,
@@ -172,6 +172,6 @@ class SortedIntoCalls(unittest.TestCase):
         # newest first; m2 has no call of its own and comes in on its own
         self.assertEqual([e.get("voicebox", {}).get("id") for e in entries],
                          [None, "m2", "m1", None])
-        self.assertEqual(entries[1]["voicebox"]["box_name"], "Familie")
+        self.assertEqual(entries[1]["voicebox"]["box_name"], "Family")
         self.assertTrue(entries[2]["voicebox"]["new"])
         self.assertNotIn("voicebox", entries[3])        # deleted meanwhile
