@@ -100,8 +100,12 @@ curl -fsSL https://raw.githubusercontent.com/misc-de/PhoneBridge/main/install.sh
 ```
 
 It installs into `~/.local` only, puts PhoneBridge in the menu and starts it at login
-(`… | NO_AUTOSTART=1 bash` leaves that out). Running it again updates. Nothing is installed
-on the phone.
+(`… | NO_AUTOSTART=1 bash` leaves that out). Nothing is installed on the phone.
+
+**Updates** - PhoneBridge looks on GitHub for a newer version (a minute after the start, then
+every six hours). When there is one, *Update available* shows at the top left of the window;
+a click lists the changes and asks, and PhoneBridge installs the update and starts anew.
+*Menu → Look for updates* turns that off. Running the install line again updates as well.
 
 Or from a checkout:
 
@@ -128,6 +132,8 @@ phonebridge --quit          # ends the running instance
 - Only SSH, with your key (or a password kept in the desktop's keyring - never in a file of
   PhoneBridge's; ssh gets it through `SSH_ASKPASS`). An unknown phone's host key is learnt on
   first contact, a changed one is refused.
+- Besides SSH to the phone, PhoneBridge only talks to GitHub: to look for updates (unless
+  switched off) and to fetch one when you say so.
 - Nothing listens on the phone or the PC. The agent runs only while connected and ends when the
   PC goes away (the phone's microphone is never left muted).
 - Texts from others (SMS, names, network names) are never read as markup; numbers are checked

@@ -6,6 +6,7 @@ import ast
 import os
 import re
 import unittest
+from unittest import mock
 
 from phonebridge import i18n, text
 from phonebridge.lang_de import TRANSLATIONS
@@ -95,10 +96,16 @@ class Choice(unittest.TestCase):
         i18n.setup("system")
 
     def test_system_language(self):
-        for value, code in (("de_DE.UTF-8", "de"), ("de", "de"), ("en_GB", "en"),
-                            ("fr_FR.UTF-8", "en"), ("de:en", "de"), ("C", "en")):
-            os.environ["LANGUAGE"] = value
-            self.assertEqual(i18n.system_language(), code, value)
+        # the desktop's own LANG and LC_* stay out: "C" falls back to them
+        clean = {k: v for k, v in os.environ.items()
+                 if k not in ("LC_ALL", "LC_MESSAGES", "LANG")}
+        with mock.patch.dict(os.environ, clean, clear=True):
+            for value, code in (("de_DE.UTF-8", "de"), ("de", "de"), ("en_GB", "en"),
+                                ("fr_FR.UTF-8", "en"), ("de:en", "de"), ("C", "en")):
+                os.environ["LANGUAGE"] = value
+                self.assertEqual(i18n.system_language(), code, value)
+            os.environ.update(LANGUAGE="C", LANG="de_DE.UTF-8")
+            self.assertEqual(i18n.system_language(), "de")
 
     def test_setup(self):
         self.assertEqual(i18n.setup("de"), "de")

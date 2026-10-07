@@ -10,14 +10,24 @@
 #                             straight from the web: fetches the sources first
 set -e
 
+# PHONEBRIDGE_VERSION is the commit being installed (the app's updater sets
+# it); else it is asked of git or GitHub. It goes to VERSION, which the app
+# compares with GitHub to offer updates.
+version=$PHONEBRIDGE_VERSION
 here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)
 if [ ! -f "$here/phonebridge/agent.py" ]; then
     command -v curl >/dev/null || { echo "missing: curl"; exit 1; }
     here=$(mktemp -d)
     trap 'rm -rf "$here"' EXIT
     echo "Downloading PhoneBridge …"
-    curl -fsSL "${PHONEBRIDGE_SOURCE:-https://github.com/misc-de/PhoneBridge/archive/refs/heads/main.tar.gz}" \
+    if [ -z "$PHONEBRIDGE_SOURCE" ] && [ -z "$version" ]; then
+        version=$(curl -fsSL https://api.github.com/repos/misc-de/PhoneBridge/commits/main 2>/dev/null \
+                  | grep -m1 -o '"sha": *"[0-9a-f]\{40\}"' | grep -o '[0-9a-f]\{40\}' || true)
+    fi
+    curl -fsSL "${PHONEBRIDGE_SOURCE:-https://github.com/misc-de/PhoneBridge/archive/${version:-refs/heads/main}.tar.gz}" \
         | tar -xz -C "$here" --strip-components=1
+elif [ -z "$version" ]; then
+    version=$(git -C "$here" rev-parse HEAD 2>/dev/null || true)
 fi
 cd "$here"
 
@@ -33,6 +43,7 @@ ID=io.github.miscde.PhoneBridge
 rm -rf "$LIB/phonebridge"
 install -d "$LIB/phonebridge" "$LOCAL/bin" "$LOCAL/share/applications"
 install -m644 phonebridge/*.py "$LIB/phonebridge/"
+echo "${version:-unknown}" > "$LIB/VERSION"
 install -m755 bin/phonebridge "$LOCAL/bin/"
 install -m644 data/$ID.desktop "$LOCAL/share/applications/"
 # the app's icon in every size the theme asks for (the earlier SVG and
@@ -50,8 +61,9 @@ if [ -z "$NO_AUTOSTART" ]; then
     python3 -c "import sys; sys.path.insert(0, '$LIB'); from phonebridge import config; config.set_autostart(True, '$LOCAL/bin/phonebridge')"
 fi
 
-# A running instance keeps the old code - start it anew.
-if pgrep -u "$(id -u)" -f "$LOCAL/bin/phonebridge" >/dev/null; then
+# A running instance keeps the old code - start it anew (the app's updater
+# does that itself).
+if [ -z "$PHONEBRIDGE_NO_RESTART" ] && pgrep -u "$(id -u)" -f "$LOCAL/bin/phonebridge" >/dev/null; then
     "$LOCAL/bin/phonebridge" --quit 2>/dev/null || true
     sleep 1
     setsid -f "$LOCAL/bin/phonebridge" --background >/dev/null 2>&1 < /dev/null

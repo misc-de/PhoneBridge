@@ -26,7 +26,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 from . import APP_ID, VERSION, config, i18n, icon, phone, text  # noqa: E402
 from .avatars import Avatars  # noqa: E402
 from .connection import Device  # noqa: E402
-from .i18n import _  # noqa: E402
+from .i18n import _, n_  # noqa: E402
 
 RING_SECONDS = 20
 PAGES = ("overview", "phone", "messages", "contacts", "calendar", "settings")
@@ -69,6 +69,8 @@ class PhoneBridgeApp(Adw.Application):
         self._pc_wanted = {}        # device id -> when a call to talk at the PC was dialled          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
         self._was_online = {}
+        self.update_available = None    # {"sha", "count", "changes"} from update.check
+        self.updating = False
 
     # -- start ------------------------------------------------------------
     def do_startup(self):
@@ -92,6 +94,8 @@ class PhoneBridgeApp(Adw.Application):
         self.sync_devices()
         self.update_tray()
         self._watch_sleep_and_network()
+        GLib.timeout_add_seconds(UPDATE_FIRST, lambda: self.look_for_update() and False)
+        GLib.timeout_add_seconds(UPDATE_EVERY, lambda: self.look_for_update() or True)
         self.hold()
 
     def _watch_sleep_and_network(self):
@@ -177,6 +181,8 @@ class PhoneBridgeApp(Adw.Application):
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
             GLib.Variant("b", config.autostart_enabled()))
+        add("updates", self._on_updates_toggle, None,
+            GLib.Variant("b", bool(self.cfg["updates"])))
         self._language = add("language", self._on_language, "s",
                              GLib.Variant("s", self.cfg["language"]))
         self.set_accels_for_action("app.quit", ["<Control>q"])
@@ -1104,6 +1110,90 @@ class PhoneBridgeApp(Adw.Application):
         exe = shutil.which("phonebridge") or os.path.realpath(sys.argv[0])
         config.set_autostart(value.get_boolean(), exe)
 
+    def _on_updates_toggle(self, action, value):
+        action.set_state(value)
+        self.cfg["updates"] = value.get_boolean()
+        config.save(self.cfg)
+        if self.cfg["updates"]:
+            self.look_for_update()
+        else:
+            self._set_update(None)
+
+    # -- updates ------------------------------------------------------------
+    def look_for_update(self):
+        """Asks GitHub in a thread; the window shows the result."""
+        from . import update
+        current = update.installed()
+        if current is None or not self.cfg["updates"] or self.updating:
+            return
+
+        def ask():
+            try:
+                return update.check(current)
+            except (OSError, ValueError) as e:      # offline, GitHub's limit ...
+                print("phonebridge: no update check:", e, file=sys.stderr)
+                return False
+
+        run_in_thread(ask, lambda info: info is not False and not self._ending
+                      and self._set_update(info))
+
+    def _set_update(self, info):
+        self.update_available = info
+        if self.window is not None:
+            self.window.update_changed()
+
+    def ask_update(self):
+        info = self.update_available
+        if info is None or self.updating:
+            return
+        if any(self.current_call(d) for d in self.devices):
+            self.toast(_("Update after the call."))
+            return
+        if info["count"]:
+            body = n_("%d change:", "%d changes:", info["count"])
+            from .update import SHOWN
+            lines = ["• " + c for c in info["changes"][:SHOWN]]
+            if len(info["changes"]) > SHOWN:
+                lines.append("…")
+            body += "\n" + "\n".join(lines)
+        else:
+            body = _("A new version of PhoneBridge is available.")
+        body += "\n\n" + _("PhoneBridge starts anew afterwards.")
+        dialog = Adw.AlertDialog(heading=_("Update PhoneBridge?"), body=body)
+        dialog.add_response("cancel", _("Not now"))
+        dialog.add_response("update", _("Update"))
+        dialog.set_response_appearance("update", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("update")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda d, r: r == "update" and self.start_update())
+        dialog.present(self.show_window())
+
+    def start_update(self):
+        from . import update
+        info = self.update_available
+        if info is None or self.updating:
+            return
+        self.updating = True
+        if self.window is not None:
+            self.window.update_changed()
+        autostart = config.autostart_enabled()
+
+        def done(error):
+            self.updating = False
+            if self._ending:
+                return
+            if error is not None:
+                if self.window is not None:
+                    self.window.update_changed()
+                self.toast(_("The update failed: %s") % error)
+                return
+            visible = self.window is not None and self.window.is_visible()
+            page = self.window.current_page() if visible else None
+            update.restart_after(os.getpid(), ["--" + page] if page else ["--background"])
+            self.quit()
+
+        run_in_thread(lambda: update.install(info["sha"], autostart), done)
+
     def _on_language(self, action, value):
         action.set_state(value)
         self.cfg["language"] = value.get_string()
@@ -1135,6 +1225,8 @@ def run_in_thread(fn, then=None):
 
 
 NOTIFY_SECONDS = 10
+UPDATE_FIRST = 60               # s after the start: look for an update
+UPDATE_EVERY = 6 * 3600         # and again
 
 
 def on_gnome():

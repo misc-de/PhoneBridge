@@ -1025,4 +1025,30 @@ TRANSLATIONS = {
         'Dein Linux-Phone in der Leiste: Akku, Nachrichten und Einstellungen deines FuriOS-/Phosh-Phones, per SSH.',
     'Your microphone':
         'Dein Mikrofon',
+    '%d change:':
+        '%d Änderung:',
+    '%d changes:':
+        '%d Änderungen:',
+    'A new version of PhoneBridge is available.':
+        'Eine neue Version von PhoneBridge ist verfügbar.',
+    'Install the new version':
+        'Die neue Version installieren',
+    'Look for updates':
+        'Nach Updates suchen',
+    'Not now':
+        'Nicht jetzt',
+    'PhoneBridge starts anew afterwards.':
+        'PhoneBridge startet danach neu.',
+    'The update failed: %s':
+        'Das Update ist fehlgeschlagen: %s',
+    'Update':
+        'Aktualisieren',
+    'Update after the call.':
+        'Update nach dem Anruf.',
+    'Update available':
+        'Update verfügbar',
+    'Update PhoneBridge?':
+        'PhoneBridge aktualisieren?',
+    'Updating …':
+        'Wird aktualisiert …',
 }

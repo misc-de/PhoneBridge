@@ -48,6 +48,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.picker = Gtk.DropDown(tooltip_text=_("Phone"))
         self.picker.connect("notify::selected", self._on_pick)
         header.pack_start(self.picker)
+        self.update_button = Gtk.Button(visible=False)
+        self.update_button.add_css_class("suggested-action")
+        self.update_button.connect("clicked", lambda *a: app.ask_update())
+        header.pack_start(self.update_button)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic",
                                        menu_model=self._menu(), primary=True,
                                        tooltip_text=_("Menu")))
@@ -90,6 +94,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.connect("notify::is-active", lambda *a: self.messages.window_focus())
         self._picking = False
         self.devices_changed()
+        self.update_changed()
 
     def _menu(self):
         menu = Gio.Menu()
@@ -99,6 +104,7 @@ class MainWindow(Adw.ApplicationWindow):
         prefs = Gio.Menu()
         prefs.append(_("Notify about new messages"), "app.notify")
         prefs.append(_("Start at login"), "app.autostart")
+        prefs.append(_("Look for updates"), "app.updates")
         lang = Gio.Menu()
         for code, label in i18n.LANGUAGES:
             item = Gio.MenuItem.new(_(label) if code == "system" else label, None)
@@ -111,6 +117,14 @@ class MainWindow(Adw.ApplicationWindow):
         end.append(_("Quit"), "app.quit")
         menu.append_section(None, end)
         return menu
+
+    def update_changed(self):
+        """The update hint at the top left: there while an update waits."""
+        b = self.update_button
+        b.set_visible(self.app.update_available is not None)
+        b.set_sensitive(not self.app.updating)
+        b.set_label(_("Updating …") if self.app.updating else _("Update available"))
+        b.set_tooltip_text(None if self.app.updating else _("Install the new version"))
 
     # -- phones -----------------------------------------------------------
     def devices_changed(self):
