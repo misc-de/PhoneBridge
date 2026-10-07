@@ -60,7 +60,8 @@ class PhoneBridgeApp(Adw.Application):
         self.calls = {}
         self.voicebox = {}
         self.pc_audio = {}
-        self._sms_notes = {}        # (device id, thread) -> notification ids shown
+        self._sms_notes = {}
+        self._battery = {}          # device id -> what was last told about the battery        # (device id, thread) -> notification ids shown
         self._save_password = {}    # device id -> password to keep once it worked
         self._login_asked = set()   # devices whose login dialog the user filled in
         self.lines = {}             # device id -> SIM cards and SIP accounts
@@ -250,6 +251,43 @@ class PhoneBridgeApp(Adw.Application):
             if self.window is not None:
                 self.window.active_changed()
 
+    # -- the battery: full, and almost empty -------------------------------------
+    def _battery_check(self, dev):
+        """Once when the phone is fully charged, once when it falls below 5 %
+        (and does not charge). Told again only after the next charge cycle."""
+        bat = (dev.status or {}).get("battery")
+        if not bat:
+            return
+        percent, state = bat.get("percent", 0), bat.get("state")
+        charging = state in ("charging", "pending-charge")
+        full = state == "full" or (charging and percent >= 100)
+        told = self._battery.setdefault(dev.id, {"full": None, "low": False})
+        if told["full"] is None:
+            told["full"] = full                 # full already when met: nothing to tell
+        elif full and not told["full"]:
+            told["full"] = True
+            self._battery_note(dev, "full", _("%s is fully charged") % dev.name,
+                               _("%d %% - the charger can go.") % percent,
+                               "battery-full-charged-symbolic")
+        elif not full and (state == "discharging" or percent < 95):
+            told["full"] = False                # unplugged: the next full counts again
+        if percent < 5 and not charging and not told["low"]:
+            told["low"] = True
+            self._battery_note(dev, "low", _("The battery of %s is almost empty") % dev.name,
+                               _("Only %d %% left - charge it soon.") % percent,
+                               "battery-caution-symbolic")
+        elif told["low"] and (charging or percent >= 10):
+            told["low"] = False
+
+    def _battery_note(self, dev, kind, title, body, icon_name):
+        n = Gio.Notification.new(title)
+        n.set_body(body)
+        n.set_icon(Gio.ThemedIcon.new(icon_name))
+        if kind == "low":
+            n.set_priority(Gio.NotificationPriority.HIGH)
+        self.withdraw_notification("battery-%s-%s" % (dev.id, "low" if kind == "full" else "full"))
+        self._send_briefly("battery-%s-%s" % (dev.id, kind), n)
+
     # -- logging in with a password -------------------------------------------
     def _on_auth_needed(self, dev, wrong):
         """The phone does not take the key (or the password was wrong)."""
@@ -361,6 +399,8 @@ class PhoneBridgeApp(Adw.Application):
         if not online:
             self.ringing.pop(dev.id, None)
             self._pc_wanted.pop(dev.id, None)
+        if online:
+            self._battery_check(dev)
         self._was_online[dev.id] = online
         self.update_tray()
         if self.window is not None:

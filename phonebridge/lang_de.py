@@ -7,6 +7,8 @@ TRANSLATIONS = {
         '%(day)d. %(month)s',
     '%(day)d %(month)s %(year)d':
         '%(day)d. %(month)s %(year)d',
+    '%d %% - the charger can go.':
+        '%d %% – das Ladegerät kann ab.',
     '%d days before':
         '%d Tage vorher',
     '%d h %d min':
@@ -29,6 +31,8 @@ TRANSLATIONS = {
         '%d ungelesene Nachrichten',
     "%s does not take PhoneBridge's SSH key. Log in with the password of the phone's user instead.":
         '%s nimmt den SSH-Schlüssel von PhoneBridge nicht an. Melde dich stattdessen mit dem Passwort des Benutzers auf dem Phone an.',
+    '%s is fully charged':
+        '%s ist voll geladen',
     '%s is set up.':
         '%s ist eingerichtet.',
     '%s left':
@@ -613,6 +617,8 @@ TRANSLATIONS = {
         'Über das Smartphone',
     'On-screen keyboard':
         'Bildschirmtastatur',
+    'Only %d %% left - charge it soon.':
+        'Nur noch %d %% – bald laden.',
     'Only critical':
         'Nur kritisch',
     'Only the first 200 hits.':
@@ -867,6 +873,8 @@ TRANSLATIONS = {
         'Textgröße',
     'The apps that have shown notifications on the phone.':
         'Die Apps, die auf dem Phone schon Benachrichtigungen gezeigt haben.',
+    'The battery of %s is almost empty':
+        'Der Akku von %s ist fast leer',
     'The contact is removed from “%s” – on the phone and in the account it syncs with.':
         'Der Kontakt wird aus „%s“ gelöscht – auf dem Phone und in dem Konto, mit dem es synchronisiert.',
     'The message of this conversation is deleted on the phone, for good. Chatty restarts for it for a moment.':

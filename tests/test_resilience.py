@@ -270,3 +270,41 @@ class PC(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Battery(unittest.TestCase):
+    """Told once when full, once below 5 % - again after the next charge cycle."""
+
+    def run_states(self, states):
+        from phonebridge.app import PhoneBridgeApp
+        app = PhoneBridgeApp.__new__(PhoneBridgeApp)
+        app._battery = {}
+        told = []
+        app._battery_note = lambda dev, kind, *a: told.append(kind)
+        dev = mock.Mock()
+        dev.id, dev.name = "t", "Phone"
+        for percent, state in states:
+            dev.status = {"battery": {"percent": percent, "state": state}}
+            PhoneBridgeApp._battery_check(app, dev)
+        return told
+
+    def test_full_once_per_charge(self):
+        self.assertEqual(self.run_states([
+            (90, "charging"), (99, "charging"), (100, "charging"),   # full: told
+            (100, "full"), (100, "charging"),                          # still full: quiet
+            (98, "discharging"), (97, "discharging"),                  # unplugged
+            (99, "charging"), (100, "full")]),                         # full again: told
+            ["full", "full"])
+
+    def test_already_full_when_met(self):
+        self.assertEqual(self.run_states([(100, "full"), (100, "charging")]), [])
+
+    def test_low_once(self):
+        self.assertEqual(self.run_states([
+            (6, "discharging"), (4, "discharging"), (3, "discharging"),  # told once
+            (3, "charging"), (5, "charging"),                            # charging: reset
+            (4, "discharging")]),                                         # low again: told
+            ["low", "low"])
+
+    def test_low_when_met(self):
+        self.assertEqual(self.run_states([(2, "discharging")]), ["low"])
