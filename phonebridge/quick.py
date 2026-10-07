@@ -63,11 +63,12 @@ class QuickSettings:
             quick.add(row)
 
         # the call's sound on the PC - only where the phone has the nodes for it
-        self.audio_group = Adw.PreferencesGroup(
-            title=_("Calls at the PC"),
-            description=_("During a call, “Sound on the PC” in the call bar puts the "
-                          "caller on the PC's speakers and the PC's microphone on the "
-                          "line; the phone's microphone is muted meanwhile."))
+        self.audio_intro = GLib.markup_escape_text(_(
+            "During a call, “Sound on the PC” in the call bar puts the caller on the "
+            "PC's speakers and the PC's microphone on the line; the phone's microphone "
+            "is muted meanwhile."))
+        self.audio_group = Adw.PreferencesGroup(title=_("Calls at the PC"),
+                                                description=self.audio_intro)
         self.groups.append(self.audio_group)
         self.echo = Adw.SwitchRow(title=_("Echo cancellation"),
                                   subtitle=_("Needed with speakers, not with a headset"))
@@ -121,7 +122,15 @@ class QuickSettings:
             self._select(self.feedback, FEEDBACK_PROFILES, s.get("feedback_profile"))
             self._select(self.power, POWER_PROFILES, s.get("power_profile"))
             cfg = self.app.cfg
-            self.audio_group.set_visible(dev is not None and self.app.call_audio_possible(dev))
+            # shown while connected; without PipeWire on the phone (or its
+            # call audio nodes) it says why, and nothing can be switched
+            problem = self.app.call_audio_problem(dev)
+            self.audio_group.set_visible(dev is not None and dev.online)
+            self.audio_group.set_description(
+                self.audio_intro if problem is None else
+                GLib.markup_escape_text(_("Not possible right now: %s") % problem))
+            for row in (self.echo, self.gain, self.auto, self.test):
+                row.set_sensitive(problem is None)
             self.echo.set_active(bool(cfg["call_audio_echo"]))
             self.gain.set_value(float(cfg["call_audio_gain"]))
             self.auto.set_active(bool(cfg["call_audio_auto"]))

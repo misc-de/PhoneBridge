@@ -609,9 +609,27 @@ class PhoneBridgeApp(Adw.Application):
         from . import callaudio
         if dev is None or not dev.online or not callaudio.available():
             return False
-        # the agent finds the nodes later, too (PipeWire after a boot)
-        return bool((dev.hello or {}).get("has", {}).get("call_audio")
-                    or (dev.status or {}).get("call_audio"))
+        # live from the status (asked every 30 s): PipeWire must run on the
+        # phone with its call audio nodes - it can stop or crash any time
+        status = dev.status or {}
+        if "call_audio" in status:
+            return bool(status.get("pipewire", True) and status["call_audio"])
+        return bool((dev.hello or {}).get("has", {}).get("call_audio"))
+
+    def call_audio_problem(self, dev):
+        """Why calls at the PC are not possible right now, or None."""
+        from . import callaudio
+        if dev is None or not dev.online:
+            return None
+        if not callaudio.available():
+            return _("pw-record and pw-play are missing on this PC.")
+        status = dev.status or {}
+        if status.get("pipewire") is False:
+            return _("PipeWire is not running on the phone.")
+        if not self.call_audio_possible(dev):
+            return _("The phone has no call audio channels (droid-call-sink/-source) - "
+                     "they come with the patched audio plugin.")
+        return None
 
     def set_pc_audio(self, dev, on, test=False):
         """The call's sound (or, test=True, the phone's own speaker and

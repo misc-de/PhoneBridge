@@ -733,12 +733,10 @@ class Agent:
                         "/org/sigxcpu/Feedback", "org.sigxcpu.Feedback", "Profile")
 
     def call_audio(self):
-        """The call audio nodes - once there, they stay; looked for again at
-        most every minute until then (PipeWire may come late after a boot)."""
-        if not self._call_audio and time.monotonic() - self._call_audio_tried > 60:
-            self._call_audio_tried = time.monotonic()
-            self._call_audio = call_audio_nodes()
-        return bool(self._call_audio)
+        """(PipeWire runs, call audio nodes there) - asked again on every
+        slow refresh (30 s): PipeWire can stop or crash at any time."""
+        self._call_audio = pipewire_state()
+        return self._call_audio
 
     def collect(self, slow=False):
         """The status; Wi-Fi, volume and profiles (helper programs, the
@@ -747,8 +745,8 @@ class Agent:
         if slow or not self._slow:
             self._slow = {"wifi": self.wifi(), "volume": self.volume(),
                           "power_profile": self.power_profile(),
-                          "feedback_profile": self.feedback_profile(),
-                          "call_audio": self.call_audio()}
+                          "feedback_profile": self.feedback_profile()}
+            self._slow["pipewire"], self._slow["call_audio"] = self.call_audio()
         return dict({"hostname": socket.gethostname(), "battery": self.battery(),
                      "network": self.network(), "mobile_data": self.mobile_data()},
                     **self._slow)
@@ -962,6 +960,7 @@ def cmd_hello(agent, args):
             "sms_last_id": agent.last_sms_id,
             "has": {"sms": os.path.exists(CHATTY_DB), "voicebox": voicebox_installed(),
                     "call_audio": call_audio_nodes(),
+                    "pipewire": pipewire_state()[0],
                     "ofono": agent.modem is not None,
                     "calls": run("sh", "-c", "command -v gnome-calls") is not None}}
 
@@ -2428,9 +2427,17 @@ def cmd_voicebox_delete(agent, args):
 # has the sound, and handed back as it was when the PC lets go or the call
 # ends.
 
+def pipewire_state():
+    """(PipeWire runs, the call audio nodes are there) - asked live: PipeWire
+    may stop or crash, and without it the call's sound cannot reach the PC."""
+    if run("pw-cli", "info", "0", timeout=3) is None:
+        return False, False
+    out = run("pw-cli", "ls", "Node", timeout=3) or ""
+    return True, "droid-call-sink" in out and "droid-call-source" in out
+
+
 def call_audio_nodes():
-    out = run("pw-cli", "ls", "Node") or ""
-    return "droid-call-sink" in out and "droid-call-source" in out
+    return pipewire_state()[1]
 
 
 def _uplink_muted(agent):
@@ -2473,6 +2480,13 @@ def cmd_callaudio_mute(agent, args):
     if not agent.modem:
         raise RuntimeError("no modem")
     if args.get("on"):
+        # checked right now, before the microphone goes: without PipeWire
+        # (or its call audio nodes) the sound could not reach the PC
+        running, nodes = pipewire_state()
+        if not running:
+            raise RuntimeError("PipeWire is not running on the phone")
+        if not nodes:
+            raise RuntimeError("the phone has no call audio nodes (droid-call-sink/-source)")
         if not getattr(agent, "pc_audio", False):
             agent.pc_audio_was_muted = _uplink_muted(agent)
         _set_uplink_muted(agent, True)

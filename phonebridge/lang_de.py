@@ -513,6 +513,8 @@ TRANSLATIONS = {
         'nicht verbunden',
     'Not deleted: %s':
         'Nicht gelöscht: %s',
+    'Not possible right now: %s':
+        'Derzeit nicht möglich: %s',
     'Not saved':
         'Nicht gespeichert',
     'not sent':
@@ -597,6 +599,10 @@ TRANSLATIONS = {
         'Phones …',
     'Pink':
         'Rosa',
+    'PipeWire is not running on the phone':
+        'Auf dem Phone läuft PipeWire nicht',
+    'PipeWire is not running on the phone.':
+        'Auf dem Phone läuft PipeWire nicht.',
     'Place':
         'Ort',
     'Place: %s':
@@ -615,6 +621,8 @@ TRANSLATIONS = {
         'Datenschutz & Standort',
     'Purple':
         'Lila',
+    'pw-record and pw-play are missing on this PC.':
+        'pw-record und pw-play fehlen auf diesem PC.',
     'Quick settings':
         'Schnelleinstellungen',
     'Quick silence':
@@ -791,6 +799,10 @@ TRANSLATIONS = {
         'Das Phone liefert den Anrufer leise',
     'The phone does not take the SSH key - PhoneBridge needs the password.':
         'Das Phone nimmt den SSH-Schlüssel nicht an – PhoneBridge braucht das Passwort.',
+    'The phone has no call audio channels (droid-call-sink/-source) - they come with the patched audio plugin.':
+        'Dem Phone fehlen die Anruf-Audiokanäle (droid-call-sink/-source) – sie kommen mit dem gepatchten Audio-Plugin.',
+    'the phone has no call audio nodes (droid-call-sink/-source)':
+        'dem Phone fehlen die Anruf-Audiokanäle (droid-call-sink/-source)',
     "the phone's microphone could not be muted":
         'das Mikrofon des Phones ließ sich nicht stummschalten',
     'the setting is read only':

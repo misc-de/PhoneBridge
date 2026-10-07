@@ -111,6 +111,9 @@ class Mute(unittest.TestCase):
         p = mock.patch.object(agent, "call", fake_call)
         p.start()
         self.addCleanup(p.stop)
+        p = mock.patch.object(agent, "pipewire_state", return_value=(True, True))
+        self.pipewire = p.start()
+        self.addCleanup(p.stop)
         self.agent = mock.Mock(spec=["modem", "system"])
         self.agent.modem = "/ril_0"
         self.agent.system = None
@@ -131,12 +134,49 @@ class Mute(unittest.TestCase):
         agent.pc_audio_release(self.agent)
         self.assertTrue(self.muted)
 
+    def test_no_pipewire_no_mute(self):
+        """Without PipeWire on the phone the sound cannot reach the PC - the
+        phone's microphone is left alone."""
+        for state, word in (((False, False), "PipeWire is not running"),
+                            ((True, False), "no call audio nodes")):
+            self.pipewire.return_value = state
+            with self.assertRaises(RuntimeError) as ctx:
+                agent.cmd_callaudio_mute(self.agent, {"on": True})
+            self.assertIn(word, str(ctx.exception))
+            self.assertFalse(self.muted)
+            self.assertEqual(self.sets, [])
+
     def test_unconfirmed_mute_is_an_error(self):
         def stubborn(conn, name, path, iface, method, args=None, reply=None, timeout=5000):
             return ({"Muted": False},) if method == "GetProperties" else None
         with mock.patch.object(agent, "call", stubborn):
             with self.assertRaises(RuntimeError):
                 agent.cmd_callaudio_mute(self.agent, {"on": True})
+
+
+class PipeWire(unittest.TestCase):
+    def test_state(self):
+        with mock.patch.object(agent, "run", side_effect=[None]):
+            self.assertEqual(agent.pipewire_state(), (False, False))     # not running
+        with mock.patch.object(agent, "run", side_effect=["info", "id 40 droid-sink"]):
+            self.assertEqual(agent.pipewire_state(), (True, False))      # no call nodes
+        with mock.patch.object(agent, "run", side_effect=[
+                "info", 'node.name = "droid-call-sink"\nnode.name = "droid-call-source"']):
+            self.assertEqual(agent.pipewire_state(), (True, True))
+
+    def test_app_offers_the_pc_only_with_pipewire(self):
+        from phonebridge.app import PhoneBridgeApp
+        app = PhoneBridgeApp.__new__(PhoneBridgeApp)
+        dev = mock.Mock(online=True, hello={"has": {"call_audio": True}})
+        with mock.patch.object(callaudio, "available", return_value=True):
+            dev.status = {"pipewire": True, "call_audio": True}
+            self.assertTrue(PhoneBridgeApp.call_audio_possible(app, dev))
+            self.assertIsNone(PhoneBridgeApp.call_audio_problem(app, dev))
+            dev.status = {"pipewire": False, "call_audio": False}     # PipeWire stopped
+            self.assertFalse(PhoneBridgeApp.call_audio_possible(app, dev))
+            self.assertIn("PipeWire", PhoneBridgeApp.call_audio_problem(app, dev))
+            dev.status = {"pipewire": True, "call_audio": False}
+            self.assertIn("droid-call", PhoneBridgeApp.call_audio_problem(app, dev))
 
 
 if __name__ == "__main__":
