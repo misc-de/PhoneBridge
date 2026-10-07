@@ -119,15 +119,6 @@ class PhonePage(Gtk.Box):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=18,
                       margin_bottom=18, margin_start=18, margin_end=18,
                       valign=Gtk.Align.START)
-        self.number = Gtk.Entry(placeholder_text=_("Number"), xalign=0.5,
-                                input_purpose=Gtk.InputPurpose.PHONE)
-        self.number.add_css_class("title-2")
-        self.number.connect("activate", lambda *a: self._dial())
-        self.number.connect("changed", lambda *a: self._update())
-        pad.append(self.number)
-        self.match = Gtk.Label()
-        self.match.add_css_class("dim-label")
-        pad.append(self.match)
         # the line to call on: SIM 1, SIM 2, SIP accounts
         self.line_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         line_title = Gtk.Label(label=_("Call over"), xalign=0)
@@ -138,6 +129,15 @@ class PhonePage(Gtk.Box):
         self.line_box.append(line_title)
         self.line_box.append(self.line_picker)
         pad.append(self.line_box)
+        self.number = Gtk.Entry(placeholder_text=_("Number"), xalign=0.5,
+                                input_purpose=Gtk.InputPurpose.PHONE)
+        self.number.add_css_class("title-2")
+        self.number.connect("activate", lambda *a: self._dial())
+        self.number.connect("changed", lambda *a: self._update())
+        pad.append(self.number)
+        self.match = Gtk.Label()
+        self.match.add_css_class("dim-label")
+        pad.append(self.match)
         self._line_ids = []
         self._picking_line = False
         grid = Gtk.Grid(row_spacing=8, column_spacing=8, halign=Gtk.Align.CENTER)

@@ -144,6 +144,27 @@ class App(unittest.TestCase):
         self.assertEqual(self.app.cfg["active"], "test")
         self.assertNotIn("two", config.load()["seen"])
 
+    def test_7_dial_where_to_talk(self):
+        sent = []
+        with mock.patch.object(self.dev, "request",
+                               lambda cmd, args=None, cb=None: sent.append((cmd, args))):
+            # the local "phone" has no call audio nodes: no question, straight away
+            self.assertFalse(self.app.call_audio_possible(self.dev))
+            self.app.dial("0155 50000001")
+        self.assertEqual(sent[0][0], "call")
+        self.assertEqual(sent[0][1]["number"], "0155 50000001")
+
+        # dialled to talk at the PC: the sound moves once the call is being set up
+        started = []
+        with mock.patch.object(self.app, "set_pc_audio",
+                               lambda dev, on, test=False: started.append(on)):
+            self.app._pc_wanted[self.dev.id] = __import__("time").time()
+            self.app._on_calls(self.dev, [{"path": "/c1", "state": "dialing", "number": "1",
+                                           "name": "", "avatar": None}])
+            self.assertEqual(started, [True])
+            self.assertNotIn(self.dev.id, self.app._pc_wanted)
+            self.app._on_calls(self.dev, [])
+
 
 if __name__ == "__main__":
     unittest.main()

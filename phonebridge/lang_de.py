@@ -105,6 +105,8 @@ TRANSLATIONS = {
         'Kalender',
     'Calendar: %s':
         'Kalender: %s',
+    'Call %s':
+        '%s anrufen',
     'Call from %s':
         'Anruf von %s',
     'Call from the phone':
@@ -379,6 +381,10 @@ TRANSLATIONS = {
         'Akkubetrieb',
     'On hold':
         'Gehalten',
+    'On the PC':
+        'Über den Rechner',
+    'On the phone':
+        'Über das Smartphone',
     'On-screen keyboard':
         'Bildschirmtastatur',
     'Only the first 200 hits.':
@@ -573,6 +579,8 @@ TRANSLATIONS = {
         'Lautstärke',
     'Wednesday':
         'Mittwoch',
+    'Where do you want to talk?':
+        'Wo möchtest du telefonieren?',
     'Whole series':
         'Ganze Serie',
     'Wi-Fi':

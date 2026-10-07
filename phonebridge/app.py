@@ -59,7 +59,8 @@ class PhoneBridgeApp(Adw.Application):
         self.calls = {}
         self.voicebox = {}
         self.pc_audio = {}
-        self.lines = {}             # device id -> SIM cards and SIP accounts          # device id -> CallAudio while the PC has the sound
+        self.lines = {}             # device id -> SIM cards and SIP accounts
+        self._pc_wanted = {}        # device id -> when a call to talk at the PC was dialled          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
         self._was_online = {}
 
@@ -356,6 +357,15 @@ class PhoneBridgeApp(Adw.Application):
             self.withdraw_notification("call-%s-%s" % (dev.id, path))
         self.calls[dev.id] = now
         audio = self.pc_audio.get(dev.id)
+        wanted = self._pc_wanted.get(dev.id)
+        if wanted and time.time() - wanted > 90:
+            self._pc_wanted.pop(dev.id, None)       # that call never came about
+            wanted = None
+        if (wanted and audio is None and any(c["state"] in ("dialing", "alerting", "active")
+                                             for c in now)):
+            self._pc_wanted.pop(dev.id, None)       # dialled to talk at the PC
+            self.set_pc_audio(dev, True)
+            audio = self.pc_audio.get(dev.id)
         if audio is not None and not audio.test and not now:
             self.set_pc_audio(dev, False)           # the call is over
         elif (self.cfg["call_audio_auto"] and audio is None and self.call_audio_possible(dev)
@@ -492,13 +502,47 @@ class PhoneBridgeApp(Adw.Application):
         config.save(self.cfg)
 
     def dial(self, number):
+        """Calls a number from the phone - after asking whether to talk at
+        the PC or at the phone, when the PC can take the sound."""
         dev = self.active_device()
         if dev is None or not number:
             return
+        if not self.call_audio_possible(dev) or self.window is None:
+            self._dial(dev, number, False)
+            return
+        dialog = Adw.AlertDialog(heading=_("Call %s") % self._who(dev, number),
+                                 body=_("Where do you want to talk?"))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("phone", _("On the phone"))
+        dialog.add_response("pc", _("On the PC"))
+        dialog.set_response_appearance(self.cfg.get("dial_via", "phone"),
+                                       Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response(self.cfg.get("dial_via", "phone"))
+        dialog.set_close_response("cancel")
+
+        def answered(d, response):
+            if response in ("phone", "pc"):
+                if self.cfg.get("dial_via") != response:
+                    self.cfg["dial_via"] = response
+                    config.save(self.cfg)
+                self._dial(dev, number, response == "pc")
+
+        dialog.connect("response", answered)
+        dialog.present(self.window)
+
+    def _who(self, dev, number):
+        contact = self.find_contact(number)
+        return contact["name"] if contact and contact.get("name") else number
+
+    def _dial(self, dev, number, on_pc):
         line = self.chosen_line(dev)
+        if on_pc:
+            # the sound moves to the PC as soon as the call is being set up
+            self._pc_wanted[dev.id] = time.time()
 
         def done(result, error):
             if error is not None:
+                self._pc_wanted.pop(dev.id, None)
                 self.toast(text.error(error))
             elif line is not None and len(self.lines.get(dev.id, [])) > 1:
                 self.toast(_("Calling %s on the phone, over %s …")
