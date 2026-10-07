@@ -2011,18 +2011,26 @@ def _iso(value):
         return None
 
 
-def call_history(limit=200, path=None, book=BOOK, country="49"):
+def call_history(limit=200, path=None, book=BOOK, country="49", numbers=None):
+    """The newest calls; with `numbers`, only those with one of them (the
+    calls of one person - however far back)."""
     path = path or CALLS_DB
     if not os.path.exists(path):
         return []
+    wanted = {normalize(n, country) for n in numbers} if numbers else None
     db = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=3)
     out = []
     with db:
-        for rid, target, inbound, start, answered, end in db.execute(
-                "SELECT id, target, inbound, start, answered, end FROM calls"
-                " ORDER BY id DESC LIMIT ?", (int(limit),)):
-            t0, ta, t1 = _iso(start), _iso(answered), _iso(end)
+        rows = db.execute("SELECT id, target, inbound, start, answered, end FROM calls"
+                          " ORDER BY id DESC" + ("" if wanted else " LIMIT %d" % int(limit)))
+        for rid, target, inbound, start, answered, end in rows:
             number = (target or "").strip()
+            if wanted is not None:
+                if normalize(number, country) not in wanted:
+                    continue
+                if len(out) >= int(limit):
+                    break
+            t0, ta, t1 = _iso(start), _iso(answered), _iso(end)
             contact = book.lookup(number, country) if (book is not None and number) else None
             out.append({"id": rid, "number": number, "inbound": bool(inbound),
                         "answered": ta is not None, "start": t0,
@@ -2221,7 +2229,8 @@ def cmd_event_delete(agent, args):
 @command("calls.history", threaded=True)
 def cmd_call_history(agent, args):
     country = args.get("country", "49")
-    calls = call_history(args.get("limit", 200), country=country)
+    calls = call_history(args.get("limit", 200), country=country,
+                         numbers=args.get("numbers"))
     if voicebox_installed():
         match_voicebox(calls, voicebox_messages(book=None), country)
     return calls

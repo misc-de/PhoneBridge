@@ -39,7 +39,10 @@ Cinnamon, MATE, Budgie, waybar …).
 - **Messages** - chatty's SMS conversations with profile pictures: read, reply, write new ones,
   delete whole conversations.
 - **Contacts** - all address books of the phone (local and synced: CardDAV, Google …): look up,
-  call, write, add, change and delete, with photos.
+  call, write (an email opens the PC's mail program), add, change and delete, with photos.
+  Beside a contact - below it in a narrow window - what there is with the person: last
+  contact, calls and voice messages, the last messages, appointments that name them. A click
+  on a person's picture anywhere in the app opens their contact.
 - **Appointments** - all calendars of the phone as month and agenda: add, change and delete
   appointments with reminders; recurring ones as a series or a single day.
 - **Files** - the phone's folders with thumbnails: open a file on the PC (a changed copy can

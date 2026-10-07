@@ -9,6 +9,7 @@ never shown and nothing is played."""
 import datetime as dt
 import json
 import os
+import sqlite3
 import time
 import unittest
 from unittest import mock
@@ -73,11 +74,22 @@ class Pages(unittest.TestCase):
                        "duration": 7.0, "new": True, "box": "global", "missed": False}, f)
         with open(os.path.join(cls.vb, "messages", "20261007-080000.wav"), "wb") as f:
             f.write(b"RIFF....WAVEfake")
+        # Dora (made up in a test) called and wrote; an appointment names her
+        calls_db = os.path.join(cls.home.dir, "records.db")
+        db = sqlite3.connect(calls_db)
+        db.execute("CREATE TABLE calls (id INTEGER PRIMARY KEY, target TEXT, inbound INTEGER,"
+                   " start BLOB, answered BLOB, end BLOB, protocol TEXT)")
+        db.execute("INSERT INTO calls VALUES (1, '+4915550000004', 1, '2026-10-06T06:00:00Z',"
+                   " '2026-10-06T06:00:05Z', '2026-10-06T06:02:05Z', 'tel')")
+        db.commit()
+        db.close()
+        cls.home.store.add("+4915550000004", "See you on Friday", member_alias="Dora")
         cls.answer = Answer()
         cls.patches = [
             mock.patch.dict(os.environ, dict(cls.home.env(), PHONEBRIDGE_VOICEBOX=cls.vb,
                                              PHONEBRIDGE_SIP_KEYFILE=os.path.join(
                                                  cls.home.dir, "calls", "sip-account.cfg"),
+                                             PHONEBRIDGE_CALLS_DB=calls_db,
                                              XDG_CACHE_HOME=os.path.join(cls.home.dir, "c"))),
             mock.patch.object(config, "CONFIG_DIR", cls.home.config),
             mock.patch.object(config, "AUTOSTART", os.path.join(cls.home.dir, "auto.desktop")),
@@ -195,6 +207,35 @@ class Pages(unittest.TestCase):
             page.load(force=True)
             self.wait(lambda: page.current and page.current["name"] == "Dora")
             self.assertEqual(len(dialogs), 2)
+
+        # beside her: her call, her message, the appointment naming her
+        import datetime as dt
+        start = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)
+        f = lambda t: t.strftime("%Y%m%dT%H%M%SZ")  # noqa: E731
+        self.eds.events["dora-1"] = (
+            "BEGIN:VEVENT\r\nUID:dora-1\r\nSUMMARY:Coffee with Dora\r\nDTSTART:%s\r\n"
+            "DTEND:%s\r\nEND:VEVENT\r\n" % (f(start), f(start + dt.timedelta(hours=1))))
+        self.addCleanup(self.eds.events.pop, "dora-1", None)
+        self.app.refresh_threads(self.dev)
+        self.wait(lambda: any(t["thread"] == "+4915550000004"
+                              for t in self.app.threads.get("test", [])))
+        page._show(next(c for c in page.contacts if c["name"] == "Dora"))
+        self.wait(lambda: page.activity_clamp.get_visible())
+        rows = []
+        child = page.activity.get_first_child()
+        while child is not None:
+            rows += [r.get_title() for r in _rows(child)]
+            child = child.get_next_sibling()
+        self.assertIn("Last contact", rows)
+        self.assertIn("See you on Friday", rows)
+        self.assertIn("Coffee with Dora", rows)
+        self.assertEqual(len([r for r in rows if r.startswith(("Today", "Yesterday", "2026"))]),
+                         1)                                  # the call
+        launched = []
+        with mock.patch.object(Gtk.UriLauncher, "launch",
+                               lambda l, *a: launched.append(l.get_uri())):
+            page.write_email(" dora+test@example.org ")
+        self.assertEqual(launched, ["mailto:dora%2Btest@example.org"])
 
         # pictures that open a contact; a group's does not
         thread = {"thread": "+4915550000004", "title": "Dora"}
@@ -399,3 +440,18 @@ class Widgets(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _rows(widget):
+    """The Adw.ActionRows below a widget."""
+    out, stack = [], [widget]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, Adw.ActionRow):
+            out.append(w)
+            continue
+        child = w.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+    return out

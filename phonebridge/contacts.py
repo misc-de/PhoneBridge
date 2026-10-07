@@ -2,16 +2,28 @@
 # SPDX-License-Identifier: MIT
 """Contacts: the phone's address books (evolution-data-server), to look
 up, call, write to, add, change and remove - changes sync to the accounts
-the address books belong to (CardDAV, Google ...) like on the phone."""
+the address books belong to (CardDAV, Google ...) like on the phone.
+
+Beside a contact (below it, when the window is narrow): what there is with
+the person - calls and voice messages, the last messages, appointments
+that name them."""
 
 import base64
+import collections
 import datetime as dt
+import re
+import time
 
 from gi.repository import Adw, GdkPixbuf, Gio, GLib, Gtk, Pango
 
 from . import text
 from .i18n import N_, _
 from .widgets import MONTHS, parse_date, short_date
+
+ACTIVITY_CALLS = 10
+ACTIVITY_MESSAGES = 6
+ACTIVITY_EVENTS = 6
+EVENTS_BACK, EVENTS_AHEAD = 30, 180     # days around today searched for appointments
 
 PHONE_TYPES = (("mobile", N_("Mobile")), ("home", N_("Home")), ("work", N_("Work")),
                ("other", N_("Other")))
@@ -23,6 +35,29 @@ def source_label(source):
     if source.get("account") and source.get("backend") != "local":
         return "%s (%s)" % (name, source["account"])
     return name
+
+
+def mentions(event, contact, given_counts):
+    """Whether an appointment names the person: the full name, or the
+    first name alone when no other contact has it."""
+    hay = " ".join((event.get("summary") or "", event.get("location") or "",
+                    event.get("description") or "")).casefold()
+    full = (contact.get("name") or "").strip().casefold()
+    if len(full) > 2 and " " in full and full in hay:
+        return True
+    given = (contact.get("given") or "").strip().casefold()
+    return (len(given) > 2 and given_counts.get(given, 0) <= 1
+            and re.search(r"\b%s\b" % re.escape(given), hay) is not None)
+
+
+def event_when(ev):
+    if ev["allday"]:
+        try:
+            d = dt.date.fromisoformat(ev["start"])
+        except ValueError:
+            return ev["start"]
+        return "%s, %s" % (short_date(d), _("All day"))
+    return text.when_long(ev["start"])
 
 
 def birthday_text(iso):
@@ -78,6 +113,7 @@ class ContactsPage(Gtk.Box):
         self._loaded_for = None
         self._serial = 0
         self._have = None           # the phone whose contacts are in self.contacts
+        self._activity_serial = 0
         self._pending_number = None
 
         self.search = Gtk.SearchEntry(placeholder_text=_("Search contacts"),
@@ -270,7 +306,7 @@ class ContactsPage(Gtk.Box):
             self.content.set_title(_("Contact"))
             return
         self.content.set_title(c["name"] or _("No name"))
-        page = Adw.PreferencesPage()
+        info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=12)
         avatar = Adw.Avatar(size=96, text=c["name"], show_initials=True)
         if c.get("avatar"):
@@ -285,7 +321,7 @@ class ContactsPage(Gtk.Box):
             head.append(org)
         top = Adw.PreferencesGroup()
         top.add(head)
-        page.add(top)
+        info.append(top)
 
         if c["phones"]:
             group = Adw.PreferencesGroup(title=_("Phone"))
@@ -305,14 +341,16 @@ class ContactsPage(Gtk.Box):
                 row.add_suffix(call)
                 row.add_suffix(sms)
                 group.add(row)
-            page.add(group)
+            info.append(group)
         if c["emails"]:
             group = Adw.PreferencesGroup(title=_("Email"))
             for e in c["emails"]:
-                row = Adw.ActionRow(title=GLib.markup_escape_text(e))
-                row.set_title_selectable(True)
+                row = Adw.ActionRow(title=GLib.markup_escape_text(e), activatable=True,
+                                    tooltip_text=_("Write an email"))
+                row.add_suffix(Gtk.Image(icon_name="mail-unread-symbolic"))
+                row.connect("activated", lambda r, a=e: self.write_email(a))
                 group.add(row)
-            page.add(group)
+            info.append(group)
         more = Adw.PreferencesGroup()
         if c["birthday"]:
             more.add(Adw.ActionRow(title=_("Birthday"), subtitle=birthday_text(c["birthday"])))
@@ -322,9 +360,179 @@ class ContactsPage(Gtk.Box):
             more.add(row)
         more.add(Adw.ActionRow(title=_("Address book"),
                                subtitle=GLib.markup_escape_text(c.get("book", ""))))
-        page.add(more)
-        self.detail.set_child(page)
+        info.append(more)
+
+        # the person's activity: a column of its own beside the contact - below
+        # it when there is no room; only when there is something to show
+        self.activity = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
+                                visible=False)
+        columns = Gtk.Box(spacing=36, margin_top=12, margin_bottom=24, margin_start=18,
+                          margin_end=18, homogeneous=True)
+        columns.append(Adw.Clamp(child=info, maximum_size=600, valign=Gtk.Align.START))
+        self.activity_clamp = Adw.Clamp(child=self.activity, maximum_size=600,
+                                        valign=Gtk.Align.START, visible=False)
+        columns.append(self.activity_clamp)
+        self.columns = columns
+        holder = Adw.BreakpointBin(child=columns, width_request=280, height_request=200)
+        narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 720sp"))
+        narrow.add_setter(columns, "orientation", Gtk.Orientation.VERTICAL)
+        narrow.add_setter(columns, "homogeneous", False)     # no gap below the contact
+        holder.add_breakpoint(narrow)
+        self.detail.set_child(holder)
         self.detail_stack.set_visible_child_name("contact")
+        self._load_activity(c)
+
+    def write_email(self, address):
+        """A new email to the address, in the PC's mail program."""
+        uri = "mailto:" + GLib.Uri.escape_string(address.strip(), "@", False)
+
+        def done(launcher, res):
+            try:
+                launcher.launch_finish(res)
+            except GLib.Error as e:
+                self.app.toast(_("No mail program: %s") % e.message)
+
+        Gtk.UriLauncher.new(uri).launch(self.get_root(), None, done)
+
+    # -- the person's activity ----------------------------------------------------
+    def _load_activity(self, c):
+        self._activity_serial += 1
+        serial = self._activity_serial
+        dev = self.dev
+        if dev is None or not dev.online:
+            return
+        country = self.app.cfg["country"]
+        numbers = [p["value"] for p in c["phones"] if p["value"].strip()]
+        mine = {text.normalize(n, country) for n in numbers}
+        threads = [t["thread"] for t in self.app.threads.get(dev.id, [])
+                   if "," not in t["thread"] and text.normalize(t["thread"], country) in mine]
+        got = {"calls": None, "messages": {} if threads else [], "events": None}
+        if not numbers:
+            got["calls"] = []
+
+        def done():
+            if serial != self._activity_serial or self.current is not c:
+                return
+            if got["calls"] is None or got["events"] is None or isinstance(got["messages"], dict):
+                return
+            self._show_activity(c, got)
+
+        def calls(result, error):
+            got["calls"] = result if error is None else []
+            done()
+
+        def messages(thread):
+            def back(result, error):
+                got["messages"][thread] = result if error is None else []
+                if len(got["messages"]) == len(threads):
+                    got["messages"] = [(t, got["messages"][t]) for t in threads]
+                    done()
+            return back
+
+        given_counts = collections.Counter((x.get("given") or "").strip().casefold()
+                                           for x in self.contacts)
+
+        def events(result, error):
+            got["events"] = ([e for e in result if mentions(e, c, given_counts)]
+                             if error is None else [])
+            done()
+
+        if numbers:
+            dev.request("calls.history", {"numbers": numbers, "limit": ACTIVITY_CALLS,
+                                          "country": country}, calls)
+        for t in threads:
+            dev.request("sms.messages", {"thread": t, "limit": ACTIVITY_MESSAGES,
+                                         "country": country}, messages(t))
+        now = time.time()
+        dev.request("calendar.events", {"start": int(now - EVENTS_BACK * 86400),
+                                        "end": int(now + EVENTS_AHEAD * 86400)}, events)
+        done()
+
+    def _show_activity(self, c, got):
+        box = self.activity
+        while (child := box.get_first_child()) is not None:
+            box.remove(child)
+        calls, threads, events = got["calls"], got["messages"], got["events"]
+        msgs = [(t, m) for t, ms in threads for m in ms]
+        if not (calls or msgs or events):
+            self.activity_clamp.set_visible(False)
+            box.set_visible(False)
+            return
+        several = len({x["number"] for x in calls}) > 1 or len(threads) > 1
+
+        last = max([x["start"] for x in calls if x.get("start")]
+                   + [m["time"] for _t, m in msgs if m.get("time")], default=None)
+        if last:
+            summary = Adw.PreferencesGroup(title=_("Activity"))
+            summary.add(Adw.ActionRow(title=_("Last contact"), subtitle=text.activity(last)))
+            box.append(summary)
+
+        if calls:
+            from .phone import duration
+            group = Adw.PreferencesGroup(title=_("Calls"))
+            for x in calls:
+                vb = x.get("voicebox")
+                missed = (x["inbound"] and not x["answered"]) or bool(vb)
+                parts = []
+                if vb and vb.get("audio") and not vb.get("missed"):
+                    parts.append(_("Voicebox: %s") % duration(int(round(vb["duration"]))))
+                elif missed:
+                    parts.append(_("Missed"))
+                elif x.get("duration"):
+                    parts.append(duration(x["duration"]))
+                if several:
+                    parts.append(x["number"])
+                row = Adw.ActionRow(title=text.activity(x["start"]) if x.get("start") else "",
+                                    subtitle=GLib.markup_escape_text(" · ".join(parts)),
+                                    activatable=True)
+                row.add_prefix(Gtk.Image(icon_name="call-missed-symbolic" if missed else
+                                         "call-incoming-symbolic" if x["inbound"] else
+                                         "call-outgoing-symbolic"))
+                if missed:
+                    row.add_css_class("error")
+                row.connect("activated", lambda r: self.app.show_window("phone"))
+                group.add(row)
+            box.append(group)
+
+        for thread, ms in threads:
+            if not ms:
+                continue
+            group = Adw.PreferencesGroup(title=_("Messages")
+                                         + ((" · " + thread) if several else ""))
+            open_button = Gtk.Button(label=_("Open conversation"), valign=Gtk.Align.CENTER)
+            open_button.add_css_class("flat")
+            open_button.connect("clicked", lambda b, t=thread: self.app.open_sms(t))
+            group.set_header_suffix(open_button)
+            for m in reversed(ms):
+                row = Adw.ActionRow(
+                    title=GLib.markup_escape_text(" ".join((m.get("body") or "").split())),
+                    subtitle=(_("Sent") if m.get("out") else _("Received"))
+                    + (" · " + text.activity(m["time"]) if m.get("time") else ""),
+                    activatable=True)
+                row.set_title_lines(2)
+                row.add_prefix(Gtk.Image(icon_name="mail-send-symbolic" if m.get("out")
+                                         else "mail-unread-symbolic"))
+                row.connect("activated", lambda r, t=thread: self.app.open_sms(t))
+                group.add(row)
+            box.append(group)
+
+        if events:
+            group = Adw.PreferencesGroup(title=_("Appointments"))
+            for ev in events[:ACTIVITY_EVENTS]:
+                row = Adw.ActionRow(title=GLib.markup_escape_text(ev["summary"]
+                                                                  or _("(no title)")),
+                                    subtitle=GLib.markup_escape_text(event_when(ev)),
+                                    activatable=True)
+                row.add_prefix(Gtk.Image(icon_name="x-office-calendar-symbolic"))
+                row.connect("activated", lambda r, e=ev: self._open_event(e))
+                group.add(row)
+            box.append(group)
+        box.set_visible(True)
+        self.activity_clamp.set_visible(True)
+
+    def _open_event(self, ev):
+        self.app.show_window("calendar")
+        self.app.window.calendar.show_event(ev)
 
     # -- changing ------------------------------------------------------------------
     def edit(self, contact, number=None):

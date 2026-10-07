@@ -236,6 +236,25 @@ class CallHistory(unittest.TestCase):
         self.assertEqual(calls[1]["duration"], 60)
         self.assertEqual(calls[1]["start"], dt.datetime(2026, 10, 7, 6, 0, 0, 500000,
                                                          tzinfo=ZoneInfo("UTC")).timestamp())
+        # one person's calls - written as the address book has the number
+        mine = agent.call_history(path=path, book=None, numbers=["0155 50000002"], limit=5)
+        self.assertEqual([c["id"] for c in mine], [2])
+        self.assertEqual(agent.call_history(path=path, book=None, numbers=["+4915550000001",
+                                                                           "+4915550000002"],
+                                            limit=1)[0]["id"], 2)
+
+    def test_appointments_naming_a_person(self):
+        from phonebridge.contacts import mentions
+        dora = {"name": "Dora Example", "given": "Dora"}
+        anna = {"name": "Anna Example", "given": "Anna"}
+        ev = lambda s, d="": {"summary": s, "location": "", "description": d}  # noqa: E731
+        self.assertTrue(mentions(ev("Lunch with Dora Example"), dora, {"dora": 1}))
+        self.assertTrue(mentions(ev("Lunch with Dora"), dora, {"dora": 1}))
+        self.assertTrue(mentions(ev("Lunch", "bring the book for dora!"), dora, {"dora": 1}))
+        self.assertFalse(mentions(ev("Lunch with Dora"), dora, {"dora": 2}))   # two Doras
+        self.assertFalse(mentions(ev("Pandora festival"), dora, {"dora": 1}))  # no word
+        self.assertFalse(mentions(ev("Lunch with Dora"), anna, {"anna": 1}))
+        self.assertFalse(mentions(ev("Al"), {"name": "Al", "given": "Al"}, {"al": 1}))
 
 
 @unittest.skipUnless(os.environ.get("DBUS_SESSION_BUS_ADDRESS"), "no session bus")

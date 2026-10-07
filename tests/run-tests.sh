@@ -18,6 +18,8 @@ export PYTHONWARNINGS=ignore::DeprecationWarning
 export PHONEBRIDGE_LANGUAGE=en
 # never your own address book or picture cache
 export PHONEBRIDGE_ADDRESSBOOKS=/nonexistent PHONEBRIDGE_CACHE=/nonexistent
+# nor a call history GNOME Calls may have on this PC
+export PHONEBRIDGE_CALLS_DB=/nonexistent
 # settings the tests change live in memory - never in your dconf
 export GSETTINGS_BACKEND=memory
 # and passwords in a keyring in memory - never in yours

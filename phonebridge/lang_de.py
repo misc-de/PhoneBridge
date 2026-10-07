@@ -1185,4 +1185,20 @@ TRANSLATIONS = {
         'Normale Größe',
     'Open contact':
         'Kontakt öffnen',
+    'Activity':
+        'Aktivität',
+    'Open conversation':
+        'Unterhaltung öffnen',
+    'Last contact':
+        'Letzter Kontakt',
+    'Missed':
+        'Verpasst',
+    'Sent':
+        'Gesendet',
+    'Received':
+        'Empfangen',
+    'Write an email':
+        'E-Mail schreiben',
+    'No mail program: %s':
+        'Kein Mailprogramm: %s',
 }
