@@ -28,7 +28,12 @@ ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("PipeWire is not running on the phone"),
           N_("the phone has no call audio nodes (droid-call-sink/-source)"),
           N_("not during a call"), N_("server and user are needed"),
-          N_("gnome-calls did not stop"))
+          N_("gnome-calls did not stop"),
+          # files
+          N_("Permission denied"), N_("No such file or directory"), N_("File exists"),
+          N_("already exists"), N_("invalid name"), N_("not allowed"),
+          N_("No space left on device"), N_("Not a directory"), N_("incomplete"),
+          N_("not an absolute path"))
 DEVICE_STATES = {"online": N_("Connected"), "connecting": N_("Connecting …"),
                  "offline": N_("Not connected")}
 

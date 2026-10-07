@@ -1051,4 +1051,132 @@ TRANSLATIONS = {
         'PhoneBridge aktualisieren?',
     'Updating …':
         'Wird aktualisiert …',
+    'Documents':
+        'Dokumente',
+    'Downloads':
+        'Downloads',
+    'Pictures':
+        'Bilder',
+    'Music':
+        'Musik',
+    'Videos':
+        'Videos',
+    'File system':
+        'Dateisystem',
+    'Downloading':
+        'Herunterladen',
+    'Uploading':
+        'Hochladen',
+    'Upload folder …':
+        'Ordner hochladen …',
+    'Show hidden files':
+        'Versteckte Dateien zeigen',
+    'Refresh':
+        'Aktualisieren',
+    'Size':
+        'Größe',
+    'Modified':
+        'Geändert',
+    'Open':
+        'Öffnen',
+    'Download':
+        'Herunterladen',
+    'Download to …':
+        'Herunterladen nach …',
+    'Rename …':
+        'Umbenennen …',
+    'Delete …':
+        'Löschen …',
+    '%d item saved':
+        '%d Element gespeichert',
+    '%d items saved':
+        '%d Elemente gespeichert',
+    'Skip':
+        'Überspringen',
+    'Replace':
+        'Ersetzen',
+    'New folder':
+        'Neuer Ordner',
+    'Create':
+        'Anlegen',
+    'Rename':
+        'Umbenennen',
+    'Delete %d item?':
+        '%d Element löschen?',
+    'Delete %d items?':
+        '%d Elemente löschen?',
+    'Places':
+        'Orte',
+    'Filter':
+        'Filtern',
+    'Upload …':
+        'Hochladen …',
+    'Loading …':
+        'Wird geladen …',
+    '%d selected':
+        '%d ausgewählt',
+    'Save to phone':
+        'Aufs Phone speichern',
+    'Download to':
+        'Herunterladen nach',
+    'Saved: %s':
+        'Gespeichert: %s',
+    'Replace %d file?':
+        '%d Datei ersetzen?',
+    'Replace %d files?':
+        '%d Dateien ersetzen?',
+    'It is deleted on the phone for good - folders with everything in them.':
+        'Es wird auf dem Phone endgültig gelöscht – Ordner mit allem, was darin ist.',
+    '%(done)s of %(total)s':
+        '%(done)s von %(total)s',
+    'Back':
+        'Zurück',
+    'Up':
+        'Nach oben',
+    'More':
+        'Mehr',
+    'Only the first %d entries are shown.':
+        'Nur die ersten %d Einträge werden gezeigt.',
+    'Nothing matches':
+        'Nichts gefunden',
+    'Empty folder':
+        'Leerer Ordner',
+    '%s was changed':
+        '%s wurde geändert',
+    'Download of %s failed: %s':
+        'Herunterladen von %s fehlgeschlagen: %s',
+    'Upload of %s failed: %s':
+        'Hochladen von %s fehlgeschlagen: %s',
+    'Upload folder':
+        'Ordner hochladen',
+    'Upload files':
+        'Dateien hochladen',
+    '%(what)s failed: %(error)s':
+        '%(what)s fehlgeschlagen: %(error)s',
+    'Could not open %(name)s: %(error)s':
+        '%(name)s konnte nicht geöffnet werden: %(error)s',
+    'Permission denied':
+        'Keine Berechtigung',
+    'No such file or directory':
+        'Datei oder Ordner nicht gefunden',
+    'File exists':
+        'Datei existiert bereits',
+    'already exists':
+        'existiert bereits',
+    'invalid name':
+        'ungültiger Name',
+    'not allowed':
+        'nicht erlaubt',
+    'No space left on device':
+        'Kein Speicherplatz mehr frei',
+    'Not a directory':
+        'Kein Ordner',
+    'incomplete':
+        'unvollständig',
+    'not an absolute path':
+        'kein absoluter Pfad',
+    'Files':
+        'Dateien',
+    'Home folder':
+        'Persönlicher Ordner',
 }

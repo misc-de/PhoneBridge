@@ -6,7 +6,8 @@ every phone and - when asked for - the window.
   phonebridge                 icon + window
   phonebridge --background    icon only (autostart)
   phonebridge --messages      window, on the messages (likewise --overview,
-                              --phone, --contacts, --calendar, --settings)
+                              --phone, --contacts, --calendar, --files,
+                              --settings)
   phonebridge --quit          ends the running instance
 
 A second start hands its arguments to the running instance."""
@@ -29,7 +30,7 @@ from .connection import Device  # noqa: E402
 from .i18n import _, n_  # noqa: E402
 
 RING_SECONDS = 20
-PAGES = ("overview", "phone", "messages", "contacts", "calendar", "settings")
+PAGES = ("overview", "phone", "messages", "contacts", "calendar", "files", "settings")
 
 CSS = """
 .bubble { padding: 6px 10px; border-radius: 14px; }

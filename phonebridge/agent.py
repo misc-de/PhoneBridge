@@ -629,6 +629,7 @@ class Agent:
         self._call_audio = None
         self._call_audio_tried = 0.0
         self.work = queue.Queue()
+        self.files_work = queue.Queue()     # the file browser's: never behind the others
         self.last_rx = time.monotonic()
         self._watch()
 
@@ -935,7 +936,8 @@ class Agent:
             return False
         fn, deferred, threaded = entry
         if threaded:
-            self.work.put((fn, req.get("args") or {}, reply))
+            q = self.files_work if threaded == "files" else self.work
+            q.put((fn, req.get("args") or {}, reply))
             return False
         try:
             if deferred:
@@ -2957,6 +2959,169 @@ def cmd_authorize(agent, args):
     return "added"
 
 
+# --- files -----------------------------------------------------------------
+# The phone's files for the PC's file browser: folders, thumbnails and
+# changes go through here, in a worker of their own; the contents travel
+# over an ssh of their own (phonebridge/files.py), raw.
+
+FILES_HOME = os.environ.get("PHONEBRIDGE_FILES_HOME", HOME)
+THUMBNAILS = os.environ.get("PHONEBRIDGE_THUMBNAILS",
+                            os.path.join(HOME, ".cache", "thumbnails"))
+FILES_MAX = 20000               # entries of one folder
+THUMB_SIZE = 128
+THUMB_FILE_MAX = 40 * 1024 * 1024   # larger pictures get no thumbnail made
+THUMBS_AT_ONCE = 24
+PLACES = (("documents", "DIRECTORY_DOCUMENTS", "Documents"),
+          ("downloads", "DIRECTORY_DOWNLOAD", "Downloads"),
+          ("pictures", "DIRECTORY_PICTURES", "Pictures"),
+          ("music", "DIRECTORY_MUSIC", "Music"),
+          ("videos", "DIRECTORY_VIDEOS", "Videos"))
+
+
+def files_path(path):
+    """An absolute, normalised path; the home when none is given."""
+    path = os.path.expanduser(path or FILES_HOME)
+    if not os.path.isabs(path) or "\0" in path:
+        raise RuntimeError("not an absolute path")
+    return os.path.normpath(path)
+
+
+def file_name(name):
+    """A name for a new file or folder: one path element."""
+    name = (name or "").strip()
+    if not name or name in (".", "..") or "/" in name or "\0" in name:
+        raise RuntimeError("invalid name")
+    return name
+
+
+def _os_error(e):
+    return RuntimeError(e.strerror or str(e))
+
+
+def file_entry(de):
+    try:
+        st = de.stat()                      # through a link: what it points at
+        is_dir = os.path.isdir(de.path)
+        size, mtime = (0 if is_dir else st.st_size), int(st.st_mtime)
+    except OSError:                         # a broken link
+        is_dir, size, mtime = False, 0, 0
+    return {"name": de.name, "dir": is_dir, "size": size, "mtime": mtime,
+            "link": de.is_symlink()}
+
+
+@command("files.places")
+def cmd_files_places(agent, args):
+    places = []
+    for pid, special, default in PLACES:
+        path = None
+        if FILES_HOME == HOME:
+            path = GLib.get_user_special_dir(getattr(GLib.UserDirectory, special))
+        if not path or path == HOME:
+            path = os.path.join(FILES_HOME, default)
+        if os.path.isdir(path):
+            places.append({"id": pid, "path": path})
+    return {"home": FILES_HOME, "places": places}
+
+
+@command("files.list", threaded="files")
+def cmd_files_list(agent, args):
+    path = files_path(args.get("path"))
+    entries, truncated = [], False
+    try:
+        with os.scandir(path) as it:
+            for de in it:
+                if len(entries) >= FILES_MAX:
+                    truncated = True
+                    break
+                entries.append(file_entry(de))
+    except OSError as e:
+        raise _os_error(e)
+    return {"path": path, "parent": None if path == "/" else os.path.dirname(path),
+            "writable": os.access(path, os.W_OK), "entries": entries,
+            "truncated": truncated}
+
+
+def thumbnail(path):
+    """PNG bytes: the phone's own thumbnail when it is not older than the
+    file, else one made here - pictures only, not too large. None when
+    there is none."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    digest = hashlib.md5(Gio.File.new_for_path(path).get_uri().encode()).hexdigest()
+    for size in ("normal", "large", "x-large", "xx-large"):
+        thumb = os.path.join(THUMBNAILS, size, digest + ".png")
+        try:
+            if os.stat(thumb).st_mtime >= st.st_mtime:
+                with open(thumb, "rb") as f:
+                    return f.read()
+        except OSError:
+            continue
+    if st.st_size > THUMB_FILE_MAX:
+        return None
+    try:
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, THUMB_SIZE, THUMB_SIZE, True)
+        pb = pb.apply_embedded_orientation() or pb
+        ok, data = pb.save_to_bufferv("png", [], [])
+        return bytes(data) if ok else None
+    except (ImportError, ValueError, GLib.Error):
+        return None
+
+
+@command("files.thumbs", threaded="files")
+def cmd_files_thumbs(agent, args):
+    out = {}
+    for path in (args.get("paths") or [])[:THUMBS_AT_ONCE]:
+        data = thumbnail(files_path(path))
+        out[path] = base64.b64encode(data).decode("ascii") if data else None
+    return out
+
+
+@command("files.mkdir", threaded="files")
+def cmd_files_mkdir(agent, args):
+    path = os.path.join(files_path(args.get("path")), file_name(args.get("name")))
+    try:
+        os.mkdir(path)
+    except OSError as e:
+        raise _os_error(e)
+    return {"path": path}
+
+
+@command("files.rename", threaded="files")
+def cmd_files_rename(agent, args):
+    path = files_path(args.get("path"))
+    target = os.path.join(os.path.dirname(path), file_name(args.get("name")))
+    if os.path.lexists(target):
+        raise RuntimeError("already exists")
+    try:
+        os.rename(path, target)
+    except OSError as e:
+        raise _os_error(e)
+    return {"path": target}
+
+
+@command("files.delete", threaded="files")
+def cmd_files_delete(agent, args):
+    """For good - the PC asked first. Never / or the home itself."""
+    failed = []
+    for p in args.get("paths") or []:
+        path = files_path(p)
+        if path in ("/", os.path.normpath(HOME), os.path.normpath(FILES_HOME)):
+            failed.append({"path": path, "error": "not allowed"})
+            continue
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError as e:
+            failed.append({"path": path, "error": e.strerror or str(e)})
+    return {"failed": failed}
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):
@@ -2966,10 +3131,10 @@ def _reader(agent):
     GLib.idle_add(agent.loop.quit)
 
 
-def _worker(agent):
+def _worker(agent, work):
     """Runs the threaded commands, one after the other, in order."""
     while True:
-        fn, args, reply = agent.work.get()
+        fn, args, reply = work.get()
         try:
             reply(fn(agent, args))
         except Exception as e:  # noqa: BLE001 - every failure goes back to the PC
@@ -2979,7 +3144,8 @@ def _worker(agent):
 def main():
     loop = GLib.MainLoop()
     agent = Agent(loop)
-    threading.Thread(target=_worker, args=(agent,), daemon=True).start()
+    threading.Thread(target=_worker, args=(agent, agent.work), daemon=True).start()
+    threading.Thread(target=_worker, args=(agent, agent.files_work), daemon=True).start()
     threading.Thread(target=_reader, args=(agent,), daemon=True).start()
     agent.schedule_refresh(0)
     try:                            # GLib 2.80 moved it

@@ -9,6 +9,7 @@ from . import i18n, text
 from .i18n import _
 from .calendar_page import CalendarPage
 from .contacts import ContactsPage
+from .files_page import FilesPage
 from .messages import MessagesPage
 from .overview import OverviewPage
 from .phone import CallBar, PhonePage
@@ -28,9 +29,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.messages = MessagesPage(app)
         self.contacts = ContactsPage(app)
         self.calendar = CalendarPage(app)
+        self.files = FilesPage(app)
         self.settings = PhoneSettingsPage(app)
         self.pages = (self.overview, self.phone, self.messages, self.contacts,
-                      self.calendar, self.settings)
+                      self.calendar, self.files, self.settings)
         self.stack = Adw.ViewStack()
         for page, name, title, icon in (
                 (self.overview, "overview", _("Overview"), "phone-symbolic"),
@@ -38,13 +40,14 @@ class MainWindow(Adw.ApplicationWindow):
                 (self.messages, "messages", _("Messages"), "mail-unread-symbolic"),
                 (self.contacts, "contacts", _("Contacts"), "x-office-address-book-symbolic"),
                 (self.calendar, "calendar", _("Appointments"), "x-office-calendar-symbolic"),
+                (self.files, "files", _("Files"), "folder-symbolic"),
                 (self.settings, "settings", _("Settings"), "emblem-system-symbolic")):
             self.stack.add_titled_with_icon(page, name, title, icon)
         self.stack.connect("notify::visible-child", self._on_page)
 
         header = Adw.HeaderBar()
-        header.set_title_widget(Adw.ViewSwitcher(
-            stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE))
+        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
+        header.set_title_widget(switcher)
         self.picker = Gtk.DropDown(tooltip_text=_("Phone"))
         self.picker.connect("notify::selected", self._on_pick)
         header.pack_start(self.picker)
@@ -83,11 +86,17 @@ class MainWindow(Adw.ApplicationWindow):
         view.add_bottom_bar(bar)
         self.set_content(view)
 
+        # not wide enough for every page's name beside its icon: name below
+        middle = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 1400sp"))
+        middle.add_setter(switcher, "policy", Adw.ViewSwitcherPolicy.NARROW)
+        self.add_breakpoint(middle)
+        # the last breakpoint that matches counts: narrow comes after middle
         bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 900sp"))
         bp.add_setter(bar, "reveal", True)
         bp.add_setter(header, "title-widget", Adw.WindowTitle(title="PhoneBridge"))
         # narrow: list and content one after the other instead of side by side
-        for page in (self.phone, self.messages, self.contacts, self.calendar, self.settings):
+        for page in (self.phone, self.messages, self.contacts, self.calendar, self.files,
+                     self.settings):
             bp.add_setter(page.split, "collapsed", True)
         self.add_breakpoint(bp)
 

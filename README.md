@@ -42,6 +42,9 @@ Cinnamon, MATE, Budgie, waybar …).
   call, write, add, change and delete, with photos.
 - **Appointments** - all calendars of the phone as month and agenda: add, change and delete
   appointments with reminders; recurring ones as a series or a single day.
+- **Files** - the phone's folders with thumbnails: open a file on the PC (a changed copy can
+  go back with one click), download, upload (also by dragging files onto the window), new
+  folder, rename, delete. Transfers show their progress and can be cancelled.
 - **Settings** - quick switches (mobile data, Wi-Fi, volume, ring and power profile, find the
   phone), and the phone's own settings section by section: appearance, screen and power,
   lock screen, notifications (per app too), sound and vibration, GNOME Calls and its SIP
@@ -70,6 +73,7 @@ apps use:
 | Voice messages | [VoiceBox](https://github.com/misc-de/VoiceBox), when it is installed |
 | Wi-Fi, volume, ring profile, power profile | NetworkManager, WirePlumber, feedbackd, power-profiles |
 | Settings | GSettings |
+| Files | the file system, as the phone's user; contents over an SSH connection of their own |
 
 Changing chatty's store or GNOME Calls' accounts needs the app to be stopped meanwhile;
 PhoneBridge does that for a moment and starts it again exactly as it ran - never during a call.
@@ -122,7 +126,7 @@ to make one. More phones: *Menu → Phones …*.
 ```sh
 phonebridge --background    # the panel icon only (autostart)
 phonebridge --calendar      # straight to a page: --overview, --phone, --messages,
-                            # --contacts, --calendar, --settings
+                            # --contacts, --calendar, --files, --settings
 phonebridge --quit          # ends the running instance
 ./uninstall.sh              # PURGE=1 also removes the settings
 ```
