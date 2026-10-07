@@ -21,6 +21,22 @@ from .support import ANNA, BERND, Home, run_loop_until  # noqa: E402
 HAVE_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def _children(page):
+    """The groups of a preferences page."""
+    from gi.repository import Adw
+    out, stack = [], [page]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, Adw.PreferencesGroup):
+            out.append(w)
+            continue
+        child = w.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+    return out
+
+
 @unittest.skipUnless(HAVE_DISPLAY and Gtk.init_check(), "no display")
 class App(unittest.TestCase):
     @classmethod
@@ -85,8 +101,19 @@ class App(unittest.TestCase):
         win = self.window()
         win.devices_changed()
         self.assertEqual(win.body.get_visible_child_name(), "pages")
-        self.assertIn("Connected", win.overview.conn.get_subtitle())
-        self.assertEqual(win.overview.wifi.get_subtitle(), "Testnetz · 57 %")
+        self.assertEqual(win.overview.conn.value.get_label(), "Connected")
+        self.assertEqual(win.overview.wifi.value.get_label(), "Testnetz · 57 %")
+        # the cards: conversations from the app; calls and appointments are
+        # fetched when the page is on screen, so fill them by hand here
+        win.overview.show_threads()
+        self.assertTrue(win.overview.messages_card.list.get_row_at_index(0))
+        win.overview.calls = [{"number": "+4915550000001", "name": "Anna", "inbound": True,
+                               "answered": False, "start": __import__("time").time(),
+                               "duration": 0}]
+        win.overview.show_calls()
+        self.assertEqual(win.overview.calls_card.badge.get_label(), "1")   # missed today
+        # the settings page carries the switches now
+        self.assertIn(win.settings.quick.groups[0], list(_children(win.settings)))
         self.assertFalse(win.banner.get_revealed())
 
         msgs = win.messages

@@ -125,6 +125,8 @@ TRANSLATIONS = {
         'Das Phone ruft %s an, über %s …',
     'Calling …':
         'Wählt …',
+    'Calls':
+        'Anrufe',
     'Calls at the PC':
         'Telefonieren am PC',
     'Cancel':
@@ -311,6 +313,8 @@ TRANSLATIONS = {
         'Kein Adressbuch lässt sich ändern',
     'No appointments':
         'Keine Termine',
+    'No appointments in the next two weeks':
+        'Keine Termine in den nächsten zwei Wochen',
     'No calendar can be changed':
         'Kein Kalender lässt sich ändern',
     'No calls':
@@ -481,6 +485,8 @@ TRANSLATIONS = {
         'Phone einrichten …',
     'Settings':
         'Einstellungen',
+    'Show all':
+        'Alle anzeigen',
     'signal %d %%':
         'Signal %d %%',
     'Silent':
@@ -503,8 +509,6 @@ TRANSLATIONS = {
         'Beim Anmelden starten',
     'Starts':
         'Beginn',
-    'Status':
-        'Status',
     'Stop':
         'Stopp',
     'Stop ringing':

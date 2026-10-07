@@ -376,9 +376,14 @@ class PhoneBridgeApp(Adw.Application):
             self.window.calls_changed(dev)
         if old and not now and self.window is not None:
             # GNOME Calls writes the history when the call is over
-            GLib.timeout_add_seconds(2, lambda: self.window is not None
-                                     and self.window.phone.load(force=True) and False)
+            GLib.timeout_add_seconds(2, self._call_over)
         self.update_tray()
+
+    def _call_over(self):
+        if self.window is not None:
+            self.window.phone.load(force=True)
+            self.window.overview.load(force=True)
+        return False
 
     def notify_call(self, dev, c):
         name = c["name"] or c["number"] or _("Unknown number")
@@ -450,7 +455,7 @@ class PhoneBridgeApp(Adw.Application):
     def _pc_audio_changed(self, dev):
         if self.window is not None:
             self.window.calls_changed(dev)
-            self.window.overview.update()
+            self.window.settings.quick.update()
 
     def current_call(self, dev_id):
         calls = self.calls.get(dev_id, [])

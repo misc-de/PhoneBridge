@@ -9,6 +9,7 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import N_, _
+from .quick import QuickSettings
 
 IDLE_CHOICES = ((30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"),
                 (600, "10 min"), (900, "15 min"), (0, N_("Never")))
@@ -62,6 +63,10 @@ class PhoneSettingsPage(Adw.PreferencesPage):
         self._updating = False
         self._loaded_for = None
 
+        self.quick = QuickSettings(app)
+        for group in self.quick.groups:
+            self.add(group)
+
         for title, entries in COMMON:
             group = Adw.PreferencesGroup(title=_(title))
             self.add(group)
@@ -88,9 +93,11 @@ class PhoneSettingsPage(Adw.PreferencesPage):
     def set_device(self, dev):
         self.dev = dev
         self._loaded_for = None
+        self.quick.set_device(dev)
         self.device_changed()
 
     def device_changed(self):
+        self.quick.update()
         online = self.dev is not None and self.dev.online
         self.browse_row.set_sensitive(online)
         if not online:

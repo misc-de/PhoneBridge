@@ -31,6 +31,8 @@ class Words(unittest.TestCase):
         s = {"battery": {"percent": 30, "state": "discharging", "time_to_empty": 4 * 3600 + 60}}
         self.assertEqual(text.battery(s), "30 % · on battery · 4 h 1 min left")
         self.assertIsNone(text.battery({}))
+        wild = {"battery": {"percent": 100, "state": "discharging", "time_to_empty": 289 * 3600}}
+        self.assertEqual(text.battery(wild), "100 % · on battery")
 
     def test_network(self):
         self.assertEqual(text.network(STATUS), "Netz · LTE · signal 60 %")

@@ -41,9 +41,10 @@ def battery(status):
     if not b:
         return None
     parts = ["%d %%" % b["percent"], _(BATTERY_STATES.get(b["state"], b["state"]))]
-    if b["state"] == "charging" and b.get("time_to_full"):
+    # the phones' estimates run wild at times ("289 h"): only plausible ones
+    if b["state"] == "charging" and 0 < b.get("time_to_full", 0) <= 86400:
         parts.append(_("full in %s") % duration(b["time_to_full"]))
-    elif b["state"] == "discharging" and b.get("time_to_empty"):
+    elif b["state"] == "discharging" and 0 < b.get("time_to_empty", 0) <= 2 * 86400:
         parts.append(_("%s left") % duration(b["time_to_empty"]))
     return " · ".join(parts)
 

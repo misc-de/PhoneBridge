@@ -235,6 +235,7 @@ class CalendarPage(Gtk.Box):
         from . import config
         config.save(self.app.cfg)
         self._fill()
+        self.get_root().overview.show_events()
 
     def visible_events(self):
         hidden = self.hidden()
@@ -377,6 +378,7 @@ class CalendarPage(Gtk.Box):
                 if error is not None:
                     self.app.toast(_("Not deleted: %s") % text.error(error))
                 self.load(force=True)
+                self.get_root().overview.load(force=True)
 
             self.dev.request("calendar.delete", {
                 "source": ev["source"], "uid": ev["uid"], "rid": ev["rid"],
@@ -389,6 +391,7 @@ class CalendarPage(Gtk.Box):
     def saved(self, day):
         self.select(day)
         self.load(force=True)
+        self.get_root().overview.load(force=True)
 
 
 def alarm_label(minutes):

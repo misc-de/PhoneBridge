@@ -82,6 +82,9 @@ class MainWindow(Adw.ApplicationWindow):
         bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 900sp"))
         bp.add_setter(bar, "reveal", True)
         bp.add_setter(header, "title-widget", Adw.WindowTitle(title="PhoneBridge"))
+        # narrow: list and content one after the other instead of side by side
+        for page in (self.phone, self.messages, self.contacts, self.calendar):
+            bp.add_setter(page.split, "collapsed", True)
         self.add_breakpoint(bp)
 
         self.connect("notify::is-active", lambda *a: self.messages.window_focus())
@@ -150,6 +153,7 @@ class MainWindow(Adw.ApplicationWindow):
     def threads_changed(self, dev):
         if dev is self.app.active_device():
             self.messages.threads_changed()
+            self.overview.show_threads()
         self.update_badges()
 
     def sms_arrived(self, dev, new):
@@ -163,6 +167,7 @@ class MainWindow(Adw.ApplicationWindow):
     def voicebox_changed(self, dev, reload_calls=True):
         if dev is self.app.active_device():
             self.phone.voicebox_changed(reload_calls)
+            self.overview.show_calls()
         self.update_badges()
 
     def update_badges(self):

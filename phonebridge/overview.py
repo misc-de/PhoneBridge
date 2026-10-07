@@ -1,270 +1,307 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
-"""Overview: how the phone is doing, and the switches used most."""
+"""Overview: how the phone is doing, and what happened and comes next -
+the last calls, the last conversations, the next appointments - in two or
+three columns as the window allows. Nothing to set here; that is on the
+settings page. A click leads to the page behind each card."""
 
-from gi.repository import Adw, GLib, Gtk
+import datetime as dt
+import time
+
+from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
-from .i18n import N_, _
+from .calendar_page import color_dot
+from .i18n import _
+from .phone import duration
+from .widgets import day_title
 
-POWER_PROFILES = (("power-saver", N_("Power saver")), ("balanced", N_("Balanced")),
-                  ("performance", N_("Performance")))
-FEEDBACK_PROFILES = (("full", N_("Sound and vibration")), ("quiet", N_("Vibration only")),
-                     ("silent", N_("Silent")))
+CALLS = 6
+THREADS = 6
+EVENTS = 6
+EVENT_DAYS = 14
 
 
-class OverviewPage(Adw.PreferencesPage):
+def tile(icon, title):
+    """A status tile: icon, title, a line of text (and room for more)."""
+    box = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=14,
+                  margin_end=14)
+    box.append(Gtk.Image(icon_name=icon, pixel_size=24, valign=Gtk.Align.CENTER))
+    lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True,
+                    valign=Gtk.Align.CENTER)
+    head = Gtk.Label(label=title, xalign=0)
+    head.add_css_class("dim-label")
+    head.add_css_class("caption")
+    # a short natural width, so four tiles fit side by side; long text ellipsizes
+    value = Gtk.Label(label="–", xalign=0, ellipsize=Pango.EllipsizeMode.END,
+                      max_width_chars=16, width_chars=10)
+    value.add_css_class("heading")
+    lines.append(head)
+    lines.append(value)
+    box.append(lines)
+    frame = Gtk.Frame(child=box)
+    frame.add_css_class("card")
+    frame.value = value
+    frame.lines = lines
+    return frame
+
+
+class Card(Gtk.Box):
+    """A card: title, a line under it, a short list, and "Show all"."""
+
+    def __init__(self, title, icon, on_all):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                         valign=Gtk.Align.START)
+        head = Gtk.Box(spacing=8)
+        head.append(Gtk.Image(icon_name=icon))
+        label = Gtk.Label(label=title, xalign=0, hexpand=True)
+        label.add_css_class("heading")
+        head.append(label)
+        self.badge = Gtk.Label(visible=False)
+        self.badge.add_css_class("unread-badge")
+        head.append(self.badge)
+        more = Gtk.Button(label=_("Show all"))
+        more.add_css_class("flat")
+        more.connect("clicked", lambda *a: on_all())
+        head.append(more)
+        self.append(head)
+        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.list.add_css_class("boxed-list")
+        self.list.connect("row-activated", lambda lb, row: row.on_click()
+                          if hasattr(row, "on_click") else None)
+        self.append(self.list)
+        self.empty = Gtk.Label(label="", margin_top=8)
+        self.empty.add_css_class("dim-label")
+        self.append(self.empty)
+
+    def fill(self, rows, empty_text, badge=0):
+        while (r := self.list.get_row_at_index(0)) is not None:
+            self.list.remove(r)
+        for row in rows:
+            self.list.append(row)
+        self.list.set_visible(bool(rows))
+        self.empty.set_label(empty_text)
+        self.empty.set_visible(not rows)
+        self.badge.set_label(str(badge))
+        self.badge.set_visible(badge > 0)
+
+
+def entry_row(prefix, title, subtitle, on_click, bold=False, red=False):
+    row = Adw.ActionRow(title=GLib.markup_escape_text(title or ""), activatable=True,
+                        subtitle=GLib.markup_escape_text(subtitle or ""))
+    row.set_title_lines(1)
+    row.set_subtitle_lines(1)
+    if prefix is not None:
+        row.add_prefix(prefix)
+    if bold:
+        row.add_css_class("thread-unread")
+    if red:
+        row.add_css_class("error")
+    row.on_click = on_click
+    return row
+
+
+class OverviewPage(Gtk.ScrolledWindow):
     def __init__(self, app):
-        super().__init__()
+        super().__init__(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         self.app = app
         self.dev = None
-        self._updating = False
-        self._volume_source = 0
+        self.calls = []
+        self.events = []
+        self._serial = 0
+        self._loaded_for = None
+        self._stamp = 0
 
-        state = Adw.PreferencesGroup(title=_("Status"))
-        self.add(state)
-        self.battery = Adw.ActionRow(title=_("Battery"))
-        self.battery.add_prefix(Gtk.Image(icon_name="battery-symbolic"))
-        self.level = Gtk.LevelBar(min_value=0, max_value=100, valign=Gtk.Align.CENTER,
-                                  width_request=140)
-        self.battery.add_suffix(self.level)
-        self.mobile = Adw.ActionRow(title=_("Mobile network"))
-        self.mobile.add_prefix(Gtk.Image(icon_name="network-cellular-symbolic"))
-        self.wifi = Adw.ActionRow(title=_("Wi-Fi"))
-        self.wifi.add_prefix(Gtk.Image(icon_name="network-wireless-symbolic"))
-        self.conn = Adw.ActionRow(title=_("Connection"))
-        self.conn.add_prefix(Gtk.Image(icon_name="network-transmit-receive-symbolic"))
-        for row in (self.battery, self.mobile, self.wifi, self.conn):
-            row.set_subtitle_selectable(True)
-            state.add(row)
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
+                         margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
+        # status: four tiles, side by side as far as they fit
+        self.tiles = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                                 max_children_per_line=4, min_children_per_line=1,
+                                 column_spacing=12, row_spacing=12)
+        self.battery = tile("battery-symbolic", _("Battery"))
+        self.level = Gtk.LevelBar(min_value=0, max_value=100)
+        self.battery.lines.append(self.level)
+        self.mobile = tile("network-cellular-symbolic", _("Mobile network"))
+        self.wifi = tile("network-wireless-symbolic", _("Wi-Fi"))
+        self.conn = tile("phone-symbolic", _("Connection"))
+        for t in (self.battery, self.mobile, self.wifi, self.conn):
+            self.tiles.append(t)
+        column.append(self.tiles)
 
-        quick = Adw.PreferencesGroup(title=_("Quick settings"))
-        self.add(quick)
-        self.data = Adw.SwitchRow(title=_("Mobile data"))
-        self.data.connect("notify::active", self._on_data)
-        self.wifi_switch = Adw.SwitchRow(title=_("Wi-Fi"))
-        self.wifi_switch.connect("notify::active", self._on_wifi)
+        # what happened and what comes: three cards, three or two columns
+        self.cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                                 max_children_per_line=3, min_children_per_line=1,
+                                 column_spacing=18, row_spacing=18,
+                                 valign=Gtk.Align.START)
+        self.calls_card = Card(_("Calls"), "call-start-symbolic",
+                               lambda: app.show_window("phone"))
+        self.messages_card = Card(_("Messages"), "mail-unread-symbolic",
+                                  lambda: app.show_window("messages"))
+        self.events_card = Card(_("Appointments"), "x-office-calendar-symbolic",
+                                lambda: app.show_window("calendar"))
+        for card in (self.calls_card, self.messages_card, self.events_card):
+            card.set_size_request(300, -1)
+            self.cards.append(card)
+        for child in (self.cards.get_child_at_index(i) for i in range(3)):
+            child.set_valign(Gtk.Align.START)
+        column.append(self.cards)
+        self.set_child(Adw.Clamp(child=column, maximum_size=1400, tightening_threshold=1000))
+        self.connect("map", lambda *a: self.load())
 
-        self.volume = Adw.ActionRow(title=_("Volume"))
-        self.scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        self.scale.set_hexpand(True)
-        self.scale.set_draw_value(False)
-        self.scale.set_valign(Gtk.Align.CENTER)
-        self.scale.set_size_request(180, -1)
-        self.scale.connect("value-changed", self._on_volume)
-        self.mute = Gtk.ToggleButton(icon_name="audio-volume-muted-symbolic",
-                                     valign=Gtk.Align.CENTER, tooltip_text=_("Mute"))
-        self.mute.add_css_class("flat")
-        self.mute.connect("toggled", self._on_mute)
-        self.volume.add_suffix(self.scale)
-        self.volume.add_suffix(self.mute)
-
-        self.feedback = Adw.ComboRow(title=_("Ring profile"))
-        self.feedback.set_model(Gtk.StringList.new([_(l) for _k, l in FEEDBACK_PROFILES]))
-        self.feedback.connect("notify::selected", self._on_feedback)
-        self.power = Adw.ComboRow(title=_("Power profile"))
-        self.power.set_model(Gtk.StringList.new([_(l) for _k, l in POWER_PROFILES]))
-        self.power.connect("notify::selected", self._on_power)
-
-        self.find = Adw.ActionRow(title=_("Find phone"),
-                                  subtitle=_("Rings like a call, even when silent"))
-        self.ring = Gtk.Button(valign=Gtk.Align.CENTER)
-        self.ring.connect("clicked", lambda *a: self.app.ring(self.dev))
-        self.find.add_suffix(self.ring)
-
-        for row in (self.data, self.wifi_switch, self.volume, self.feedback,
-                    self.power, self.find):
-            quick.add(row)
-
-        # the call's sound on the PC - only where the phone has the nodes for it
-        self.audio_group = Adw.PreferencesGroup(
-            title=_("Calls at the PC"),
-            description=_("During a call, “Sound on the PC” in the call bar puts the "
-                          "caller on the PC's speakers and the PC's microphone on the "
-                          "line; the phone's microphone is muted meanwhile."))
-        self.add(self.audio_group)
-        self.echo = Adw.SwitchRow(title=_("Echo cancellation"),
-                                  subtitle=_("Needed with speakers, not with a headset"))
-        self.echo.connect("notify::active", self._on_audio_setting)
-        self.gain = Adw.SpinRow.new_with_range(1.0, 8.0, 0.5)
-        self.gain.set_title(_("Caller's volume"))
-        self.gain.set_subtitle(_("The phone delivers the caller quietly"))
-        self.gain.set_digits(1)
-        self.gain.connect("notify::value", self._on_audio_setting)
-        self.auto = Adw.SwitchRow(title=_("Always take calls to the PC"),
-                                  subtitle=_("As soon as a call is connected"))
-        self.auto.connect("notify::active", self._on_audio_setting)
-        self.test = Adw.ActionRow(
-            title=_("Test the sound path"),
-            subtitle=_("Without a call: the PC's microphone on the phone's speaker, the "
-                       "phone's microphone on the PC. Keep them apart, or it whistles."))
-        self.test_levels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
-                                   valign=Gtk.Align.CENTER, width_request=90)
-        self.test_in = Gtk.LevelBar(tooltip_text=_("Phone's microphone"))
-        self.test_out = Gtk.LevelBar(tooltip_text=_("Your microphone"))
-        self.test_levels.append(self.test_in)
-        self.test_levels.append(self.test_out)
-        self.test_button = Gtk.Button(valign=Gtk.Align.CENTER)
-        self.test_button.connect("clicked", self._on_test)
-        self.test.add_suffix(self.test_levels)
-        self.test.add_suffix(self.test_button)
-        for row in (self.echo, self.gain, self.auto, self.test):
-            self.audio_group.add(row)
-        self._test_tick = 0
-
+    # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):
-        self.dev = dev
+        if dev is not self.dev:
+            self.dev = dev
+            self._loaded_for = None
+            self.calls, self.events = [], []
         self.update()
+        self.load()
+
+    def device_changed(self):
+        self.update()
+        self.load()
 
     def update(self):
         dev = self.dev
         status = dev.status if dev is not None and dev.online else None
         s = status or {}
-        self._updating = True
-        try:
-            bat = s.get("battery")
-            self.battery.set_subtitle(text.battery(status) or "–")
-            self.level.set_value(bat["percent"] if bat else 0)
-            self.mobile.set_subtitle(text.network(status) or "–")
-            self.wifi.set_subtitle(text.wifi(status) or "–")
-            if dev is None:
-                self.conn.set_subtitle("–")
+        bat = s.get("battery")
+        self.battery.value.set_label(text.battery(status) or "–")
+        self.battery.set_tooltip_text(text.battery(status) or None)
+        self.level.set_value(bat["percent"] if bat else 0)
+        self.mobile.value.set_label(text.network(status) or "–")
+        self.wifi.value.set_label(text.wifi(status) or "–")
+        if dev is None:
+            self.conn.value.set_label("–")
+        else:
+            self.conn.value.set_label(text.device_state(dev))
+            info = dev.info
+            where = "%s@%s" % (info["user"], info["host"])
+            self.conn.set_tooltip_text("%s (%s)" % (s.get("hostname") or dev.name, where))
+        self.show_threads()
+
+    def load(self, force=False):
+        """Calls and appointments - once per connection, again after a minute
+        when the page comes back, or when asked (a call ended ...)."""
+        dev = self.dev
+        if dev is None or not dev.online or not self.get_mapped():
+            if dev is None or not dev.online:
+                self._loaded_for = None
+            return
+        if self._loaded_for is dev and not force and time.time() - self._stamp < 60:
+            return
+        self._loaded_for = dev
+        self._stamp = time.time()
+        self._serial += 1
+        serial = self._serial
+
+        def got_calls(result, error):
+            if serial == self._serial and error is None:
+                self.calls = result
+                self.show_calls()
+
+        def got_events(result, error):
+            if serial == self._serial and error is None:
+                self.events = result
+                self.show_events()
+
+        dev.request("calls.history", {"limit": 30, "country": self.app.cfg["country"]},
+                    got_calls)
+        now = time.time()
+        start = dt.datetime.combine(dt.date.today(), dt.time()).timestamp()
+        dev.request("calendar.events", {"start": int(start),
+                                        "end": int(now + EVENT_DAYS * 86400)}, got_events)
+
+    # -- cards ---------------------------------------------------------------------
+    def _avatar(self, name, key):
+        avatar = Adw.Avatar(size=32, text=name or "", show_initials=bool(name))
+        if key and self.dev is not None:
+            self.app.avatars.get(self.dev, key, avatar.set_custom_image)
+        return avatar
+
+    def show_calls(self):
+        dev = self.dev
+        phone = self.get_root().phone if self.get_root() is not None else None
+        entries = self.calls
+        if phone is not None and dev is not None:
+            # the same list as the phone page: VoiceBox's messages in their places
+            saved = phone.calls
+            phone.calls = self.calls
+            try:
+                entries = phone.entries()
+            finally:
+                phone.calls = saved
+        rows = []
+        missed_today = 0
+        today = dt.date.today()
+        for c in entries[:CALLS]:
+            vb = c.get("voicebox")
+            missed = (c["inbound"] and not c["answered"]) or bool(vb)
+            sub = [text.activity(c["start"])] if c.get("start") else []
+            if vb and vb["audio"] and not vb["missed"]:
+                sub.append(_("Voicebox: %s") % duration(int(round(vb["duration"]))))
+            name = c["name"] or c["number"] or _("Unknown number")
+            rows.append(entry_row(self._avatar(c["name"], c.get("avatar")), name,
+                                  " · ".join(sub), lambda: self.app.show_window("phone"),
+                                  bold=bool(vb and vb.get("new") and vb["audio"]),
+                                  red=missed))
+        for c in entries:
+            vb = c.get("voicebox")
+            if c.get("start") and dt.date.fromtimestamp(c["start"]) == today and (
+                    (c["inbound"] and not c["answered"]) or vb):
+                missed_today += 1
+        self.calls_card.fill(rows, _("No calls"), missed_today)
+
+    def show_threads(self):
+        dev = self.dev
+        threads = self.app.threads.get(dev.id, []) if dev is not None else []
+        rows = []
+        for t in threads[:THREADS]:
+            last = t.get("last") or {}
+            sub = text.activity(last["time"]) if last.get("time") else ""
+            rows.append(entry_row(self._avatar(t["title"], t.get("avatar")), t["title"], sub,
+                                  lambda th=t["thread"]: self._open_thread(th),
+                                  bold=bool(t["unread"])))
+        unread = self.app.unread(dev.id) if dev is not None else 0
+        self.messages_card.fill(rows, _("No messages"), unread)
+
+    def _open_thread(self, thread):
+        self.app.show_window("messages")
+        self.app.window.messages.open_thread(thread)
+
+    def show_events(self):
+        now = time.time()
+        upcoming = []
+        hidden = set(self.app.cfg.get("hidden_calendars", []))
+        for ev in self.events:
+            if ev["source"] in hidden:
+                continue
+            if ev["allday"]:
+                end = dt.date.fromisoformat(ev["end"])
+                if end <= dt.date.today():
+                    continue
+            elif max(ev["end"], ev["start"]) < now:
+                continue
+            upcoming.append(ev)
+        rows = []
+        for ev in upcoming[:EVENTS]:
+            if ev["allday"]:
+                day = max(dt.date.fromisoformat(ev["start"]), dt.date.today())
+                when = "%s · %s" % (day_title(day), _("All day"))
             else:
-                info = dev.info
-                where = "%s@%s" % (info["user"], info["host"])
-                if s.get("hostname"):
-                    where = "%s (%s)" % (s["hostname"], where)
-                self.conn.set_subtitle("%s · %s" % (text.device_state(dev), where))
+                day = dt.date.fromtimestamp(ev["start"])
+                when = "%s · %s" % (day_title(day),
+                                    time.strftime("%H:%M", time.localtime(ev["start"])))
+            if ev.get("location"):
+                when += " · " + ev["location"]
+            rows.append(entry_row(color_dot(ev.get("color")),
+                                  ev["summary"] or _("(no title)"), when,
+                                  lambda d=day: self._open_day(d)))
+        today = sum(1 for ev in upcoming if (
+            dt.date.fromisoformat(ev["start"]) <= dt.date.today() if ev["allday"]
+            else dt.date.fromtimestamp(ev["start"]) == dt.date.today()))
+        self.events_card.fill(rows, _("No appointments in the next two weeks"), today)
 
-            self._show(self.data, s.get("mobile_data") is not None)
-            self.data.set_active(bool(s.get("mobile_data")))
-            wifi = s.get("wifi")
-            self._show(self.wifi_switch, wifi is not None)
-            self.wifi_switch.set_active(bool(wifi and wifi.get("enabled")))
-            vol = s.get("volume")
-            self._show(self.volume, vol is not None)
-            if vol and not self._volume_source:
-                self.scale.set_value(round(vol["level"] * 100))
-                self.mute.set_active(vol["muted"])
-            self._select(self.feedback, FEEDBACK_PROFILES, s.get("feedback_profile"))
-            self._select(self.power, POWER_PROFILES, s.get("power_profile"))
-            cfg = self.app.cfg
-            self.audio_group.set_visible(dev is not None and self.app.call_audio_possible(dev))
-            self.echo.set_active(bool(cfg["call_audio_echo"]))
-            self.gain.set_value(float(cfg["call_audio_gain"]))
-            self.auto.set_active(bool(cfg["call_audio_auto"]))
-            audio = self.app.pc_audio.get(dev.id) if dev is not None else None
-            testing = audio is not None and audio.test
-            in_call = bool(dev is not None and self.app.calls.get(dev.id))
-            self.test_button.set_label(_("Stop") if testing else _("Test"))
-            self.test_button.set_sensitive(testing or (audio is None and not in_call))
-            self.test_levels.set_visible(testing)
-            if testing and not self._test_tick:
-                self._test_tick = GLib.timeout_add(100, self._test_levels)
-            ringing = dev is not None and dev.id in self.app.ringing
-            self.ring.set_label(_("Stop") if ringing else _("Ring"))
-            self.find.set_sensitive(status is not None)
-        finally:
-            self._updating = False
-
-    def _show(self, row, available):
-        row.set_visible(self.dev is None or not self.dev.online or available)
-        row.set_sensitive(available)
-
-    def _select(self, row, choices, value):
-        keys = [k for k, _l in choices]
-        row.set_visible(value is None and (self.dev is None or not self.dev.online)
-                        or value in keys)
-        row.set_sensitive(value in keys)
-        if value in keys:
-            row.set_selected(keys.index(value))
-
-    def _test_levels(self):
-        audio = self.app.pc_audio.get(self.dev.id) if self.dev is not None else None
-        if audio is None or not audio.test:
-            self._test_tick = 0
-            return False
-        self.test_in.set_value(min(1.0, audio.level_in))
-        self.test_out.set_value(min(1.0, audio.level_out))
-        return True
-
-    def _on_test(self, *args):
-        audio = self.app.pc_audio.get(self.dev.id) if self.dev is not None else None
-        self.app.set_pc_audio(self.dev, audio is None, test=True)
-
-    def _on_audio_setting(self, *args):
-        if self._updating:
-            return
-        from . import config
-        cfg = self.app.cfg
-        cfg["call_audio_echo"] = self.echo.get_active()
-        cfg["call_audio_gain"] = self.gain.get_value()
-        cfg["call_audio_auto"] = self.auto.get_active()
-        config.save(cfg)
-        for audio in self.app.pc_audio.values():
-            audio.gain = cfg["call_audio_gain"]     # takes effect at once
-
-    # -- changes ----------------------------------------------------------
-    def _request(self, cmd, args):
-        if self.dev is None:
-            return
-
-        def done(result, error):
-            if error is not None:
-                self.app.toast(text.error(error))
-                self.update()
-
-        self.dev.request(cmd, args, done)
-
-    def _on_data(self, *args):
-        if not self._updating:
-            self._request("data.set", {"on": self.data.get_active()})
-
-    def _on_wifi(self, *args):
-        if self._updating:
-            return
-        if self.wifi_switch.get_active():
-            self._request("wifi.set", {"on": True})
-            return
-        dialog = Adw.AlertDialog(
-            heading=_("Switch off Wi-Fi?"),
-            body=_("If PhoneBridge reaches the phone over Wi-Fi, the connection "
-                   "drops and only comes back once Wi-Fi is on again – on the phone."))
-        dialog.add_response("cancel", _("Cancel"))
-        dialog.add_response("off", _("Switch off"))
-        dialog.set_response_appearance("off", Adw.ResponseAppearance.DESTRUCTIVE)
-
-        def answered(d, response):
-            if response == "off":
-                self._request("wifi.set", {"on": False})
-            else:
-                self.update()
-
-        dialog.connect("response", answered)
-        dialog.present(self.get_root())
-
-    def _on_volume(self, *args):
-        if self._updating:
-            return
-        if self._volume_source:
-            GLib.source_remove(self._volume_source)
-        self._volume_source = GLib.timeout_add(250, self._send_volume)
-
-    def _send_volume(self):
-        self._volume_source = 0
-        self._request("volume.set", {"level": self.scale.get_value() / 100})
-        return False
-
-    def _on_mute(self, *args):
-        if not self._updating:
-            self._request("volume.set", {"muted": self.mute.get_active()})
-
-    def _on_feedback(self, *args):
-        if not self._updating:
-            key = FEEDBACK_PROFILES[self.feedback.get_selected()][0]
-            self._request("feedback.set", {"profile": key})
-
-    def _on_power(self, *args):
-        if not self._updating:
-            key = POWER_PROFILES[self.power.get_selected()][0]
-            self._request("power.set", {"profile": key})
+    def _open_day(self, day):
+        self.app.show_window("calendar")
+        self.app.window.calendar.select(day)
