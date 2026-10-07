@@ -13,6 +13,7 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import _
+from .widgets import opens_contact
 
 
 def is_number(title):
@@ -26,7 +27,7 @@ def person_avatar(app, dev, thread, size):
     avatar = Adw.Avatar(size=size, text=title, show_initials=not is_number(title))
     if thread and thread.get("avatar") and dev is not None:
         app.avatars.get(dev, thread["avatar"], avatar.set_custom_image)
-    return avatar
+    return opens_contact(avatar, app, (thread or {}).get("thread"))
 
 
 class ThreadRow(Gtk.ListBoxRow):

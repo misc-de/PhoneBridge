@@ -1183,4 +1183,6 @@ TRANSLATIONS = {
         'Kleiner',
     'Normal size':
         'Normale Größe',
+    'Open contact':
+        'Kontakt öffnen',
 }

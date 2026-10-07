@@ -14,7 +14,7 @@ from . import text
 from .calendar_page import color_dot
 from .i18n import _
 from .phone import duration
-from .widgets import day_title
+from .widgets import day_title, opens_contact
 
 CALLS = 6
 THREADS = 6
@@ -217,11 +217,11 @@ class OverviewPage(Gtk.ScrolledWindow):
                                         "end": int(now + EVENT_DAYS * 86400)}, got_events)
 
     # -- cards ---------------------------------------------------------------------
-    def _avatar(self, name, key):
+    def _avatar(self, name, key, number=None):
         avatar = Adw.Avatar(size=32, text=name or "", show_initials=bool(name))
         if key and self.dev is not None:
             self.app.avatars.get(self.dev, key, avatar.set_custom_image)
-        return avatar
+        return opens_contact(avatar, self.app, number)
 
     def show_calls(self):
         dev = self.dev
@@ -247,7 +247,7 @@ class OverviewPage(Gtk.ScrolledWindow):
             unheard = bool(vb and vb.get("new") and vb["audio"])
             missed_now = missed and c.get("start") and \
                 dt.date.fromtimestamp(c["start"]) == today
-            rows.append(entry_row(self._avatar(c["name"], c.get("avatar")), name,
+            rows.append(entry_row(self._avatar(c["name"], c.get("avatar"), c["number"]), name,
                                   " · ".join(sub), lambda: self.app.show_window("phone"),
                                   bold=unheard, red=missed,
                                   fresh=unheard or bool(missed_now)))
@@ -260,7 +260,8 @@ class OverviewPage(Gtk.ScrolledWindow):
         for t in threads[:THREADS]:
             last = t.get("last") or {}
             sub = text.activity(last["time"]) if last.get("time") else ""
-            rows.append(entry_row(self._avatar(t["title"], t.get("avatar")), t["title"], sub,
+            rows.append(entry_row(self._avatar(t["title"], t.get("avatar"), t["thread"]),
+                                  t["title"], sub,
                                   lambda th=t["thread"]: self._open_thread(th),
                                   bold=bool(t["unread"]), fresh=bool(t["unread"])))
         self.messages_card.fill(rows, _("No messages"))

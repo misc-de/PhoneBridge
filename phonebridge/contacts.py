@@ -77,6 +77,8 @@ class ContactsPage(Gtk.Box):
         self.current = None
         self._loaded_for = None
         self._serial = 0
+        self._have = None           # the phone whose contacts are in self.contacts
+        self._pending_number = None
 
         self.search = Gtk.SearchEntry(placeholder_text=_("Search contacts"),
                                       margin_start=8, margin_end=8, margin_top=6,
@@ -178,7 +180,11 @@ class ContactsPage(Gtk.Box):
                 self.list_stack.set_visible_child_name("status")
                 return
             self.contacts = result
+            self._have = dev
             self._fill()
+            if self._pending_number is not None:
+                number, self._pending_number = self._pending_number, None
+                self.open_number(number)
 
         dev.request("pim.sources", {}, got_sources)
         dev.request("contacts.list", {}, got)
@@ -212,6 +218,34 @@ class ContactsPage(Gtk.Box):
                     self._by_number.setdefault(text.normalize(p["value"], country), c)
             self._by_number_of = self.contacts
         return self._by_number.get(text.normalize(number, country))
+
+    def open_number(self, number):
+        """Shows the contact with this number, or starts a new one with it;
+        while the contacts are still coming, once they are there."""
+        self.load()
+        contact = self.find_number(number) if self._have is self.dev else None
+        if contact is not None:
+            self.show_contact(contact)
+        elif self._have is self.dev and self.dev is not None:
+            self.edit(None, number=number)
+        else:
+            self._pending_number = number
+
+    def show_contact(self, contact):
+        self.search.set_text("")
+        key = (contact["source"], contact["uid"])
+        i = 0
+        while (row := self.list.get_row_at_index(i)) is not None:
+            if (row.contact["source"], row.contact["uid"]) == key:
+                self.list.select_row(row)       # no signal when it already was
+                if self.current is not row.contact:
+                    self._show(row.contact)
+                row.grab_focus()
+                break
+            i += 1
+        else:
+            self._show(contact)
+        self.split.set_show_content(True)
 
     # -- showing -------------------------------------------------------------------
     def _on_row(self, listbox, row):

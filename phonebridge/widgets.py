@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
 """Small pieces the pages share: picking a date and a time, names of days
-and months in the user's language."""
+and months in the user's language, a person's picture that opens their
+contact."""
 
 import datetime as dt
 
-from gi.repository import GLib, GObject, Gtk
+from gi.repository import Gdk, GLib, GObject, Gtk
 
 from .i18n import N_, _
 
@@ -115,3 +116,34 @@ class TimeEntry(Gtk.Box):
     def set_time(self, hour, minute):
         self.hours.set_value(hour)
         self.minutes.set_value(minute)
+
+
+def opens_contact(widget, app, number):
+    """A click on a person's picture opens their contact - or a new one with
+    the number, when there is none. `number` may be a function giving it at
+    the time of the click (a picture that shows changing people). The click
+    is the picture's alone: the row around it does not take it."""
+    def current():
+        n = number() if callable(number) else number
+        return n if n and "," not in n and n != "withheld" else None
+
+    if not callable(number) and current() is None:
+        return widget                   # a group, a withheld number: nobody to open
+    click = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+    click.connect("pressed", lambda g, n, x, y: current() is not None and g.set_state(
+        Gtk.EventSequenceState.CLAIMED))
+    click.connect("released", lambda g, n, x, y: current() is not None
+                  and app.open_contact(current()))
+    widget.add_controller(click)
+    widget.set_cursor(Gdk.Cursor.new_from_name("pointer"))
+    widget.set_has_tooltip(True)
+    widget.connect("query-tooltip", lambda w, x, y, kb, tip: _contact_tip(app, current(), tip))
+    return widget
+
+
+def _contact_tip(app, number, tip):
+    if number is None:
+        return False
+    tip.set_text(_("Open contact") if app.find_contact(number) is not None
+                 else _("Add to contacts"))
+    return True

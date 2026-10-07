@@ -10,6 +10,7 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import N_, _
+from .widgets import opens_contact
 
 KEYS = (("1", ""), ("2", "ABC"), ("3", "DEF"), ("4", "GHI"), ("5", "JKL"), ("6", "MNO"),
         ("7", "PQRS"), ("8", "TUV"), ("9", "WXYZ"), ("*", ""), ("0", "+"), ("#", ""))
@@ -55,7 +56,7 @@ class CallRow(Gtk.ListBoxRow):
             avatar = Adw.Avatar(size=36, text=call["name"], show_initials=bool(call["name"]))
             if call.get("avatar"):
                 app.avatars.get(dev, call["avatar"], avatar.set_custom_image)
-            box.append(avatar)
+            box.append(opens_contact(avatar, app, call["number"]))
         lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
                         valign=Gtk.Align.CENTER)
         title = Gtk.Label(label=name, xalign=0, ellipsize=Pango.EllipsizeMode.END)
@@ -435,7 +436,8 @@ class CallBar(Gtk.Revealer):
                       margin_end=12)
         box.add_css_class("call-bar")
         self.avatar = Adw.Avatar(size=32)
-        box.append(self.avatar)
+        box.append(opens_contact(self.avatar, app,
+                                 lambda: self.call and self.call.get("number")))
         lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
                         valign=Gtk.Align.CENTER)
         self.who = Gtk.Label(xalign=0)

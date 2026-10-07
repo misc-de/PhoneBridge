@@ -162,6 +162,61 @@ class Pages(unittest.TestCase):
         Adw.Dialog.present = orig
 
     # -- appointments -------------------------------------------------------------------
+    def test_contact_from_a_picture(self):
+        """A click on a person's picture: their contact - or a new one."""
+        from phonebridge.messages import person_avatar
+        from phonebridge.widgets import _contact_tip
+        page = self.win.contacts
+        page.load(force=True)
+        self.wait(lambda: page.sources)
+        dialogs = []
+        with mock.patch.object(Adw.Dialog, "present", lambda d, parent=None: dialogs.append(d)):
+            page.edit(None, number="0155 50000004")
+            dialogs[0].given.set_text("Dora")
+            dialogs[0]._save()
+            self.wait(lambda: any(c["name"] == "Dora" for c in page.contacts))
+            page._show(None)
+            self.win.show_page("overview")
+
+            self.app.open_contact("+4915550000004")
+            self.assertEqual(self.win.current_page(), "contacts")
+            self.assertEqual(page.current["name"], "Dora")
+            self.assertEqual(page.list.get_selected_row().contact["name"], "Dora")
+
+            self.app.open_contact("+4915550000077")       # nobody: a new contact
+            self.assertEqual(len(dialogs), 2)
+            self.assertEqual(dialogs[1].phones.values()[0][0], "+4915550000077")
+
+            # the contacts not there yet: opened once they are
+            page._have = None
+            self.app.open_contact("+4915550000004")
+            self.assertEqual(page._pending_number, "+4915550000004")
+            page._show(None)
+            page.load(force=True)
+            self.wait(lambda: page.current and page.current["name"] == "Dora")
+            self.assertEqual(len(dialogs), 2)
+
+        # pictures that open a contact; a group's does not
+        thread = {"thread": "+4915550000004", "title": "Dora"}
+        avatar = person_avatar(self.app, self.dev, thread, 40)
+        self.assertTrue(avatar.get_has_tooltip())
+        group = person_avatar(self.app, self.dev, {"thread": "+491,+492", "title": "G"}, 40)
+        self.assertFalse(group.get_has_tooltip())
+
+        class Tip:
+            def set_text(self, t):
+                self.text = t
+        t = Tip()
+        self.assertTrue(_contact_tip(self.app, "+4915550000004", t))
+        self.assertEqual(t.text, "Open contact")
+        _contact_tip(self.app, "+4915550000099", t)
+        self.assertEqual(t.text, "Add to contacts")
+        self.assertFalse(_contact_tip(self.app, None, t))
+
+        self.answer.queue.append("delete")
+        page.delete(next(c for c in page.contacts if c["name"] == "Dora"))
+        self.wait(lambda: not any(c["name"] == "Dora" for c in page.contacts))
+
     def test_appointments_add_and_delete(self):
         page = self.win.calendar
         page.load(force=True)

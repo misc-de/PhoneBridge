@@ -862,6 +862,12 @@ class PhoneBridgeApp(Adw.Application):
         self.window.contacts.load()
         self.window.contacts.edit(None, number=number)
 
+    def open_contact(self, number):
+        """The contact with this number on the contacts page - a new one
+        with the number when there is none."""
+        self.show_window("contacts")
+        self.window.contacts.open_number(number)
+
     def find_contact(self, number):
         if self.window is None:
             return None
