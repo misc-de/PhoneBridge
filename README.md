@@ -1,5 +1,7 @@
 # PhoneBridge
 
+<img src="data/icons/io.github.miscde.PhoneBridge-256.png" alt="PhoneBridge" width="128"/>
+
 ---
 ⚠️ **AI-assisted project**  
 Under active development. Features may change and instability is possible.
