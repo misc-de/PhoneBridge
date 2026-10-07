@@ -105,7 +105,7 @@ class App(unittest.TestCase):
         self.assertEqual(win.overview.wifi.value.get_label(), "Testnetz · 57 %")
         # the cards: conversations from the app; calls and appointments are
         # fetched when the page is on screen, so fill them by hand here
-        win.overview.show_threads()
+        # filled when the window is built - the newest, not only new ones
         self.assertTrue(win.overview.messages_card.list.get_row_at_index(0))
         win.overview.calls = [{"number": "+4915550000001", "name": "Anna", "inbound": True,
                                "answered": False, "start": __import__("time").time(),

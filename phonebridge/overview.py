@@ -144,13 +144,15 @@ class OverviewPage(Gtk.ScrolledWindow):
 
     # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):
-        self.show_threads()
         if dev is not self.dev:
             self.dev = dev
             self._loaded_for = None
             self._serial += 1           # late answers of the last phone: not here
             self.calls, self.events = [], []
         self.update()
+        self.show_threads()             # what the app already has, at once
+        self.show_calls()
+        self.show_events()
         self.load()
 
     def device_changed(self):
