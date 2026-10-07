@@ -3,8 +3,6 @@
 """German, keyed by the English text in the code (see i18n.py)."""
 
 TRANSLATIONS = {
-    '%Y-%m-%d':
-        '%d.%m.%Y',
     '%Y-%m-%d, %H:%M':
         '%d.%m.%Y, %H:%M',
     '%d h %d min':
@@ -227,6 +225,8 @@ TRANSLATIONS = {
         'An welche Nummer?',
     'Type to search – at least three letters.':
         'Zum Suchen tippen – mindestens drei Buchstaben.',
+    'Today, %s':
+        'Heute, %s',
     'Type: %s':
         'Typ: %s',
     'User':
@@ -241,8 +241,8 @@ TRANSLATIONS = {
         'Schreiben',
     'Write a message':
         'Nachricht schreiben',
-    'You: ':
-        'Du: ',
+    'Yesterday, %s':
+        'Gestern, %s',
     'Your Linux phone in the panel: battery, messages and settings of your FuriOS/Phosh phone, over SSH.':
         'Dein Linux-Phone in der Leiste: Akku, Nachrichten und Einstellungen deines '
         'FuriOS-/Phosh-Phones, per SSH.',

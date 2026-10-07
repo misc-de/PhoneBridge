@@ -22,6 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import APP_ID, VERSION, config, i18n, icon, text  # noqa: E402
+from .avatars import Avatars  # noqa: E402
 from .connection import Device  # noqa: E402
 from .i18n import _  # noqa: E402
 
@@ -49,6 +50,7 @@ class PhoneBridgeApp(Adw.Application):
         self.window = None
         self.tray = None
         self.ringing = {}
+        self.avatars = Avatars()
         self._was_online = {}
 
     # -- start ------------------------------------------------------------
@@ -201,11 +203,20 @@ class PhoneBridgeApp(Adw.Application):
             title += " (%s)" % dev.name
         n = Gio.Notification.new(title)
         n.set_body(msg["body"])
-        n.set_icon(Gio.ThemedIcon.new(APP_ID))
+        n.set_icon(self._sender_icon(dev, msg["thread"]))
         target = GLib.Variant("(ss)", (dev.id, msg["thread"]))
         n.set_default_action_and_target("app.open-thread", target)
         n.add_button_with_target(_("Reply"), "app.open-thread", target)
         self.send_notification("sms-%s-%s" % (dev.id, msg["id"]), n)
+
+    def _sender_icon(self, dev, thread):
+        """The sender's picture when PhoneBridge has it already."""
+        key = next((t.get("avatar") for t in self.threads.get(dev.id, [])
+                    if t["thread"] == thread), None)
+        texture = self.avatars.textures.get(key) if key else None
+        if texture is not None:
+            return Gio.BytesIcon.new(texture.save_to_png_bytes())
+        return Gio.ThemedIcon.new(APP_ID)
 
     def mark_seen(self, dev_id, thread, message_id):
         seen = config.seen_for(self.cfg, dev_id)

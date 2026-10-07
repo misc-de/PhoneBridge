@@ -16,6 +16,8 @@ cd "$(dirname "$0")/.."
 export PATH="$PWD/tests/fakebin:$PATH"
 export PYTHONWARNINGS=ignore::DeprecationWarning
 export PHONEBRIDGE_LANGUAGE=en
+# never your own address book or picture cache
+export PHONEBRIDGE_ADDRESSBOOKS=/nonexistent PHONEBRIDGE_CACHE=/nonexistent
 # no desktop portals, no gvfs on the private bus - quieter and faster
 export GDK_DEBUG=no-portals ADW_DISABLE_PORTAL=1 GIO_USE_VFS=local GTK_A11Y=none
 args=()

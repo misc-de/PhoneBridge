@@ -7,49 +7,57 @@ The history is chatty's on the phone (read only); what PhoneBridge sends
 goes out through ModemManager like chatty's own messages and is kept in a
 log next to it, so it shows up here even where chatty does not list it."""
 
+import re
+
 from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import _
 
 
+def is_number(title):
+    return bool(re.fullmatch(r"[+\d\s/()-]+", title or ""))
+
+
+def person_avatar(app, dev, thread, size):
+    """Adw.Avatar: the picture from the phone, else coloured initials -
+    or a plain silhouette for a bare number."""
+    title = thread["title"] if thread else ""
+    avatar = Adw.Avatar(size=size, text=title, show_initials=not is_number(title))
+    if thread and thread.get("avatar") and dev is not None:
+        app.avatars.get(dev, thread["avatar"], avatar.set_custom_image)
+    return avatar
+
+
 class ThreadRow(Gtk.ListBoxRow):
-    def __init__(self, thread):
+    def __init__(self, app, dev, thread):
         super().__init__()
         self.thread = thread
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
-                      margin_top=8, margin_bottom=8, margin_start=10, margin_end=10)
-        top = Gtk.Box(spacing=6)
-        title = Gtk.Label(label=thread["title"], xalign=0, hexpand=True,
+        box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6,
+                      margin_start=6, margin_end=8)
+        box.append(person_avatar(app, dev, thread, 40))
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
+                        valign=Gtk.Align.CENTER, hexpand=True)
+        title = Gtk.Label(label=thread["title"], xalign=0,
                           ellipsize=Pango.EllipsizeMode.END)
         if thread["unread"]:
             title.add_css_class("thread-unread")
-        top.append(title)
+        lines.append(title)
         last = thread.get("last")
         if last:
-            when = Gtk.Label(label=text.when(last["time"]))
+            when = Gtk.Label(label=text.activity(last["time"]), xalign=0)
             when.add_css_class("dim-label")
             when.add_css_class("caption")
-            top.append(when)
-        box.append(top)
-        bottom = Gtk.Box(spacing=6)
-        preview = ""
-        if last:
-            preview = (_("You: ") if last["out"] else "") + " ".join(last["body"].split())
-        label = Gtk.Label(label=preview, xalign=0, hexpand=True,
-                          ellipsize=Pango.EllipsizeMode.END)
-        label.add_css_class("dim-label")
-        bottom.append(label)
+            lines.append(when)
+        box.append(lines)
         if thread["unread"]:
             badge = Gtk.Label(label=str(thread["unread"]), valign=Gtk.Align.CENTER)
             badge.add_css_class("unread-badge")
-            bottom.append(badge)
-        box.append(bottom)
+            box.append(badge)
         self.set_child(box)
 
     def matches(self, query):
-        hay = " ".join((self.thread["title"], self.thread["thread"],
-                        (self.thread.get("last") or {}).get("body", ""))).lower()
+        hay = " ".join((self.thread["title"], self.thread["thread"])).lower()
         return all(w in hay for w in query.lower().split())
 
 
@@ -121,9 +129,13 @@ class MessagesPage(Gtk.Box):
         self.call_button = Gtk.Button(icon_name="call-start-symbolic",
                                       tooltip_text=_("Call from the phone"))
         self.call_button.connect("clicked", self._on_call)
+        self.head_avatar = Gtk.Box(valign=Gtk.Align.CENTER)
+        head = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+        head.append(self.head_avatar)
+        head.append(self.title)
         conv_header = Adw.HeaderBar(show_end_title_buttons=False,
                                     show_start_title_buttons=False,
-                                    title_widget=self.title)
+                                    title_widget=head)
         conv_header.pack_end(self.call_button)
         self.bubbles = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.bubbles.add_css_class("background")
@@ -186,7 +198,7 @@ class MessagesPage(Gtk.Box):
             self.list.remove(row)
         threads = self.threads()
         for t in threads:
-            row = ThreadRow(t)
+            row = ThreadRow(self.app, self.dev, t)
             self.list.append(row)
             if t["thread"] == self.thread:
                 self.list.select_row(row)
@@ -195,11 +207,22 @@ class MessagesPage(Gtk.Box):
         current = self._thread_info(self.thread)
         if current is not None:
             self.title.set_title(current["title"])
+            self._set_head_avatar(current)
 
     def sms_arrived(self, new):
         if self.thread is not None and (
                 not new or any(m["thread"] == self.thread for m in new)):
             self._load(self.thread)
+
+    def _set_head_avatar(self, info):
+        key = (info or {}).get("avatar"), (info or {}).get("title")
+        if getattr(self, "_head_key", None) == key:
+            return
+        self._head_key = key
+        while (child := self.head_avatar.get_first_child()) is not None:
+            self.head_avatar.remove(child)
+        if info is not None:
+            self.head_avatar.append(person_avatar(self.app, self.dev, info, 28))
 
     def _thread_info(self, thread):
         return next((t for t in self.threads() if t["thread"] == thread), None)
@@ -253,12 +276,14 @@ class MessagesPage(Gtk.Box):
         self._fill([])
         if thread is None:
             self.conv_stack.set_visible_child_name("none")
+            self._set_head_avatar(None)
             self.title.set_title("")
             self.title.set_subtitle("")
             self.content.set_title(_("Conversation"))
         else:
             info = self._thread_info(thread)
             title = info["title"] if info else thread
+            self._set_head_avatar(info or {"title": title, "thread": thread})
             self.title.set_title(title)
             self.title.set_subtitle(thread if title != thread else "")
             self.content.set_title(title)

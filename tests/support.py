@@ -20,6 +20,8 @@ CREATE TABLE threads (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
   notification INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE thread_members (id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id INTEGER NOT NULL, user_id INTEGER NOT NULL);
+CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT,
+  url TEXT NOT NULL UNIQUE, path TEXT, mime_type_id INTEGER, status INT, size INTEGER);
 CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL,
   thread_id INTEGER NOT NULL, sender_id INTEGER, user_alias TEXT, body TEXT NOT NULL,
   body_type INTEGER NOT NULL, direction INTEGER NOT NULL, time INTEGER NOT NULL,
@@ -56,6 +58,13 @@ class Store:
             self.db.commit()
         return self.threads[name]
 
+    def set_avatar(self, name, path):
+        cur = self.db.execute("INSERT INTO files (url, path) VALUES (?, ?)",
+                              ("file://" + path, path))
+        self.db.execute("UPDATE users SET avatar_id = ? WHERE id = ?",
+                        (cur.lastrowid, self.users[name]))
+        self.db.commit()
+
     def add(self, name, body, incoming=True, at=None, **kw):
         tid = self.thread(name, **kw)
         cur = self.db.execute(
@@ -77,12 +86,16 @@ class Home:
         self.data = os.path.join(self.dir, "data")
         self.sent = os.path.join(self.data, "sent.jsonl")
         self.config = os.path.join(self.dir, "config")
+        self.books = os.path.join(self.dir, "addressbook")
+        self.cache = os.path.join(self.dir, "cache")
         self.store = Store(self.store_path)
 
     def env(self):
         return {"PHONEBRIDGE_CHATTY_DB": self.store_path,
                 "PHONEBRIDGE_DATA": self.data,
                 "PHONEBRIDGE_CONFIG": self.config,
+                "PHONEBRIDGE_ADDRESSBOOKS": self.books,
+                "PHONEBRIDGE_CACHE": self.cache,
                 "XDG_CONFIG_HOME": os.path.join(self.dir, "xdg")}
 
     def cleanup(self):
@@ -99,3 +112,25 @@ def run_loop_until(predicate, timeout=10):
         ctx.iteration(False)
         time.sleep(0.005)
     return True
+
+
+# a 2x2 red PNG
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000002000000020802000000fdd49a73"
+    "0000001049444154789c63f8cfc000440c100a001fee03fd8b5f14d40000000049"
+    "454e44ae426082")
+
+
+def make_addressbook(root, cards):
+    """An evolution-data-server contacts.db with these vCards."""
+    import sqlite3 as sq
+    d = os.path.join(root, "system")
+    os.makedirs(d, exist_ok=True)
+    db = sq.connect(os.path.join(d, "contacts.db"))
+    db.execute("CREATE TABLE folders (folder_id TEXT)")
+    db.execute("INSERT INTO folders VALUES ('folder_id')")
+    db.execute("CREATE TABLE folder_id (uid TEXT, is_list INTEGER, vcard TEXT)")
+    for n, card in enumerate(cards):
+        db.execute("INSERT INTO folder_id VALUES (?, 0, ?)", ("c%d" % n, card))
+    db.commit()
+    db.close()

@@ -107,13 +107,18 @@ def n_unread(n):
     return (_("%d unread message") if n == 1 else _("%d unread messages")) % n
 
 
-def when(timestamp, now=None):
-    """Time of a message: the time today, otherwise the date."""
+def activity(timestamp, now=None):
+    """When a conversation last moved: today, yesterday, or the date."""
     now = now or time.time()
     t = time.localtime(timestamp)
-    if time.localtime(now)[:3] == t[:3]:
-        return time.strftime("%H:%M", t)
-    return time.strftime(_("%Y-%m-%d"), t)
+    today = time.localtime(now)
+    yesterday = time.localtime(now - 86400)
+    clock = time.strftime("%H:%M", t)
+    if t[:3] == today[:3]:
+        return _("Today, %s") % clock
+    if t[:3] == yesterday[:3]:
+        return _("Yesterday, %s") % clock
+    return time.strftime(_("%Y-%m-%d, %H:%M"), t)
 
 
 def when_long(timestamp):

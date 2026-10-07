@@ -49,10 +49,11 @@ class Words(unittest.TestCase):
         self.assertEqual(body, "Not connected – connection lost")
         self.assertEqual(text.tooltip(None, 0)[1], "No phone set up")
 
-    def test_when(self):
+    def test_activity(self):
         now = time.mktime((2026, 10, 7, 15, 0, 0, 0, 0, -1))
-        self.assertEqual(text.when(now - 3600, now), "14:00")
-        self.assertEqual(text.when(now - 86400 * 2, now), "2026-10-05")
+        self.assertEqual(text.activity(now - 3600, now), "Today, 14:00")
+        self.assertEqual(text.activity(now - 86400, now), "Yesterday, 15:00")
+        self.assertEqual(text.activity(now - 86400 * 2 - 60, now), "2026-10-05, 14:59")
 
 
 class SmsParts(unittest.TestCase):

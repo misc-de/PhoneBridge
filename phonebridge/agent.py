@@ -20,6 +20,10 @@ store (the SMS history - read only), NetworkManager via nmcli (Wi-Fi),
 wpctl (volume), power-profiles/batman, feedbackd (ring profile, ringing)
 and GSettings (GNOME settings)."""
 
+import base64
+import binascii
+import glob
+import hashlib
 import json
 import os
 import re
@@ -42,6 +46,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
+from urllib.parse import unquote, urlparse  # noqa: E402
 
 VERSION = 1
 APP_ID = "io.github.miscde.PhoneBridge"
@@ -52,6 +57,13 @@ CHATTY_DB = os.environ.get(
 DATA_DIR = os.environ.get(
     "PHONEBRIDGE_DATA", os.path.join(HOME, ".local/share/phonebridge"))
 SENT_LOG = os.path.join(DATA_DIR, "sent.jsonl")
+ADDRESSBOOKS = os.environ.get(
+    "PHONEBRIDGE_ADDRESSBOOKS",
+    os.path.join(HOME, ".local/share/evolution/addressbook"))
+# where chatty keeps the files its store names by relative path
+CHATTY_FILES = [os.path.join(HOME, d) for d in
+                (".cache/chatty", ".local/share/chatty", ".purple/chatty")]
+AVATAR_MAX = 4 * 1024 * 1024
 # A message the phone sent shows up in chatty's store as well when chatty
 # sent it; our own log then holds a duplicate within this many seconds.
 DUPLICATE_WINDOW = 600
@@ -137,11 +149,174 @@ SELECT t.id, t.name, t.type,
                    JOIN users u ON u.id = tm.user_id
                   WHERE tm.thread_id = t.id LIMIT 1),
                 t.name) AS title,
+       NULLIF(t.alias, '') IS NULL AND NOT EXISTS (
+           SELECT 1 FROM thread_members tm JOIN users u ON u.id = tm.user_id
+            WHERE tm.thread_id = t.id AND NULLIF(u.alias, '') IS NOT NULL) AS unnamed,
+       (SELECT f.path FROM files f WHERE f.id = COALESCE(t.avatar_id,
+            (SELECT u.avatar_id FROM thread_members tm JOIN users u ON u.id = tm.user_id
+              WHERE tm.thread_id = t.id AND u.avatar_id IS NOT NULL LIMIT 1)))
+           AS avatar_path,
        m.id AS mid, m.body, m.direction, m.time
   FROM threads t
   JOIN messages m ON m.id = (SELECT id FROM messages WHERE thread_id = t.id
                               ORDER BY time DESC, id DESC LIMIT 1)
 """
+
+
+# --- contacts (evolution-data-server, read only) and pictures --------------
+
+def _unfold(text):
+    """vCard lines may be folded: a continuation starts with a space or tab."""
+    return re.sub(r"\r?\n[ \t]", "", text).splitlines()
+
+
+def _vcard_line(line):
+    """'TEL;TYPE=CELL:+49 171' -> ('TEL', {'TYPE': 'CELL'}, '+49 171')."""
+    head, _sep, value = line.partition(":")
+    parts = head.split(";")
+    params = {}
+    for p in parts[1:]:
+        key, eq, val = p.partition("=")
+        params[key.upper()] = val if eq else key    # vCard 2.1: ;JPEG
+    return parts[0].split(".")[-1].upper(), params, value
+
+
+def _unescape(value):
+    return re.sub(r"\\(.)", lambda m: "\n" if m.group(1) in "nN" else m.group(1),
+                  value)
+
+
+def _decoded(data):
+    try:
+        raw = base64.b64decode(re.sub(r"\s", "", data), validate=False)
+    except (binascii.Error, ValueError):
+        return None
+    return ("data", raw) if raw else None
+
+
+def parse_vcard(text):
+    """(name, numbers, picture) - picture is ("data", bytes), ("file", path)
+    or None."""
+    name, fallback, numbers, photo = "", "", [], None
+    for line in _unfold(text):
+        if ":" not in line:
+            continue
+        key, params, value = _vcard_line(line)
+        if key == "FN":
+            name = _unescape(value).strip()
+        elif key == "N" and not fallback:
+            parts = [_unescape(p).strip() for p in value.split(";")]
+            fallback = " ".join(p for p in (parts[1:2] + parts[:1]) if p)
+        elif key == "ORG" and not fallback:
+            fallback = _unescape(value.split(";")[0]).strip()
+        elif key == "TEL":
+            number = value[4:] if value.lower().startswith("tel:") else value
+            if number.strip():
+                numbers.append(number.strip())
+        elif key == "PHOTO" and photo is None:
+            if value.startswith("data:"):           # vCard 4
+                photo = _decoded(value.partition(",")[2])
+            elif (params.get("ENCODING", "").upper() in ("B", "BASE64")
+                  or "BASE64" in params):
+                photo = _decoded(value)
+            elif value.startswith("file://"):
+                photo = ("file", unquote(urlparse(value).path))
+    return name or fallback, numbers, photo
+
+
+class Book:
+    """Contacts with a phone number, by normalized number; read again when
+    an address book changes."""
+
+    def __init__(self, root=None):
+        self.root = root or ADDRESSBOOKS
+        self._stamp = None
+        self._by_number = {}
+
+    def _databases(self):
+        return sorted(glob.glob(os.path.join(self.root, "*", "contacts.db")))
+
+    def _current_stamp(self):
+        out = []
+        for db in self._databases():
+            for p in (db, db + "-wal"):
+                try:
+                    st = os.stat(p)
+                    out.append((p, st.st_mtime_ns, st.st_size))
+                except OSError:
+                    pass
+        return tuple(out)
+
+    def lookup(self, number, country="49"):
+        stamp = self._current_stamp()
+        if stamp != self._stamp:
+            self._stamp = stamp
+            self._by_number = {}
+            for db in self._databases():
+                self._read(db)
+        return self._by_number.get(normalize(number, country))
+
+    def _read(self, path):
+        try:
+            db = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=2)
+        except sqlite3.Error:
+            return
+        try:
+            for (table,) in db.execute("SELECT folder_id FROM folders"):
+                cols = {r[1] for r in db.execute('PRAGMA table_info("%s")' % table)}
+                if "vcard" not in cols:
+                    continue
+                where = " WHERE is_list IS NOT 1" if "is_list" in cols else ""
+                for (vcard,) in db.execute('SELECT vcard FROM "%s"%s' % (table, where)):
+                    if isinstance(vcard, bytes):
+                        vcard = vcard.decode("utf-8", "replace")
+                    name, numbers, photo = parse_vcard(vcard or "")
+                    for n in numbers:
+                        self._by_number.setdefault(normalize(n), (name, photo))
+        except sqlite3.Error:
+            pass
+        finally:
+            db.close()
+
+
+BOOK = Book()
+AVATARS = {}    # key -> ("data", bytes) or ("file", path), see cmd_avatar
+
+
+def chatty_file(path):
+    if not path:
+        return None
+    if os.path.isabs(path):
+        return path if os.path.isfile(path) else None
+    for d in CHATTY_FILES:
+        if os.path.isfile(os.path.join(d, path)):
+            return os.path.join(d, path)
+    return None
+
+
+def avatar_key(picture):
+    """A key for a picture that changes when the picture does - the PC
+    caches by it - or None."""
+    if picture is None:
+        return None
+    if picture[0] == "file":
+        try:
+            st = os.stat(picture[1])
+        except OSError:
+            return None
+        seed = ("%s|%d|%d" % (picture[1], st.st_mtime_ns, st.st_size)).encode()
+    else:
+        seed = picture[1]
+    key = hashlib.sha1(seed).hexdigest()[:20]
+    AVATARS[key] = picture
+    return key
+
+
+def picture_bytes(picture):
+    if picture[0] == "data":
+        return picture[1]
+    with open(picture[1], "rb") as f:
+        return f.read(AVATAR_MAX + 1)
 
 
 def read_sent(path=None):
@@ -172,7 +347,23 @@ def _is_duplicate(entry, outgoing):
                for m in outgoing)
 
 
-def list_threads(baseline=0, seen=None, country="49", store=None, sent=None):
+def _person(name, title, unnamed, avatar_path, book, country):
+    """(title, avatar key): chatty's name, else the contact's; chatty's
+    picture, else the contact's."""
+    contact = book.lookup(name, country) if book is not None else None
+    if unnamed and contact and contact[0]:
+        title = contact[0]
+    picture = None
+    path = chatty_file(avatar_path)
+    if path:
+        picture = ("file", path)
+    elif contact:
+        picture = contact[1]
+    return title, avatar_key(picture)
+
+
+def list_threads(baseline=0, seen=None, country="49", store=None, sent=None,
+                 book=BOOK):
     """Conversations, newest first. A message counts as unread when it came
     in after both `baseline` (the newest message when the PC first met this
     phone) and seen[thread] (the newest one the PC has shown)."""
@@ -184,9 +375,12 @@ def list_threads(baseline=0, seen=None, country="49", store=None, sent=None):
     if db is not None:
         with db:
             for r in db.execute(THREADS_SQL):
+                group = r["type"] == 1
+                title, avatar = (r["title"], None) if group else _person(
+                    r["name"], r["title"], r["unnamed"], r["avatar_path"], book, country)
                 threads[r["name"]] = {
-                    "thread": r["name"], "title": r["title"],
-                    "group": r["type"] == 1,
+                    "thread": r["name"], "title": title, "avatar": avatar,
+                    "group": group,
                     "last": {"id": r["mid"], "body": r["body"],
                              "out": r["direction"] != 1, "time": r["time"]},
                     "unread": 0,
@@ -210,8 +404,9 @@ def list_threads(baseline=0, seen=None, country="49", store=None, sent=None):
         name = by_number.get(e["to"])
         if name is None:
             name = by_number[e["to"]] = e["to"]
-            threads[name] = {"thread": name, "title": name, "group": False,
-                             "last": None, "unread": 0}
+            title, avatar = _person(name, name, True, None, book, country)
+            threads[name] = {"thread": name, "title": title, "avatar": avatar,
+                             "group": False, "last": None, "unread": 0}
         last = threads[name]["last"]
         if last is None or e["time"] >= last["time"]:
             threads[name]["last"] = {"id": e["id"], "body": e["body"],
@@ -219,7 +414,10 @@ def list_threads(baseline=0, seen=None, country="49", store=None, sent=None):
     for name, n in unread.items():
         if name in threads:
             threads[name]["unread"] = n
-    return sorted(threads.values(), key=lambda t: t["last"]["time"], reverse=True)
+    def newest(t):  # equal seconds: the later message of chatty's first
+        last = t["last"]
+        return last["time"], last["id"] if isinstance(last["id"], int) else 0
+    return sorted(threads.values(), key=newest, reverse=True)
 
 
 def list_messages(thread, limit=300, country="49", store=None, sent=None):
@@ -246,7 +444,7 @@ def list_messages(thread, limit=300, country="49", store=None, sent=None):
     return msgs[-int(limit):]
 
 
-def new_incoming(after_id, store=None):
+def new_incoming(after_id, store=None, book=BOOK):
     db = open_store(store)
     if db is None:
         return []
@@ -257,8 +455,15 @@ def new_incoming(after_id, store=None):
             "  FROM messages m JOIN threads t ON t.id = m.thread_id"
             "  LEFT JOIN users u ON u.id = m.sender_id"
             " WHERE m.direction = 1 AND m.id > ? ORDER BY m.id", (after_id,))
-        return [{"id": r["id"], "thread": r["name"], "title": r["title"],
-                 "body": r["body"], "time": r["time"]} for r in rows]
+        out = []
+        for r in rows:
+            title = r["title"]
+            contact = book.lookup(r["name"]) if book is not None else None
+            if title == r["name"] and contact and contact[0]:
+                title = contact[0]
+            out.append({"id": r["id"], "thread": r["name"], "title": title,
+                        "body": r["body"], "time": r["time"]})
+        return out
 
 
 # --- D-Bus helpers ---------------------------------------------------------
@@ -538,6 +743,21 @@ def cmd_threads(agent, args):
 def cmd_messages(agent, args):
     return list_messages(args["thread"], args.get("limit", 300),
                          args.get("country", "49"))
+
+
+@command("avatar")
+def cmd_avatar(agent, args):
+    """The picture behind a key from sms.threads, base64."""
+    picture = AVATARS.get(args["key"])
+    if picture is None:
+        raise RuntimeError("unknown picture")
+    try:
+        raw = picture_bytes(picture)
+    except OSError as e:
+        raise RuntimeError(str(e))
+    if len(raw) > AVATAR_MAX:
+        raise RuntimeError("picture too large")
+    return {"data": base64.b64encode(raw).decode("ascii")}
 
 
 @command("sms.send", deferred=True)
