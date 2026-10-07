@@ -72,17 +72,13 @@ class CallRow(Gtk.ListBoxRow):
                 "call-incoming-symbolic" if call["inbound"] else "call-outgoing-symbolic")
         sub.append(Gtk.Image(icon_name=icon, pixel_size=12))
         parts = [text.activity(call["start"])] if call["start"] else []
-        if vb:
-            parts.append(_("Voicebox: no message") if vb["missed"] or not vb["audio"]
-                         else _("Voicebox: %s") % duration(int(round(vb["duration"]))))
+        if vb and vb["audio"] and not vb["missed"]:
+            # only what was recorded is worth a word; the colour says the rest
+            parts.append(_("Voicebox: %s") % duration(int(round(vb["duration"]))))
             if vb.get("box_name"):
                 parts.append(vb["box_name"])
-        elif call["answered"] and call["duration"]:
+        elif not vb and call["answered"] and call["duration"]:
             parts.append(duration(call["duration"]))
-        elif missed:
-            parts.append(_("missed"))
-        elif not call["inbound"] and not call["answered"]:
-            parts.append(_("not answered"))
         info = Gtk.Label(label=" · ".join(parts), xalign=0)
         info.add_css_class("dim-label")
         info.add_css_class("caption")

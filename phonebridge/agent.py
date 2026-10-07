@@ -2223,6 +2223,149 @@ def cmd_callaudio_mute(agent, args):
     return False
 
 
+# --- deleting a conversation from chatty's store --------------------------------
+# chatty has no interface for it, and it keeps its conversations in memory:
+# deleting under a running chatty could make it file the next message into
+# a conversation that is gone. So chatty is ended, the store copied, the
+# conversation deleted the way chatty deletes one (foreign keys on: its
+# messages, members and ModemManager records go with it), and chatty started
+# again exactly as it ran. An SMS arriving meanwhile waits in the modem.
+
+BACKUPS = 3
+
+
+def chatty_processes():
+    """(pid, argv, environ) of the user's running chatty processes."""
+    out = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            st = os.stat("/proc/" + pid)
+            if st.st_uid != UID:
+                continue
+            with open("/proc/%s/comm" % pid) as f:
+                if f.read().strip() != "chatty":
+                    continue
+            with open("/proc/%s/cmdline" % pid, "rb") as f:
+                argv = [a.decode() for a in f.read().split(b"\0") if a]
+            with open("/proc/%s/environ" % pid, "rb") as f:
+                env = dict(e.decode("utf-8", "replace").split("=", 1)
+                           for e in f.read().split(b"\0") if b"=" in e)
+            out.append((int(pid), argv, env))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def _gone(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    try:
+        with open("/proc/%d/stat" % pid) as f:
+            return f.read().split(")")[-1].split()[0] == "Z"
+    except OSError:
+        return True
+
+
+def stop_chatty(timeout=8):
+    procs = chatty_processes()
+    for pid, _argv, _env in procs:
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            pass
+    end = time.time() + timeout
+    while time.time() < end and not all(_gone(pid) for pid, _a, _e in procs):
+        time.sleep(0.1)
+    if not all(_gone(pid) for pid, _a, _e in procs):
+        raise RuntimeError("chatty did not stop")
+    return procs
+
+
+def start_chatty(procs):
+    for _pid, argv, env in procs:
+        if len(argv) > 1 and os.path.basename(argv[0]) != "chatty" \
+                and os.path.basename(argv[1]) == "chatty":
+            argv = argv[1:]     # started through its interpreter (#!): start it as such
+        if argv:
+            subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True, cwd=HOME)
+
+
+def backup_store(path=None):
+    path = path or CHATTY_DB
+    d = os.path.join(DATA_DIR, "backups")
+    os.makedirs(d, exist_ok=True)
+    target = os.path.join(d, "chatty-history-%s.db" % time.strftime("%Y%m%d-%H%M%S"))
+    src = sqlite3.connect("file:%s?mode=ro" % path, uri=True, timeout=5)
+    dst = sqlite3.connect(target)
+    with dst:
+        src.backup(dst)
+    src.close()
+    dst.close()
+    for old in sorted(glob.glob(os.path.join(d, "chatty-history-*.db")))[:-BACKUPS]:
+        os.remove(old)
+    return target
+
+
+def delete_thread_rows(thread, path=None):
+    """Deletes one conversation from chatty's store; the number of its messages."""
+    db = sqlite3.connect(path or CHATTY_DB, timeout=10)
+    try:
+        db.execute("PRAGMA foreign_keys = ON")
+        with db:
+            ids = [r[0] for r in db.execute("SELECT id FROM threads WHERE name = ?", (thread,))]
+            if not ids:
+                return 0
+            marks = ",".join("?" * len(ids))
+            n = db.execute("SELECT COUNT(*) FROM messages WHERE thread_id IN (%s)" % marks,
+                           ids).fetchone()[0]
+            db.execute("DELETE FROM messages WHERE thread_id IN (%s)" % marks, ids)
+            db.execute("DELETE FROM thread_members WHERE thread_id IN (%s)" % marks, ids)
+            db.execute("DELETE FROM threads WHERE id IN (%s)" % marks, ids)
+        return n
+    finally:
+        db.close()
+
+
+def drop_sent(number, path=None):
+    """Our own log of sent messages without that number."""
+    path = path or SENT_LOG
+    entries = read_sent(path)
+    keep = [e for e in entries if e.get("to") != number]
+    if len(keep) == len(entries):
+        return 0
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for e in keep:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
+    return len(entries) - len(keep)
+
+
+@command("sms.delete_thread")
+def cmd_delete_thread(agent, args):
+    thread = args["thread"]
+    country = args.get("country", "49")
+    deleted = 0
+    procs = []
+    if os.path.exists(CHATTY_DB):
+        backup_store()
+        procs = stop_chatty()
+        try:
+            deleted = delete_thread_rows(thread)
+        finally:
+            start_chatty(procs)
+    deleted += drop_sent(normalize(thread, country))
+    agent.last_sms_id = store_last_id()
+    send({"event": "sms", "new": []})
+    return {"deleted": deleted, "restarted": bool(procs)}
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

@@ -137,6 +137,10 @@ class MessagesPage(Gtk.Box):
                                     show_start_title_buttons=False,
                                     title_widget=head)
         conv_header.pack_end(self.call_button)
+        self.delete_button = Gtk.Button(icon_name="user-trash-symbolic",
+                                        tooltip_text=_("Delete conversation"))
+        self.delete_button.connect("clicked", lambda *a: self.delete_thread())
+        conv_header.pack_start(self.delete_button)
         self.bubbles = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.bubbles.add_css_class("background")
         self.scroller = Gtk.ScrolledWindow(child=self.bubbles, vexpand=True,
@@ -344,6 +348,8 @@ class MessagesPage(Gtk.Box):
         self.compose_bar.set_visible(self.thread is not None)
         self.entry.set_sensitive(writable)
         self.call_button.set_visible(self.thread is not None)
+        self.delete_button.set_visible(self.thread is not None)
+        self.delete_button.set_sensitive(self.dev is not None and self.dev.online)
         self.call_button.set_sensitive(writable and bool(
             (self.dev.hello or {}).get("has", {}).get("calls")))
         self._on_typing()
@@ -377,6 +383,48 @@ class MessagesPage(Gtk.Box):
 
         self.dev.request("sms.send", {"to": thread, "body": body,
                                       "country": self.app.cfg["country"]}, done)
+
+    def delete_thread(self):
+        thread = self.thread
+        if thread is None or self.dev is None or not self.dev.online:
+            return
+        info = self._thread_info(thread)
+        title = info["title"] if info else thread
+        n = len(self.messages)
+        dialog = Adw.AlertDialog(
+            heading=_("Delete the conversation with %s?") % title,
+            body=(_("All %d messages of this conversation are deleted on the phone, for "
+                    "good. Chatty restarts for it for a moment.") % n if n != 1 else
+                  _("The message of this conversation is deleted on the phone, for good. "
+                    "Chatty restarts for it for a moment.")))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("delete", _("Delete"))
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def answered(d, response):
+            if response != "delete":
+                return
+            dev = self.dev
+            self.delete_button.set_sensitive(False)
+
+            def done(result, error):
+                self.delete_button.set_sensitive(True)
+                if error is not None:
+                    self.app.toast(_("Not deleted: %s") % text.error(error))
+                    return
+                self.app.forget_thread(dev, thread)
+                if self.thread == thread:
+                    self._show_thread(None)
+                    self.split.set_show_content(False)
+                self.app.toast(_("Conversation with %s deleted") % title)
+
+            dev.request("sms.delete_thread", {"thread": thread,
+                                              "country": self.app.cfg["country"]}, done)
+
+        dialog.connect("response", answered)
+        dialog.present(self.get_root())
 
     def _on_call(self, *args):
         if self.thread is None or self.dev is None:

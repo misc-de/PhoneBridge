@@ -20,6 +20,9 @@ CREATE TABLE threads (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
   notification INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE thread_members (id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id INTEGER NOT NULL, user_id INTEGER NOT NULL);
+CREATE TABLE mm_messages (id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL, protocol INTEGER NOT NULL);
 CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT,
   url TEXT NOT NULL UNIQUE, path TEXT, mime_type_id INTEGER, status INT, size INTEGER);
 CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL,
@@ -73,6 +76,8 @@ class Store:
             ("uid-%f" % time.time(), tid, self.users[name] if incoming else 1, body,
              1 if incoming else -1, int(at if at is not None else time.time()),
              None if incoming else 1))
+        self.db.execute("INSERT INTO mm_messages (message_id, account_id, protocol)"
+                        " VALUES (?, 1, 1)", (cur.lastrowid,))
         self.db.commit()
         return cur.lastrowid
 

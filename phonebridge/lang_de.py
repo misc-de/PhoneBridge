@@ -63,6 +63,8 @@ TRANSLATIONS = {
         'Adresse (IP oder Hostname)',
     'Address book':
         'Adressbuch',
+    'All %d messages of this conversation are deleted on the phone, for good. Chatty restarts for it for a moment.':
+        'Alle %d Nachrichten dieser Unterhaltung werden auf dem Phone endgültig gelöscht. Chatty startet dafür kurz neu.',
     'All day':
         'Ganztägig',
     'All settings':
@@ -127,6 +129,8 @@ TRANSLATIONS = {
         'Phone ändern',
     'charging':
         'lädt',
+    'chatty did not stop':
+        'Chatty ließ sich nicht beenden',
     'Choose a contact':
         'Kontakt auswählen',
     'Choose a conversation':
@@ -159,6 +163,8 @@ TRANSLATIONS = {
         'Kontakte',
     'Conversation':
         'Unterhaltung',
+    'Conversation with %s deleted':
+        'Unterhaltung mit %s gelöscht',
     'Conversations':
         'Unterhaltungen',
     'Dark style':
@@ -171,6 +177,10 @@ TRANSLATIONS = {
         'Löschen',
     'Delete %s?':
         '%s löschen?',
+    'Delete conversation':
+        'Unterhaltung löschen',
+    'Delete the conversation with %s?':
+        'Unterhaltung mit %s löschen?',
     'Delete the message from %s?':
         'Nachricht von %s löschen?',
     'Delete the voice message':
@@ -263,8 +273,6 @@ TRANSLATIONS = {
         'Menü',
     'Messages':
         'Nachrichten',
-    'missed':
-        'verpasst',
     'Mobile':
         'Mobilfunk',
     'Mobile data':
@@ -319,8 +327,6 @@ TRANSLATIONS = {
         'Keine',
     'Normal':
         'Normal',
-    'not answered':
-        'nicht angenommen',
     'not charging':
         'lädt nicht',
     'Not connected':
@@ -509,6 +515,8 @@ TRANSLATIONS = {
         'Textgröße',
     'The contact is removed from “%s” – on the phone and in the account it syncs with.':
         'Der Kontakt wird aus „%s“ gelöscht – auf dem Phone und in dem Konto, mit dem es synchronisiert.',
+    'The message of this conversation is deleted on the phone, for good. Chatty restarts for it for a moment.':
+        'Die Nachricht dieser Unterhaltung wird auf dem Phone endgültig gelöscht. Chatty startet dafür kurz neu.',
     'The phone delivers the caller quietly':
         'Das Phone liefert den Anrufer leise',
     "the phone's microphone could not be muted":
@@ -551,8 +559,6 @@ TRANSLATIONS = {
         'Sprachnachricht von %s',
     'Voicebox: %s':
         'Voicebox: %s',
-    'Voicebox: no message':
-        'Voicebox: keine Nachricht',
     'Volume':
         'Lautstärke',
     'Wednesday':

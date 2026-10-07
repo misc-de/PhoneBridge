@@ -503,6 +503,18 @@ class PhoneBridgeApp(Adw.Application):
             if self.window is not None and dev is not None:
                 self.window.threads_changed(dev)
 
+    def forget_thread(self, dev, thread):
+        """A conversation deleted on the phone: gone here as well."""
+        seen = config.seen_for(self.cfg, dev.id)
+        if seen["threads"].pop(thread, None) is not None:
+            config.save(self.cfg)
+        self.threads[dev.id] = [t for t in self.threads.get(dev.id, [])
+                                if t["thread"] != thread]
+        self.update_tray()
+        if self.window is not None:
+            self.window.threads_changed(dev)
+        self.refresh_threads(dev)
+
     def unread(self, dev_id=None):
         ids = [dev_id] if dev_id else list(self.threads)
         return sum(t["unread"] for i in ids for t in self.threads.get(i, []))
