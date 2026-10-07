@@ -23,8 +23,10 @@ install -d "$LIB/phonebridge" "$LOCAL/bin" "$LOCAL/share/applications"
 install -m644 phonebridge/*.py "$LIB/phonebridge/"
 install -m755 bin/phonebridge "$LOCAL/bin/"
 install -m644 data/$ID.desktop "$LOCAL/share/applications/"
-# the app's icon in every size the theme asks for (the earlier SVG goes)
-rm -f "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg"
+# the app's icon in every size the theme asks for (the earlier SVG and
+# sizes no longer shipped go)
+rm -f "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg" \
+      "$LOCAL"/share/icons/hicolor/*x*/apps/$ID.png
 for png in data/icons/$ID-*.png; do
     size=${png##*-}; size=${size%.png}
     install -D -m644 "$png" "$LOCAL/share/icons/hicolor/${size}x${size}/apps/$ID.png"
