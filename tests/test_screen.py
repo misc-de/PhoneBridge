@@ -66,6 +66,28 @@ class Pieces(unittest.TestCase):
         self.assertEqual(ns["output"]({"enabled": ["printf", randr]}, None),
                          ("HWCOMPOSER-1", True, "90"))
 
+    def test_turned_back_to_the_panel(self):
+        ns = phone_side()
+        panel = ns["panel"]
+        self.assertEqual(panel(1000, 2000, "normal"), (1000, 2000))
+        # landscape ("90", measured): the top edge shown is the panel's left one
+        self.assertEqual(panel(5000, 0, "90"), (0, 5000))
+        self.assertEqual(panel(10000, 5000, "90"), (5000, 0))
+        self.assertEqual(panel(1000, 2000, "180"), (9000, 8000))
+        self.assertEqual(panel(1000, 2000, "270"), (8000, 1000))
+        self.assertEqual(panel(-5, 20000, "normal"), (0, 10000))
+        log = tempfile.NamedTemporaryFile(delete=False)
+        log.close()
+        self.addCleanup(os.unlink, log.name)
+        dev = ns["InputLog"](log.name)
+        with mock.patch.object(time, "sleep", lambda s: None):
+            for line in ("down 5000 0", "move 5000 6000", "up", "swipe 5000 0 0 6000 24"):
+                ns["handle"](dev, line, None, "90")
+        dev.close()
+        self.assertEqual(open(log.name).read().splitlines(),
+                         ["down 0 5000", "move 6000 5000", "up",
+                          "down 0 5000", "move 3000 5000", "move 6000 5000", "up"])
+
     def test_screen_on(self):
         ns = phone_side()
         self.assertTrue(ns["screen_on"]({"enabled": ["echo", "  Enabled: yes"]}, None))

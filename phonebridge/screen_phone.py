@@ -24,6 +24,9 @@ at the session manager).
 
 Turning the screen (portrait, landscape) goes through wlr-randr - Phosh
 follows it. The picture changes its size then: a new stream ("again").
+phoc takes a touchscreen's points as on the panel, unturned (a real one is
+fixed to it): the PC's points, on the picture as shown, are turned back
+here (panel()).
 
 Lines on stdin, coordinates 0..10000 over the screen as shown:
   down X Y | move X Y | up | swipe X Y DX DY MS | key CODE | press CODE
@@ -189,8 +192,23 @@ def clamp(v):
     return max(0, min(RANGE, int(v)))
 
 
-def handle(dev, line, rotate=None):
-    """One line from the PC. Wrong lines are dropped: never a crash."""
+def panel(x, y, transform):
+    """A point on the screen as shown to the point on the panel, unturned
+    - measured on the FLX1s: at "90" the top edge shown is the panel's
+    left one."""
+    x, y = clamp(x), clamp(y)
+    if transform == "90":
+        return y, RANGE - x
+    if transform == "180":
+        return RANGE - x, RANGE - y
+    if transform == "270":
+        return RANGE - y, x
+    return x, y
+
+
+def handle(dev, line, rotate=None, transform="normal"):
+    """One line from the PC. Wrong lines are dropped: never a crash.
+    transform: how the screen is turned now (see panel())."""
     words = line.split()
     if not words:
         return
@@ -203,18 +221,18 @@ def handle(dev, line, rotate=None):
             return
         cmd, args = words[0], [int(float(w)) for w in words[1:]]
         if cmd == "down":
-            dev.down(clamp(args[0]), clamp(args[1]))
+            dev.down(*panel(args[0], args[1], transform))
         elif cmd == "move":
-            dev.move(clamp(args[0]), clamp(args[1]))
+            dev.move(*panel(args[0], args[1], transform))
         elif cmd == "up":
             dev.up()
         elif cmd == "swipe":
             x, y, dx, dy, ms = args[:5]
             steps = max(2, min(60, round(ms / 1000 / STEP)))
-            dev.down(clamp(x), clamp(y))
+            dev.down(*panel(x, y, transform))
             for i in range(1, steps + 1):
                 time.sleep(STEP)
-                dev.move(clamp(x + dx * i / steps), clamp(y + dy * i / steps))
+                dev.move(*panel(x + dx * i / steps, y + dy * i / steps, transform))
             time.sleep(STEP)
             dev.up()
         elif cmd in ("key", "press", "release") and args[0] in KEYS:
@@ -237,6 +255,7 @@ class Picture:
         self.state = None
         self.started = False
         self.turned = False             # the recorder ended for a turn: no error
+        self.transform = "normal"       # how the screen is turned, as last seen
 
     def tell(self, state):
         if state != self.state:
@@ -261,6 +280,7 @@ class Picture:
             except OSError as e:
                 self.tell("error %s" % e)
                 return
+            self.transform = transform
             self.tell("on")
             say("turned %s" % transform)
             threading.Thread(target=self._watch, args=(self.proc,), daemon=True).start()
@@ -369,7 +389,7 @@ def main():
 
     threading.Thread(target=show, daemon=True).start()
     for line in sys.stdin:
-        handle(dev, line, picture.rotate)
+        handle(dev, line, picture.rotate, picture.transform)
     del keep
     end()
 

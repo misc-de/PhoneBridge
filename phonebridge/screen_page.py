@@ -15,6 +15,7 @@ from .i18n import N_, _
 QUALITY_NAMES = (("fast", N_("Fast")), ("normal", N_("Normal")), ("sharp", N_("Sharp")))
 KEY_POWER, KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_LEFTMETA = 116, 114, 115, 125
 WHEEL = 900                     # how far one notch of the wheel swipes (of 10000)
+UNMAP_GRACE = 600               # ms the page may be away before the picture stops
 WHEEL_GATHER = 80               # ms the wheel's notches are gathered into one swipe
 
 
@@ -113,6 +114,9 @@ class ScreenPage(Gtk.Box):
         self.connect("unmap", lambda *a: self._on_unmap())
 
     def _on_map(self):
+        if self._unmap_timer:
+            GLib.source_remove(self._unmap_timer)
+            self._unmap_timer = 0
         root = self.get_root()
         if isinstance(root, Gtk.Window) and root is not self._window:
             self._forget_window()
@@ -121,9 +125,20 @@ class ScreenPage(Gtk.Box):
                                                 lambda *a: self._on_window_fullscreen())
         self.load()
 
+    _unmap_timer = 0
+
     def _on_unmap(self):
-        self.set_fullscreen(False)
-        self.stop()
+        """Gone - or only for a moment: X11 window managers (xfwm) take the
+        window away and back when it goes full screen."""
+        if not self._unmap_timer:
+            self._unmap_timer = GLib.timeout_add(UNMAP_GRACE, self._gone)
+
+    def _gone(self):
+        self._unmap_timer = 0
+        if not self.get_mapped():
+            self.set_fullscreen(False)
+            self.stop()
+        return False
 
     def _forget_window(self):
         if self._window is not None and self._window_handler:
