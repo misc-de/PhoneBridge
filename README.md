@@ -56,6 +56,9 @@ Cinnamon, MATE, Budgie, waybar …).
 - **Phone links** - `tel:`, `callto:` and `sms:` links anywhere on the desktop (browser, mail)
   open in PhoneBridge: the number in the dial pad, one click to call; the conversation with
   the link's text.
+- **Send to the phone** - a web link opens in the phone's browser, files and folders land in
+  its Downloads (never over an existing file) with a notification there. From the panel
+  menu, the window's menu, Thunar's *Send To* menu or `phonebridge --send FILE|URL …`.
 - **Notifications** on the desktop for new messages, calls, voice messages, a full battery
   and one running empty - with the person's picture, text buttons, gone after 10 seconds.
 - **Several phones**, one of them shown in the panel. English and German.

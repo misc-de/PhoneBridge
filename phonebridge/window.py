@@ -108,6 +108,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _menu(self):
         menu = Gio.Menu()
         main = Gio.Menu()
+        main.append(_("Send to phone …"), "app.send")
         main.append(_("Phones …"), "app.devices")
         menu.append_section(None, main)
         prefs = Gio.Menu()

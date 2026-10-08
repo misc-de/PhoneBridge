@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=X-Thunar-Sendto
+Name=Phone (PhoneBridge)
+Name[de]=Smartphone (PhoneBridge)
+Icon=io.github.miscde.PhoneBridge
+Exec=phonebridge --send %F

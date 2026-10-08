@@ -101,7 +101,9 @@ class Home:
                 "PHONEBRIDGE_CONFIG": self.config,
                 "PHONEBRIDGE_ADDRESSBOOKS": self.books,
                 "PHONEBRIDGE_CACHE": self.cache,
-                "XDG_CONFIG_HOME": os.path.join(self.dir, "xdg")}
+                "XDG_CONFIG_HOME": os.path.join(self.dir, "xdg"),
+                # the phone's files: never the home of whoever runs the tests
+                "PHONEBRIDGE_FILES_HOME": os.path.join(self.dir, "phone-home")}
 
     def cleanup(self):
         shutil.rmtree(self.dir, ignore_errors=True)

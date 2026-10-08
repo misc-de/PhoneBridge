@@ -20,6 +20,11 @@ export PHONEBRIDGE_LANGUAGE=en
 export PHONEBRIDGE_ADDRESSBOOKS=/nonexistent PHONEBRIDGE_CACHE=/nonexistent
 # nor a call history GNOME Calls may have on this PC
 export PHONEBRIDGE_CALLS_DB=/nonexistent
+# the "phone's" files (the agent runs here): never your home or thumbnails
+export PHONEBRIDGE_FILES_HOME="${TMPDIR:-/tmp}/phonebridge-test-phone-$(id -u)"
+export PHONEBRIDGE_THUMBNAILS="$PHONEBRIDGE_FILES_HOME/.cache/thumbnails"
+rm -rf "$PHONEBRIDGE_FILES_HOME"
+mkdir -p "$PHONEBRIDGE_FILES_HOME/Downloads"
 # settings the tests change live in memory - never in your dconf
 export GSETTINGS_BACKEND=memory
 # and passwords in a keyring in memory - never in yours

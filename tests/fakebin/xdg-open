@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for xdg-open: never opens anything on the desktop. Logged.
+echo "xdg-open $*" >> "${FAKE_LOG:-/dev/null}"

@@ -46,6 +46,8 @@ install -m644 phonebridge/*.py "$LIB/phonebridge/"
 echo "${version:-unknown}" > "$LIB/VERSION"
 install -m755 bin/phonebridge "$LOCAL/bin/"
 install -m644 data/$ID.desktop "$LOCAL/share/applications/"
+# Thunar's "Send To" menu: files to the phone
+install -D -m644 data/$ID-sendto.desktop "$LOCAL/share/Thunar/sendto/$ID-sendto.desktop"
 # the app's icon in every size the theme asks for (the earlier SVG and
 # sizes no longer shipped go)
 rm -f "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg" \

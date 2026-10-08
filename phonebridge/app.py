@@ -9,6 +9,8 @@ every phone and - when asked for - the window.
                               --phone, --contacts, --calendar, --files,
                               --settings)
   phonebridge --quit          ends the running instance
+  phonebridge --send FILE|URL …  to the phone: files to its Downloads, web
+                              links into its browser (Thunar's "Send To")
   phonebridge tel:+49…        the number in the dial pad (likewise sms:, callto:
                               - PhoneBridge takes these links on the desktop)
 
@@ -136,6 +138,13 @@ class PhoneBridgeApp(Adw.Application):
         links = [a for a in args if parse_link(a) is not None]
         if "--quit" in args:
             self.quit()
+        elif "--send" in args:
+            from . import send
+            rest = args[args.index("--send") + 1:]
+            items = [a if send.is_web_link(a) else cmdline.create_file_for_arg(a).get_path()
+                     for a in rest]
+            send.send(self, items)
+            return 0
         elif links:
             self.open_link(links[0])
         elif pages:
@@ -185,6 +194,7 @@ class PhoneBridgeApp(Adw.Application):
         add("devices", lambda *a: self.show_devices())
         add("login", lambda a, p: self.ask_password(self.devices.get(p.get_string())), "s")
         add("about", lambda *a: self.show_about())
+        add("send", lambda *a: self.ask_send())
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
             GLib.Variant("b", config.autostart_enabled()))
@@ -1015,6 +1025,7 @@ class PhoneBridgeApp(Adw.Application):
             items += [
                 {"id": "messages", "label": _("Messages")},
                 {"id": "compose", "label": _("New message …"), "enabled": online},
+                {"id": "send", "label": _("Send to phone …"), "enabled": online},
                 {"id": "ring", "enabled": online,
                  "label": _("Stop ringing") if dev.id in self.ringing
                  else _("Ring the phone")},
@@ -1041,6 +1052,8 @@ class PhoneBridgeApp(Adw.Application):
             call = self.current_call(dev.id)
             if call is not None:
                 (self.answer_call if item_id == "answer" else self.hangup_call)(dev.id, call)
+        elif item_id == "send":
+            self.ask_send()
         elif item_id == "ring":
             self.ring(dev)
         elif item_id == "reconnect" and dev is not None:
@@ -1073,6 +1086,15 @@ class PhoneBridgeApp(Adw.Application):
     def toast(self, message):
         if self.window is not None:
             self.window.toast(message)
+
+    def tell(self, message):
+        """In the window when it is shown, else as a short notification."""
+        if self.window is not None and self.window.is_visible():
+            self.window.toast(message)
+            return
+        n = Gio.Notification.new("PhoneBridge")
+        n.set_body(message)
+        self._send_briefly("tell-%d" % (hash(message) & 0xffff), n)
 
     def check_dependencies(self):
         """Optional parts of the PC that are missing: told once per start
@@ -1117,6 +1139,10 @@ class PhoneBridgeApp(Adw.Application):
     def show_devices(self):
         from .devices import DevicesDialog
         DevicesDialog(self).present(self.show_window())
+
+    def ask_send(self):
+        from . import send
+        return send.ask(self)
 
     def show_about(self):
         about = Adw.AboutDialog(

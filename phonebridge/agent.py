@@ -3131,6 +3131,67 @@ def cmd_files_delete(agent, args):
     return {"failed": failed}
 
 
+# --- the phone's session: opening links, telling the user ----------------------
+
+def session_env():
+    """The environment for a program shown on the phone's screen: its
+    Wayland display, the user's language (not the agent's C locale)."""
+    env = dict(os.environ)
+    env.pop("LC_ALL", None)
+    if "WAYLAND_DISPLAY" not in env:
+        sockets = sorted(glob.glob(os.path.join(env.get("XDG_RUNTIME_DIR", ""),
+                                                "wayland-[0-9]")))
+        if sockets:
+            env["WAYLAND_DISPLAY"] = os.path.basename(sockets[0])
+    return env
+
+
+def start_in_session(argv):
+    """Starts a program in the user's session, not in this SSH login's
+    scope (which ends with the connection)."""
+    if shutil.which("systemd-run"):
+        argv = ["systemd-run", "--user", "--scope", "--collect", "--quiet", "--"] + argv
+    subprocess.Popen(argv, env=session_env(), stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, cwd=HOME)
+
+
+@command("open.uri")
+def cmd_open_uri(agent, args):
+    """A web link from the PC, in the phone's browser."""
+    uri = (args.get("uri") or "").strip()
+    if urlparse(uri).scheme not in ("http", "https") or any(c in uri for c in "\0\n\r"):
+        raise RuntimeError("only web links")
+    start_in_session(["xdg-open", uri])
+    return True
+
+
+@command("notify")
+def cmd_notify(agent, args):
+    """A notification on the phone (a file arrived from the PC ...)."""
+    agent.session.call_sync(
+        "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "Notify",
+        GLib.Variant("(susssasa{sv}i)", ("PhoneBridge", 0, "folder-download-symbolic",
+                                         str(args.get("title") or "")[:200],
+                                         str(args.get("body") or "")[:1000], [],
+                                         {"desktop-entry": GLib.Variant("s", APP_ID)}, -1)),
+        None, Gio.DBusCallFlags.NO_AUTO_START, 5000, None)    # Phosh's, never another
+    return True
+
+
+@command("files.free_name", threaded="files")
+def cmd_files_free_name(agent, args):
+    """A name not taken in the folder: name, else "name (2).ext" ..."""
+    folder = files_path(args.get("path"))
+    name = file_name(args.get("name"))
+    stem, ext = os.path.splitext(name)
+    candidate, n = name, 2
+    while os.path.lexists(os.path.join(folder, candidate)):
+        candidate, n = "%s (%d)%s" % (stem, n, ext), n + 1
+    return {"path": os.path.join(folder, candidate)}
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

@@ -1201,4 +1201,24 @@ TRANSLATIONS = {
         'E-Mail schreiben',
     'No mail program: %s':
         'Kein Mailprogramm: %s',
+    'Send to phone …':
+        'An Phone senden …',
+    'Choose files …':
+        'Dateien wählen …',
+    'Open link':
+        'Link öffnen',
+    "A web link opens in the phone's browser; files go to its Downloads folder.":
+        'Ein Weblink öffnet sich im Browser des Phones, Dateien kommen in seinen Downloads-Ordner.',
+    'Not found: %s':
+        'Nicht gefunden: %s',
+    '%s is not connected':
+        '%s ist nicht verbunden',
+    'Send to %s':
+        'An %s senden',
+    'From the PC':
+        'Vom PC',
+    'Sent to %(phone)s: %(what)s':
+        'An %(phone)s gesendet: %(what)s',
+    'Opened on %(phone)s: %(what)s':
+        'Auf %(phone)s geöffnet: %(what)s',
 }

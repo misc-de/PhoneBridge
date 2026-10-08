@@ -10,6 +10,7 @@ ID=io.github.miscde.PhoneBridge
 "$LOCAL/bin/phonebridge" --quit 2>/dev/null || true
 rm -rf "$LOCAL/lib/phonebridge"
 rm -f "$LOCAL/bin/phonebridge" "$LOCAL/share/applications/$ID.desktop" \
+      "$LOCAL/share/Thunar/sendto/$ID-sendto.desktop" \
       "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg" \
       "$LOCAL"/share/icons/hicolor/*x*/apps/$ID.png \
       "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$ID.desktop"
