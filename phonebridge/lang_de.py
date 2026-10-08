@@ -1293,4 +1293,22 @@ TRANSLATIONS = {
         'Nichts gefunden',
     'Search everything (Ctrl+K)':
         'Alles durchsuchen (Strg+K)',
+    "no screenshot - the phone's screen is off or locked":
+        'kein Screenshot – der Bildschirm des Phones ist aus oder gesperrt',
+    'Taking a screenshot of %s …':
+        'Screenshot von %s wird aufgenommen …',
+    'Screenshot of %s':
+        'Screenshot von %s',
+    'Phone screenshot %Y-%m-%d %H-%M-%S':
+        'Phone-Screenshot %Y-%m-%d %H-%M-%S',
+    'Copy':
+        'Kopieren',
+    'Save …':
+        'Speichern …',
+    'Screenshot copied':
+        'Screenshot kopiert',
+    'Save screenshot':
+        'Screenshot speichern',
+    'Screenshot of the phone':
+        'Screenshot vom Phone',
 }

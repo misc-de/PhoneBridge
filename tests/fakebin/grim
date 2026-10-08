@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stand-in for grim: the "phone's screen" is $FAKE_SCREEN (a PNG) - or off.
+[ -n "$FAKE_SCREEN" ] && [ -f "$FAKE_SCREEN" ] || { echo "failed to copy output HWCOMPOSER-1" >&2; exit 1; }
+cat "$FAKE_SCREEN"

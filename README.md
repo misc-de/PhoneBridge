@@ -72,6 +72,8 @@ Cinnamon, MATE, Budgie, waybar …).
   The phone's other apps too (messengers, mail, calendar …): *Close on the phone* closes one
   there, and one closed on the phone goes here as well. *Menu → Show the phone's
   notifications* turns that off.
+- **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
+  save (while the phone's screen is on and unlocked).
 - **Search everything** (Ctrl+K or the search button) - contacts, conversations and the
   messages' text, calls, appointments and the phone's files at once.
 - **Several phones**, one of them shown in the panel. English and German.

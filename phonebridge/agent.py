@@ -3604,6 +3604,43 @@ def cmd_files_search(agent, args):
     return search_files(args.get("query"), args.get("limit", 40))
 
 
+# --- a screenshot of the phone ----------------------------------------------------
+
+def screenshot(session=None):
+    """PNG bytes of the phone's screen: grim (wlr-screencopy), else Phosh's
+    own screenshot service. Both refuse while the screen is off or locked."""
+    try:
+        p = subprocess.run(["grim", "-t", "png", "-"], env=session_env(),
+                           capture_output=True, timeout=15)
+        if p.returncode == 0 and p.stdout.startswith(b"\x89PNG"):
+            return p.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if session is not None:
+        path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+                            "phonebridge-screenshot-%d.png" % os.getpid())
+        try:
+            ok, used = call(session, "org.gnome.Shell.Screenshot", "/org/gnome/Shell/Screenshot",
+                            "org.gnome.Shell.Screenshot", "Screenshot",
+                            GLib.Variant("(bbs)", (False, False, path)), "(bs)", timeout=10000)
+            if ok:
+                with open(used or path, "rb") as f:
+                    return f.read()
+        except (DBusFailure, OSError):
+            pass
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    raise RuntimeError("no screenshot - the phone's screen is off or locked")
+
+
+@command("screen.shot", threaded=True)
+def cmd_screenshot(agent, args):
+    return {"png": base64.b64encode(screenshot(agent.session)).decode("ascii")}
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

@@ -33,7 +33,8 @@ ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("Permission denied"), N_("No such file or directory"), N_("File exists"),
           N_("already exists"), N_("invalid name"), N_("not allowed"),
           N_("No space left on device"), N_("Not a directory"), N_("incomplete"),
-          N_("not an absolute path"))
+          N_("not an absolute path"),
+          N_("no screenshot - the phone's screen is off or locked"))
 DEVICE_STATES = {"online": N_("Connected"), "connecting": N_("Connecting …"),
                  "offline": N_("Not connected")}
 

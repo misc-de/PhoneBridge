@@ -113,6 +113,7 @@ class MainWindow(Adw.ApplicationWindow):
         main.append(_("Send to phone …"), "app.send")
         main.append(_("Clipboard to the phone"), "app.clipboard-to-phone")
         main.append(_("Clipboard from the phone"), "app.clipboard-from-phone")
+        main.append(_("Screenshot of the phone"), "app.screenshot")
         main.append(_("Phones …"), "app.devices")
         menu.append_section(None, main)
         prefs = Gio.Menu()

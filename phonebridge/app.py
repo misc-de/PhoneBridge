@@ -202,6 +202,7 @@ class PhoneBridgeApp(Adw.Application):
         add("about", lambda *a: self.show_about())
         add("send", lambda *a: self.ask_send())
         add("search", lambda *a: self.show_search())
+        add("screenshot", lambda *a: self.screenshot())
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
             GLib.Variant("b", config.autostart_enabled()))
@@ -1207,6 +1208,7 @@ class PhoneBridgeApp(Adw.Application):
                  "enabled": online},
                 {"id": "clipboard-from-phone", "label": _("Clipboard from the phone"),
                  "enabled": online},
+                {"id": "screenshot", "label": _("Screenshot of the phone"), "enabled": online},
                 {"id": "ring", "enabled": online,
                  "label": _("Stop ringing") if dev.id in self.ringing
                  else _("Ring the phone")},
@@ -1235,6 +1237,8 @@ class PhoneBridgeApp(Adw.Application):
                 (self.answer_call if item_id == "answer" else self.hangup_call)(dev.id, call)
         elif item_id == "send":
             self.ask_send()
+        elif item_id == "screenshot":
+            self.screenshot()
         elif item_id == "clipboard-to-phone":
             self.clipboard_to_phone()
         elif item_id == "clipboard-from-phone":
@@ -1326,6 +1330,10 @@ class PhoneBridgeApp(Adw.Application):
     def show_devices(self):
         from .devices import DevicesDialog
         DevicesDialog(self).present(self.show_window())
+
+    def screenshot(self):
+        from . import screenshot
+        screenshot.take(self)
 
     def show_search(self):
         from .search import SearchDialog
