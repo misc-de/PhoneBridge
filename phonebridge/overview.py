@@ -169,6 +169,17 @@ class OverviewPage(Gtk.ScrolledWindow):
             b.connect("clicked", lambda _b, a=action: self.app.media_control(a, self.dev))
             box.append(b)
             self.media_buttons[action] = b
+        # where it plays: the phone's speaker or this PC's
+        where = Gtk.Box(valign=Gtk.Align.CENTER, margin_start=6)
+        where.add_css_class("linked")
+        self.on_phone = Gtk.ToggleButton(icon_name="phone-symbolic",
+                                         tooltip_text=_("Play on the phone"))
+        self.on_pc = Gtk.ToggleButton(icon_name="computer-symbolic", group=self.on_phone,
+                                      tooltip_text=_("Play on this PC"))
+        for b, on in ((self.on_phone, False), (self.on_pc, True)):
+            b.connect("toggled", self._on_where, on)
+            where.append(b)
+        box.append(where)
         self.media = Gtk.Frame(child=box, visible=False)
         self.media.add_css_class("card")
         return self.media
@@ -189,6 +200,15 @@ class OverviewPage(Gtk.ScrolledWindow):
         play.set_sensitive(p["can_pause"] if playing else p["can_play"])
         self.media_buttons["Previous"].set_sensitive(p["can_prev"])
         self.media_buttons["Next"].set_sensitive(p["can_next"])
+        self._showing_where = True
+        (self.on_pc if self.app.music_on_pc(self.dev) else self.on_phone).set_active(True)
+        self._showing_where = False
+
+    _showing_where = False
+
+    def _on_where(self, button, on_pc):
+        if button.get_active() and not self._showing_where and self.dev is not None:
+            self.app.set_music_on_pc(self.dev, on_pc)
 
     # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):

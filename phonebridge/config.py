@@ -41,6 +41,7 @@ DEFAULTS = {
     "updates": True,
     "phone_notifications": True,    # the notifications of the phone's apps, here too
     "clipboard_sync": False,        # the clipboard (text) shared with the phone, both ways
+    "music_on_pc": [],          # devices whose music plays on this PC (music.py)
     "files_zoom": 2,            # size of the icons in the file list (files_page.ZOOM)
     # the call's sound on the PC (callaudio.py)
     "call_audio_gain": 2.0,

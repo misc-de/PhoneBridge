@@ -77,6 +77,8 @@ class PhoneBridgeApp(Adw.Application):
         self._was_online = {}
         self.media = {}                 # device id -> the phone's players (media_players)
         self.webcams = {}               # device id -> Webcam while the phone is the webcam
+        self.music_pc = {}              # device id -> MusicOnPC while its music plays here
+        self._music_retry = {}          # device id -> timeout after the stream failed
         self.webcam_listeners = []
         self._clip_last = None          # the clipboard text last passed either way
         self._clip_handler = 0
@@ -174,6 +176,8 @@ class PhoneBridgeApp(Adw.Application):
         self._ending = True
         for cam in list(self.webcams.values()):
             cam.stop()
+        for stream in list(self.music_pc.values()):
+            stream.stop()
         for dev_id, audio in list(self.pc_audio.items()):
             self.pc_audio.pop(dev_id, None)
             if audio is not PENDING:
@@ -466,6 +470,8 @@ class PhoneBridgeApp(Adw.Application):
         if not online and self.media.get(dev.id):
             self._on_media(dev, [])
         if not online:
+            self.sync_music(dev)
+        if not online:
             self.ringing.pop(dev.id, None)
             self._pc_wanted.pop(dev.id, None)
         if online:
@@ -636,6 +642,7 @@ class PhoneBridgeApp(Adw.Application):
     # -- music on the phone ---------------------------------------------------
     def _on_media(self, dev, players):
         self.media[dev.id] = players or []
+        self.sync_music(dev)
         self.update_tray()
         if self.window is not None and dev is self.active_device():
             self.window.overview.show_media()
@@ -653,6 +660,60 @@ class PhoneBridgeApp(Adw.Application):
             return
         dev.request("media.control", {"bus": p["bus"], "action": action},
                     lambda r, e: e is not None and self.toast(text.error(e)))
+
+    # -- the phone's music on the PC's speakers (music.py) ---------------------
+    def music_on_pc(self, dev):
+        """Whether the phone's music is to play here - what the user chose."""
+        return dev is not None and dev.id in (self.cfg.get("music_on_pc") or [])
+
+    def set_music_on_pc(self, dev, on):
+        if dev is None or self.music_on_pc(dev) == bool(on):
+            return
+        ids = [i for i in (self.cfg.get("music_on_pc") or []) if i != dev.id]
+        self.cfg["music_on_pc"] = ids + ([dev.id] if on else [])
+        config.save(self.cfg)
+        retry = self._music_retry.pop(dev.id, None)
+        if retry:
+            GLib.source_remove(retry)
+        self.sync_music(dev)
+        self.update_tray()
+
+    _music_extra = {}       # the tests' phone side and player
+
+    def sync_music(self, dev):
+        """The stream there while the phone is online, has a player, and its
+        music is to play here; else gone."""
+        want = (self.music_on_pc(dev) and dev.online and bool(self.media.get(dev.id))
+                and dev.id not in self._music_retry)
+        stream = self.music_pc.get(dev.id)
+        if want and stream is None:
+            from .callaudio import available
+            if not available():
+                self.tell(_("pw-play is missing on this PC"))
+                return
+            from .music import MusicOnPC
+            stream = MusicOnPC(dev, **self._music_extra)
+            stream.connect("stopped", self._music_stopped, dev)
+            if stream.start():
+                self.music_pc[dev.id] = stream
+        elif not want and stream is not None:
+            del self.music_pc[dev.id]
+            stream.stop()
+
+    def _music_stopped(self, stream, reason, dev):
+        if self.music_pc.get(dev.id) is not stream:
+            return
+        del self.music_pc[dev.id]
+        if reason is None or self._ending:
+            return
+        self.tell(_("The music on the PC stopped: %s") % text.error(reason))
+
+        def again():
+            self._music_retry.pop(dev.id, None)
+            self.sync_music(dev)
+            return False
+        # not at once: a phone that keeps failing is asked again in a while
+        self._music_retry[dev.id] = GLib.timeout_add_seconds(20, again)
 
     def refresh_threads(self, dev):
         seen = config.seen_for(self.cfg, dev.id)
@@ -1242,6 +1303,9 @@ class PhoneBridgeApp(Adw.Application):
                           "enabled": p["can_pause"] if playing else p["can_play"]})
             if p["can_next"]:
                 items.append({"id": "media:Next", "label": _("Next track")})
+            items.append({"id": "music-output",
+                          "label": _("Play on the phone") if self.music_on_pc(dev)
+                          else _("Play on this PC")})
         if len(self.devices) > 1:
             items.append({"type": "separator"})
             for d in self.devices.values():
@@ -1310,6 +1374,10 @@ class PhoneBridgeApp(Adw.Application):
             self.quit()
         elif item_id.startswith("media:"):
             self.media_control(item_id[6:])
+        elif item_id == "music-output" and dev is not None:
+            self.set_music_on_pc(dev, not self.music_on_pc(dev))
+            if self.window is not None and dev is self.active_device():
+                self.window.overview.show_media()
         elif item_id.startswith("device:"):
             self.set_active(item_id[7:])
 

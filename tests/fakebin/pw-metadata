@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for pw-metadata: where streams are sent, logged.
+echo "$*" >> "${FAKE_AUDIO_DIR:-/dev/null}/pw-metadata.log"

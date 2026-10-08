@@ -57,7 +57,8 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
   open in PhoneBridge: the number in the dial pad, one click to call; the conversation with
   the link's text.
 - **Music** - what plays on the phone (any MPRIS player), with back, play/pause and next in
-  the overview and the panel menu.
+  the overview and the panel menu - and a switch for where it plays: the phone's speaker or
+  this PC's. Ringing, notifications and calls stay on the phone; the choice is kept per phone.
 - **Photo backup** - new photos and videos of the phone's camera come to a folder on the PC
   by themselves, every half hour while the phone is on Wi-Fi; what was backed up once is
   not fetched again (*Settings → Photo backup*).
@@ -105,7 +106,7 @@ apps use:
 | Voice messages | [VoiceBox](https://github.com/misc-de/VoiceBox), when it is installed |
 | Wi-Fi, volume, ring profile, power profile | NetworkManager, WirePlumber, feedbackd, power-profiles |
 | Settings | GSettings |
-| Music | MPRIS players on the session bus |
+| Music | MPRIS players on the session bus; on the PC: the players' streams (`target.object`) into a pw-record sink → raw 48 kHz stereo over SSH → pw-play |
 | Clipboard | wl-copy / wl-paste (the compositor's data-control) |
 | Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
 | Webcam | droidcamsrc → x264 (zero latency) → H.264 over SSH; on the PC GStreamer (slice decoding, ~50 ms) → v4l2loopback or PipeWire |

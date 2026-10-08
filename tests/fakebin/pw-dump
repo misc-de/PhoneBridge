@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for pw-dump: the PipeWire objects the test wrote, or none.
+cat "${FAKE_AUDIO_DIR:-/nonexistent}/pw-dump.json" 2>/dev/null || echo "[]"

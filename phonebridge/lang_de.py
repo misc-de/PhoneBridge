@@ -1431,4 +1431,13 @@ TRANSLATIONS = {
         'Programme mit PipeWire-Kameras sehen sie als „%s“',
     'pictures a second':
         'Bilder pro Sekunde',
+    # the phone's music on the PC
+    'Play on the phone':
+        'Auf dem Phone abspielen',
+    'Play on this PC':
+        'Auf diesem PC abspielen',
+    'pw-play is missing on this PC':
+        'pw-play fehlt auf diesem PC',
+    'The music on the PC stopped: %s':
+        'Die Musik am PC wurde beendet: %s',
 }
