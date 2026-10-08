@@ -15,8 +15,20 @@ install on the phone.
 <img alt="PhoneBridge's overview, light and dark: battery, network and Wi-Fi of the phone,
   the last calls, conversations and the next appointments" src="data/screenshots/overview.png">
 
-<sub>The screenshot shows invented people and data (`tools/screenshot-demo.py`,
+<sub>The screenshots show invented people and data (`tools/screenshot-demo.py`,
 light and dark joined by `tools/screenshot-diagonal.py`).</sub>
+
+<details>
+<summary><b>More screenshots</b> - every page as it opens</summary>
+
+| | |
+|:---:|:---:|
+| <a href="data/screenshots/phone.png"><img src="data/screenshots/phone.png" alt="Telephone: dial pad and recent calls, with a voice message"></a><br>**Telephone** - dial pad and recent calls | <a href="data/screenshots/messages.png"><img src="data/screenshots/messages.png" alt="Messages: conversations by day, unread ones marked"></a><br>**Messages** - conversations, unread ones marked |
+| <a href="data/screenshots/contacts.png"><img src="data/screenshots/contacts.png" alt="Contacts: the phone's address book"></a><br>**Contacts** - the phone's address book | <a href="data/screenshots/calendar.png"><img src="data/screenshots/calendar.png" alt="Appointments: month view and agenda"></a><br>**Appointments** - month and agenda |
+| <a href="data/screenshots/files.png"><img src="data/screenshots/files.png" alt="Files: the phone's home folder"></a><br>**Files** - the phone's home folder | <a href="data/screenshots/screen.png"><img src="data/screenshots/screen.png" alt="Screen: sharing the phone's screen, or a desktop session over RDP"></a><br>**Screen** - screen sharing or a desktop session |
+| <a href="data/screenshots/settings.png"><img src="data/screenshots/settings.png" alt="Settings: quick settings of the phone"></a><br>**Settings** - the phone's settings | |
+
+</details>
 
 Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
 that is where it is developed and tested. Other Phosh phones with the same stack (ofono,

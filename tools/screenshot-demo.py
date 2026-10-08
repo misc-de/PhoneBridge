@@ -15,7 +15,12 @@ message and a stand-in evolution-data-server - nothing real is shown.
 
 With DEMO_SHOT the window is drawn into that PNG once everything has come
 and the demo ends; without, it stays open for DEMO_SECONDS (20). A made-up
-music player plays, so the overview shows its bar."""
+music player plays, so the overview shows its bar.
+
+DEMO_PAGE picks the page (overview, phone, messages, contacts, calendar,
+files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size.
+The files are a made-up home, never this PC's; the screen page shows the
+desktop session (sharing the screen would record this PC's here)."""
 
 import datetime as dt
 import json
@@ -42,8 +47,34 @@ os.environ.update({
     "PHONEBRIDGE_DATA": os.path.join(work, "data"),
     "PHONEBRIDGE_ADDRESSBOOKS": os.path.join(work, "none"),
     "PHONEBRIDGE_KEYRING": "memory", "PHONEBRIDGE_LANGUAGE": "en", "LANGUAGE": "en",
+    # English dates in GTK too (the calendar), the week from Monday
+    "LC_ALL": "en_GB.UTF-8", "LANG": "en_GB.UTF-8",
     "GSETTINGS_BACKEND": "memory", "ADW_DISABLE_PORTAL": "1", "GDK_DEBUG": "no-portals",
+    # the phone's files: a made-up home - the agent runs here
+    "PHONEBRIDGE_FILES_HOME": os.path.join(work, "phone-home"),
+    "PHONEBRIDGE_THUMBNAILS": os.path.join(work, "thumbnails"),
+    # what a desktop session needs, as if the phone had it all
+    "PHONEBRIDGE_GNOME_SHELL": os.path.join(work, "bin", "gnome-shell"),
+    "PHONEBRIDGE_GRD": os.path.join(work, "bin", "gnome-remote-desktop-daemon"),
 })
+os.environ["PATH"] = os.path.join(work, "bin") + os.pathsep + os.environ["PATH"]
+os.makedirs(os.path.join(work, "bin"))
+for name, body in (("gnome-shell", "exit 0"), ("gnome-remote-desktop-daemon", "exit 0"),
+                   ("grdctl", "exit 0"),
+                   # sudo: may run iptables (desktop.check asks "-n -l"), nothing else
+                   ("sudo", '[ "$1 $2" = "-n -l" ] && exit 0; exit 1')):
+    with open(os.path.join(work, "bin", name), "w") as f:
+        f.write("#!/bin/sh\n%s\n" % body)
+    os.chmod(os.path.join(work, "bin", name), 0o755)
+home = os.environ["PHONEBRIDGE_FILES_HOME"]
+for folder, files in (("Documents", ("Invoice 2026-09.pdf", "Notes.txt", "Packing list.odt")),
+                      ("Downloads", ("timetable.pdf", "recipe-lasagne.pdf")),
+                      ("Music", ()), ("Pictures", ()), ("Videos", ()), ("Recordings", ()),
+                      ("Pictures/Screenshots", ())):
+    os.makedirs(os.path.join(home, folder), exist_ok=True)
+    for name in files:
+        with open(os.path.join(home, folder, name), "w") as f:
+            f.write("demo\n" * 200)
 
 from tests.support import Store  # noqa: E402
 
@@ -159,11 +190,18 @@ events = [("e1", "Lunch with Anna", at(1, 12, 30), at(1, 13, 30), "Café Central
           ("e6", "Train to Hamburg", at(7, 7, 42), at(7, 11, 5), "Main station", False)]
 for uid, summary, s, e, loc, allday in events:
     eds.events[uid] = vevent(uid, summary, s, e, loc, allday)
+for n, (number, name) in enumerate(sorted(people.items(), key=lambda p: p[1]), 1):
+    first, last = name.split(" ", 1)
+    eds.contacts["c%d" % n] = (
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:c%d\r\nFN:%s\r\nN:%s;%s;;;\r\n"
+        "TEL;TYPE=CELL:%s\r\nEMAIL;TYPE=INTERNET:%s@example.org\r\nEND:VCARD\r\n"
+        % (n, name, last, first, number, first.lower()))
 
 config.CONFIG_DIR = os.environ["PHONEBRIDGE_CONFIG"]
 # two conversations unread (Anna, Tom), the others read
 config.save(dict(config.DEFAULTS, language="en", devices=[
     {"id": "flx1s", "name": "FLX1s", "host": "phone", "user": "furios"}],
+    screen={"quality": "normal", "mode": "desktop", "desktop_size": [1600, 900]},
     seen={"flx1s": {"baseline": 2, "threads": {
         "+4915550001004": 6, "+4915550001006": 8, "+4915550001007": 9}}}))
 
@@ -204,12 +242,14 @@ def ready():
     app.window = MainWindow(app)
     app.window.set_default_size(int(os.environ.get("DEMO_WIDTH", "1600")),
                                 int(os.environ.get("DEMO_HEIGHT", "640")))
-    app.show_window("overview")
+    page = os.environ.get("DEMO_PAGE", "overview")
+    app.show_window(page)
     # after showing (that follows the desktop) - light or dark as asked, never
     # as this desktop is
     Adw.StyleManager.get_default().set_color_scheme(
         Adw.ColorScheme.FORCE_DARK if os.environ.get("DEMO_DARK") else Adw.ColorScheme.FORCE_LIGHT)
-    app.window.overview.load(force=True)
+    if page == "overview":
+        app.window.overview.load(force=True)
     if os.environ.get("DEMO_SHOT"):
         GLib.timeout_add(4000, shoot)
     return False
