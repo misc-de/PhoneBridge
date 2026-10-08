@@ -199,6 +199,9 @@ class PhoneBridgeApp(Adw.Application):
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
             GLib.Variant("b", config.autostart_enabled()))
+        add("phone-notifications", self._on_phone_notifications_toggle, None,
+            GLib.Variant("b", bool(self.cfg.get("phone_notifications", True))))
+        add("phone-dismiss", self._on_phone_dismiss, "(su)")
         add("updates", self._on_updates_toggle, None,
             GLib.Variant("b", bool(self.cfg["updates"])))
         self._language = add("language", self._on_language, "s",
@@ -225,6 +228,9 @@ class PhoneBridgeApp(Adw.Application):
                 dev.connect("calls", self._on_calls)
                 dev.connect("voicebox", lambda d: self.refresh_voicebox(d))
                 dev.connect("media", self._on_media)
+                dev.connect("notification", self._on_phone_notification)
+                dev.connect("notification-closed",
+                            lambda d, nid: self.withdraw_notification(phone_note_id(d.id, nid)))
                 self.devices[dev_id] = dev
                 self._start_with_keyring(dev)
         if self.cfg["active"] not in self.devices:
@@ -425,6 +431,8 @@ class PhoneBridgeApp(Adw.Application):
                         lambda r, e: e is None and self._on_calls(dev, r))
             dev.request("media.state", {},
                         lambda r, e: e is None and self._on_media(dev, r))
+            if self.cfg.get("phone_notifications", True):
+                dev.request("notifications.watch", {"on": True})
         if not online and self.calls.get(dev.id):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:
@@ -440,6 +448,39 @@ class PhoneBridgeApp(Adw.Application):
         self.update_tray()
         if self.window is not None:
             self.window.device_changed(dev)
+
+    # -- the phone's notifications ---------------------------------------------
+    def _on_phone_notification(self, dev, n):
+        """A notification of an app on the phone, here too - briefly, with a
+        button that closes it on the phone."""
+        if not self.cfg.get("phone_notifications", True):
+            return
+        app_name = n.get("app") or ""
+        title = n.get("title") or app_name or dev.name
+        if app_name and app_name != title:
+            title = "%s: %s" % (app_name, title)
+        note = Gio.Notification.new(title)
+        if n.get("body"):
+            note.set_body(notification_text(n["body"]))
+        note.set_icon(phone_note_icon(n))
+        note.add_button_with_target(_("Close on the phone"), "app.phone-dismiss",
+                                    GLib.Variant("(su)", (dev.id, int(n["id"]))))
+        self._send_briefly(phone_note_id(dev.id, n["id"]), note)
+
+    def _on_phone_dismiss(self, action, param):
+        dev_id, nid = param.unpack()
+        self.withdraw_notification(phone_note_id(dev_id, nid))
+        dev = self.devices.get(dev_id)
+        if dev is not None and dev.online:
+            dev.request("notification.close", {"id": nid})
+
+    def _on_phone_notifications_toggle(self, action, value):
+        action.set_state(value)
+        self.cfg["phone_notifications"] = value.get_boolean()
+        config.save(self.cfg)
+        for dev in self.devices.values():
+            if dev.online:
+                dev.request("notifications.watch", {"on": value.get_boolean()})
 
     # -- music on the phone ---------------------------------------------------
     def _on_media(self, dev, players):
@@ -1307,6 +1348,22 @@ class PhoneBridgeApp(Adw.Application):
 
 
 PENDING = object()      # in pc_audio while the phone's microphone is being muted
+
+
+def phone_note_id(dev_id, nid):
+    return "phone-%s-%d" % (dev_id, int(nid))
+
+
+def phone_note_icon(n):
+    """The app's icon when this PC's theme has it, else PhoneBridge's."""
+    try:
+        theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    except (TypeError, AttributeError):
+        theme = None
+    for name in (n.get("icon"), n.get("desktop")):
+        if name and "/" not in name and theme is not None and theme.has_icon(name):
+            return Gio.ThemedIcon.new(name)
+    return Gio.ThemedIcon.new(APP_ID)
 
 
 def media_line(player):

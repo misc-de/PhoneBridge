@@ -69,6 +69,9 @@ class Device(GObject.Object):
         "auth-needed": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
         "voicebox": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "media": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        # a notification of the phone's apps; and one closed there (its id)
+        "notification": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "notification-closed": (GObject.SignalFlags.RUN_FIRST, None, (int,)),
     }
 
     def __init__(self, info):
@@ -316,6 +319,10 @@ class Device(GObject.Object):
                 self.emit("voicebox")
             elif msg["event"] == "media":
                 self.emit("media", msg.get("players") or [])
+            elif msg["event"] == "notification":
+                self.emit("notification", msg)
+            elif msg["event"] == "notification-closed":
+                self.emit("notification-closed", int(msg.get("id") or 0))
             return
         if not isinstance(msg, dict):
             return

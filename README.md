@@ -63,6 +63,9 @@ Cinnamon, MATE, Budgie, waybar …).
   menu, the window's menu, Thunar's *Send To* menu or `phonebridge --send FILE|URL …`.
 - **Notifications** on the desktop for new messages, calls, voice messages, a full battery
   and one running empty - with the person's picture, text buttons, gone after 10 seconds.
+  The phone's other apps too (messengers, mail, calendar …): *Close on the phone* closes one
+  there, and one closed on the phone goes here as well. *Menu → Show the phone's
+  notifications* turns that off.
 - **Several phones**, one of them shown in the panel. English and German.
 
 ## How it works
@@ -85,6 +88,7 @@ apps use:
 | Wi-Fi, volume, ring profile, power profile | NetworkManager, WirePlumber, feedbackd, power-profiles |
 | Settings | GSettings |
 | Music | MPRIS players on the session bus |
+| The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
 | Files | the file system, as the phone's user; contents over an SSH connection of their own |
 
 Changing chatty's store or GNOME Calls' accounts needs the app to be stopped meanwhile;

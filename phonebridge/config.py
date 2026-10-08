@@ -10,6 +10,7 @@
   country   calling code for numbers typed with a leading 0
   notify    desktop notification for every new SMS
   language  "system", "en" or "de"
+  phone_notifications  the phone's own notifications (all apps) on the desktop
   updates   look on GitHub for a newer PhoneBridge (installed ones only)
   call_audio_*  the call's sound on the PC: gain for the caller, echo
             cancellation, take every call to the PC by itself
@@ -37,6 +38,7 @@ DEFAULTS = {
     "devices": [],
     "seen": {},
     "updates": True,
+    "phone_notifications": True,    # the notifications of the phone's apps, here too
     "files_zoom": 2,            # size of the icons in the file list (files_page.ZOOM)
     # the call's sound on the PC (callaudio.py)
     "call_audio_gain": 2.0,

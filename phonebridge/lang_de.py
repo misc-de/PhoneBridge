@@ -1229,4 +1229,8 @@ TRANSLATIONS = {
         'Nächster Titel',
     'Previous track':
         'Vorheriger Titel',
+    'Close on the phone':
+        'Auf dem Phone schließen',
+    "Show the phone's notifications":
+        'Benachrichtigungen des Phones zeigen',
 }

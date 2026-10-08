@@ -3289,6 +3289,133 @@ def cmd_media_control(agent, args):
     return True
 
 
+# --- the phone's notifications -------------------------------------------------
+# Watched on a connection of its own that only listens (BecomeMonitor):
+# Notify calls with the daemon's answer (the id), and NotificationClosed.
+# What PhoneBridge tells by itself (SMS, calls, voice messages) stays out.
+
+NOTIFY_SKIP_APPS = {"chats", "chatty", "calls", "phonebridge", "voicebox"}
+NOTIFY_SKIP_ENTRIES = ("chatty", "org.gnome.calls", "phonebridge", "voicebox")
+NOTIFY_IFACE = "org.freedesktop.Notifications"
+
+
+def plain_text(body):
+    """Notification bodies may carry a little markup."""
+    body = re.sub(r"<[^>]+>", "", body or "")
+    for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"),
+                         ("&amp;", "&")):
+        body = body.replace(entity, char)
+    return body.strip()
+
+
+def notification_skipped(app_name, entry):
+    entry = (entry or "").casefold()
+    return ((app_name or "").strip().casefold() in NOTIFY_SKIP_APPS
+            or any(x in entry for x in NOTIFY_SKIP_ENTRIES))
+
+
+class NotificationWatch:
+    def __init__(self, on_event):
+        self.on_event = on_event
+        self.pending = {}           # (caller, serial) -> the notification
+        self.conn = None
+        self.owner = None
+
+    def start(self):
+        address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, None)
+        conn = Gio.DBusConnection.new_for_address_sync(
+            address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+        self.owner = call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                          "org.freedesktop.DBus", "GetNameOwner",
+                          GLib.Variant("(s)", (NOTIFY_IFACE,)), "(s)")[0]
+        conn.add_filter(self._filter)
+        call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+             "org.freedesktop.DBus.Monitoring", "BecomeMonitor",
+             GLib.Variant("(asu)", ([
+                 "type='method_call',interface='%s',member='Notify'" % NOTIFY_IFACE,
+                 "type='method_return',sender='%s'" % self.owner,
+                 "type='signal',interface='%s',member='NotificationClosed'" % NOTIFY_IFACE],
+                 0)))
+        self.conn = conn
+
+    def stop(self):
+        conn, self.conn = self.conn, None
+        self.pending.clear()
+        if conn is not None:
+            try:
+                conn.close_sync(None)
+            except GLib.Error:
+                pass
+
+    def _filter(self, conn, msg, incoming):
+        # in GDBus's own thread. The answers to this connection's own calls
+        # (BecomeMonitor) go on to GDBus; everything watched is kept from it -
+        # a monitor must never answer anything
+        if not incoming:
+            return msg                  # its own calls go out
+        if (msg.get_destination() == conn.get_unique_name()
+                and msg.get_message_type() in (Gio.DBusMessageType.METHOD_RETURN,
+                                               Gio.DBusMessageType.ERROR)):
+            return msg
+        try:
+            self._handle(msg)
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        return None
+
+    def _handle(self, msg):
+        kind = msg.get_message_type()
+        if kind == Gio.DBusMessageType.METHOD_CALL and msg.get_member() == "Notify":
+            body = msg.get_body()
+            if body is None or body.get_type_string() != "(susssasa{sv}i)":
+                return
+            app_name, replaces, icon, summary, text, actions, hints, _t = body.unpack()
+            if len(self.pending) > 200:
+                self.pending.clear()
+            self.pending[(msg.get_sender(), msg.get_serial())] = {
+                "app": app_name, "icon": icon, "title": summary,
+                "body": plain_text(text), "desktop": str(hints.get("desktop-entry") or "")}
+        elif kind == Gio.DBusMessageType.METHOD_RETURN and msg.get_sender() == self.owner:
+            n = self.pending.pop((msg.get_destination(), msg.get_reply_serial()), None)
+            body = msg.get_body()
+            if n is None or body is None or body.get_type_string() != "(u)":
+                return
+            if notification_skipped(n["app"], n["desktop"]):
+                return
+            n["id"] = body.unpack()[0]
+            self.on_event(dict(n, event="notification"))
+        elif kind == Gio.DBusMessageType.SIGNAL and msg.get_member() == "NotificationClosed":
+            body = msg.get_body()
+            if body is not None and body.get_type_string() == "(uu)":
+                self.on_event({"event": "notification-closed", "id": body.unpack()[0]})
+
+
+@command("notifications.watch")
+def cmd_notifications_watch(agent, args):
+    """The PC wants the phone's notifications (or no more)."""
+    watch = getattr(agent, "notify_watch", None)
+    if watch is not None:
+        watch.stop()
+        agent.notify_watch = None
+    if args.get("on"):
+        watch = NotificationWatch(send)
+        try:
+            watch.start()
+        except (GLib.Error, DBusFailure) as e:
+            watch.stop()
+            raise RuntimeError("the phone's notifications cannot be watched: %s" % e)
+        agent.notify_watch = watch
+    return bool(args.get("on"))
+
+
+@command("notification.close")
+def cmd_notification_close(agent, args):
+    call(agent.session, NOTIFY_IFACE, "/org/freedesktop/Notifications", NOTIFY_IFACE,
+         "CloseNotification", GLib.Variant("(u)", (int(args["id"]),)))
+    return True
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

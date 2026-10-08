@@ -113,6 +113,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append_section(None, main)
         prefs = Gio.Menu()
         prefs.append(_("Notify about new messages"), "app.notify")
+        prefs.append(_("Show the phone's notifications"), "app.phone-notifications")
         prefs.append(_("Start at login"), "app.autostart")
         prefs.append(_("Look for updates"), "app.updates")
         lang = Gio.Menu()
