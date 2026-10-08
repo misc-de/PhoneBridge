@@ -691,7 +691,11 @@ class PhoneBridgeApp(Adw.Application):
             if not available():
                 self.tell(_("pw-play is missing on this PC"))
                 return
-            from .music import MusicOnPC
+            from .music import MusicOnPC, ending
+            if ending():
+                # the last stream still hands the players back on the phone
+                GLib.timeout_add(150, lambda: self.sync_music(dev) and False)
+                return
             stream = MusicOnPC(dev, **self._music_extra)
             stream.connect("stopped", self._music_stopped, dev)
             if stream.start():

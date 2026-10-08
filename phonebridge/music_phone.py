@@ -12,6 +12,11 @@ calls stay on the phone. When pw-record ends - this script, or the
 connection, gone - the sink is gone, and PipeWire plays the streams on the
 phone's speaker again: nothing is left behind.
 
+Switched back, the streams go to the phone's speaker first and the sink
+only then: WirePlumber pauses a player whose sink goes from under it
+(linking/mpris-pause.lua). Each run has a sink of its own name, so a run
+that is still ending never meets the next one.
+
 PARAMS comes before this code: rate, channels, latency."""
 
 import json
@@ -24,7 +29,9 @@ import threading
 import time
 
 PARAMS = globals().get("PARAMS", {})
-SINK = "phonebridge_music"
+SINK = "phonebridge_music_%d" % os.getpid()
+METADATA_TARGET = re.compile(r"id:(\d+) key:'target\.object' value:'([^']*)'")
+METADATA_DEFAULT = re.compile(r"key:'default\.audio\.sink' value:'([^']*)'")
 STREAM = "Stream/Output/Audio"
 MPRIS = "org.mpris.MediaPlayer2."
 
@@ -62,19 +69,51 @@ def players():
     return pids, names
 
 
-def streams():
-    """The audio streams that play: [(node id, its properties)]."""
+def dump():
     try:
         objects = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True,
                                             timeout=5).stdout or "[]")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return []
+    return [o for o in objects if isinstance(o, dict)] if isinstance(objects, list) else []
+
+
+def streams(objects=None):
+    """The audio streams that play: [(node id, its properties)]."""
+    objects = dump() if objects is None else objects
     found = []
     for o in objects:
-        props = ((o.get("info") or {}).get("props") or {}) if isinstance(o, dict) else {}
+        props = (o.get("info") or {}).get("props") or {}
         if o.get("type", "").endswith(":Node") and props.get("media.class") == STREAM:
             found.append((o["id"], props))
     return found
+
+
+def linked_to(objects, sink):
+    """The nodes that play into the node named `sink`."""
+    ids = {o["id"] for o in objects if o.get("type", "").endswith(":Node")
+           and ((o.get("info") or {}).get("props") or {}).get("node.name") == sink}
+    return {(o.get("info") or {}).get("output-node-id") for o in objects
+            if o.get("type", "").endswith(":Link")
+            and (o.get("info") or {}).get("input-node-id") in ids}
+
+
+def metadata():
+    """The streams' targets {node id: name}, and the default sink's name."""
+    try:
+        out = subprocess.run(["pw-metadata", "0"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {}, None
+    targets = {int(m.group(1)): m.group(2) for m in METADATA_TARGET.finditer(out)}
+    default = None
+    m = METADATA_DEFAULT.search(out)
+    if m:
+        try:
+            default = json.loads(m.group(1)).get("name")
+        except (ValueError, AttributeError):
+            default = None
+    return targets, default
 
 
 def is_player(props, pids, names):
@@ -112,13 +151,25 @@ class Router:
                                                        or props.get("node.name") or node))
                     sys.stderr.flush()
 
-    def give_back(self):
-        """The streams to the phone again, before our sink goes - so that
-        the session manager does not keep our sink as their target."""
+    def give_back(self, wait=2.0):
+        """The streams to the phone's own sink, before ours goes (else the
+        players pause); then without a target again, so that the session
+        manager keeps none for them."""
         with self.lock:
-            for node in self.sent:
-                set_target(node, None)
+            targets, default = metadata()
+            ours = {n for n in self.sent if targets.get(n) == SINK}
             self.sent.clear()
+            if not ours:
+                return
+            for node in ours:
+                set_target(node, default)
+            end = time.monotonic() + wait
+            while default and time.monotonic() < end and linked_to(dump(), SINK) & ours:
+                time.sleep(0.1)
+            targets, _default = metadata()
+            for node in ours:
+                if targets.get(node) in (default, SINK):    # not someone else's since
+                    set_target(node, None)
 
 
 def set_target(node, target):

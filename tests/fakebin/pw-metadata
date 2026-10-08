@@ -1,3 +1,27 @@
-#!/bin/sh
-# Stand-in for pw-metadata: where streams are sent, logged.
-echo "$*" >> "${FAKE_AUDIO_DIR:-/dev/null}/pw-metadata.log"
+#!/usr/bin/env python3
+# Stand-in for pw-metadata: the streams' targets kept in a file, every
+# change logged; "pw-metadata 0" lists them with droid-sink as default.
+import json, os, sys
+d = os.environ.get("FAKE_AUDIO_DIR")
+state = os.path.join(d, "pw-metadata.json") if d else None
+targets = {}
+if state and os.path.exists(state):
+    with open(state) as f:
+        targets = json.load(f)
+args = sys.argv[1:]
+if args == ["0"]:
+    print("Found \"default\" metadata 40")
+    print("update: id:0 key:'default.audio.sink' value:'{\"name\":\"droid-sink\"}' type:'Spa:String:JSON'")
+    for node, target in targets.items():
+        print("update: id:%s key:'target.object' value:'%s' type:'(null)'" % (node, target))
+    sys.exit(0)
+if d:
+    with open(os.path.join(d, "pw-metadata.log"), "a") as f:
+        f.write(" ".join(args) + "\n")
+if args[:1] == ["-d"]:
+    targets.pop(args[1], None)
+elif len(args) >= 3:
+    targets[args[0]] = args[2]
+if state:
+    with open(state, "w") as f:
+        json.dump(targets, f)

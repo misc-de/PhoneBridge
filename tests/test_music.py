@@ -51,8 +51,47 @@ class Pieces(unittest.TestCase):
         data = b.get()
         self.assertTrue(data.endswith(b"\x03\x00\x04\x00" * 10))
         self.assertEqual(b.size, 0)
+        # whole frames only - the rest waits for the next bytes
+        b.put(b"\x05" * 6)
+        self.assertEqual(b.get(), b"\x05" * 4)
+        self.assertEqual(b.size, 2)
         b.close()
-        self.assertEqual(b.get(), b"")
+        self.assertEqual(b.get(at_least=music.PREBUFFER), b"")
+
+    def test_backlog_gathers_before_it_gives(self):
+        import threading
+        b = music.Backlog()
+        got = []
+        t = threading.Thread(target=lambda: got.append(b.get(at_least=8)))
+        t.start()
+        b.put(b"\x01" * 4)
+        t.join(0.2)
+        self.assertEqual(got, [])           # not enough yet
+        b.put(b"\x02" * 4)
+        t.join(2)
+        self.assertEqual(got, [b"\x01" * 4 + b"\x02" * 4])
+
+    def test_pipe_fill(self):
+        r, w = os.pipe()
+        self.addCleanup(os.close, r)
+        self.addCleanup(os.close, w)
+        self.assertEqual(music.pipe_fill(w), 0)
+        os.write(w, b"x" * 1000)
+        self.assertEqual(music.pipe_fill(w), 1000)
+
+    def test_links_and_metadata(self):
+        objects = [node(77), node(9, **{"media.class": "Audio/Sink", "node.name": "ours"}),
+                   {"id": 100, "type": "PipeWire:Interface:Link",
+                    "info": {"output-node-id": 77, "input-node-id": 9}},
+                   {"id": 101, "type": "PipeWire:Interface:Link",
+                    "info": {"output-node-id": 78, "input-node-id": 5}}]
+        self.assertEqual(music_phone.linked_to(objects, "ours"), {77})
+        self.assertEqual(music_phone.linked_to(objects, "droid-sink"), set())
+        out = ("update: id:0 key:'default.audio.sink' value:'{\"name\":\"droid-sink\"}' "
+               "type:'Spa:String:JSON'\nupdate: id:77 key:'target.object' value:'ours' "
+               "type:'(null)'\n")
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=out)):
+            self.assertEqual(music_phone.metadata(), ({77: "ours"}, "droid-sink"))
 
     def test_which_stream_is_a_player(self):
         pids, names = {1802922}, {"emilia", "firefox"}
@@ -71,6 +110,7 @@ class Pieces(unittest.TestCase):
         self.assertEqual(cmd[0], "pw-record")
         self.assertIn("media.class=Audio/Sink", " ".join(cmd))
         self.assertIn("node.name=%s" % music_phone.SINK, " ".join(cmd))
+        self.assertTrue(music_phone.SINK.startswith("phonebridge_music_"))   # one per run
 
 
 @unittest.skipUnless(session() is not None, "no session bus")
@@ -106,8 +146,9 @@ class Stream(unittest.TestCase):
         self.assertTrue(self.stream.start())
         self.assertTrue(run_loop_until(lambda: os.path.exists(self.out)
                                        and os.path.getsize(self.out) > 20000, 15))
-        # only the player's stream went to PhoneBridge's sink
-        self.assertEqual(self.metadata(), ["77 target.object phonebridge_music"])
+        # only the player's stream went to PhoneBridge's sink (one of this run's own)
+        self.assertEqual(len(self.metadata()), 1)
+        self.assertRegex(self.metadata()[0], r"^77 target\.object phonebridge_music_\d+$")
         self.assertEqual(self.stream.routed, ["Tunes"])
         with open(self.out, "rb") as f:
             data = f.read()
@@ -117,9 +158,12 @@ class Stream(unittest.TestCase):
             self.assertIn("media.class=Audio/Sink", f.read())
         self.stream.stop()
         self.assertEqual(self.stopped, [None])
-        # switched back: the phone hands the stream back to its own speaker
-        self.assertTrue(run_loop_until(lambda: len(self.metadata()) == 2, 10))
-        self.assertEqual(self.metadata()[1], "-d 77 target.object")
+        # switched back: the stream to the phone's speaker before the sink goes
+        # (else WirePlumber pauses the player), then without a target again
+        self.assertTrue(run_loop_until(lambda: len(self.metadata()) == 3, 10))
+        self.assertEqual(self.metadata()[1:], ["77 target.object droid-sink",
+                                               "-d 77 target.object"])
+        self.assertTrue(run_loop_until(lambda: not music.ending(), 10))
 
     def test_a_phone_that_cannot_be_reached(self):
         with mock.patch.dict(os.environ, {"FAKE_SSH_FAIL": "1"}):
@@ -176,4 +220,5 @@ class TheSwitch(unittest.TestCase):
         app._on_media(dev, [])
         self.assertNotIn("test", app.music_pc)
         app._on_media(dev, [playing])
-        self.assertIn("test", app.music_pc)
+        # once the last stream has handed the player back on the phone
+        self.assertTrue(run_loop_until(lambda: "test" in app.music_pc, 10))
