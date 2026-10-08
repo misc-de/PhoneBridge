@@ -18,7 +18,9 @@ and the demo ends; without, it stays open for DEMO_SECONDS (20). A made-up
 music player plays, so the overview shows its bar.
 
 DEMO_PAGE picks the page (overview, phone, messages, contacts, calendar,
-files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size.
+files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size;
+DEMO_CONTACT a contact to open on the contacts page (with its calls,
+messages and appointments).
 The files are a made-up home, never this PC's; the screen page shows the
 desktop session (sharing the screen would record this PC's here)."""
 
@@ -123,7 +125,9 @@ calls = [("+4915550001002", 1, at(0, 10, 2), None, 20),        # missed today
          ("+4915550001004", 0, at(-1, 16, 40), 5, 95),
          ("+4915550001001", 1, at(-1, 12, 10), 2, 412),
          ("+4915550001006", 0, at(-2, 11, 30), None, 30),
-         ("+4915550001005", 1, at(-3, 19, 5), 4, 180)]
+         ("+4915550001005", 1, at(-3, 19, 5), 4, 180),
+         ("+4915550001001", 0, at(-5, 9, 15), 6, 140),
+         ("+4915550001001", 1, at(-9, 18, 2), None, 25)]
 for i, (number, inbound, start, answered, length) in enumerate(calls, 1):
     db.execute("INSERT INTO calls VALUES (?, ?, ?, ?, ?, ?, 'tel')",
                (i, number, inbound, iso(start),
@@ -192,10 +196,13 @@ for uid, summary, s, e, loc, allday in events:
     eds.events[uid] = vevent(uid, summary, s, e, loc, allday)
 for n, (number, name) in enumerate(sorted(people.items(), key=lambda p: p[1]), 1):
     first, last = name.split(" ", 1)
+    extra = ("TEL;TYPE=WORK,VOICE:+49 30 5550 1234\r\nORG:Example GmbH\r\n"
+             "EMAIL;TYPE=WORK:anna.becker@example.com\r\nBDAY:1991-04-17\r\n"
+             "NOTE:Met at the climbing gym\r\n" if name == "Anna Becker" else "")
     eds.contacts["c%d" % n] = (
         "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:c%d\r\nFN:%s\r\nN:%s;%s;;;\r\n"
-        "TEL;TYPE=CELL:%s\r\nEMAIL;TYPE=INTERNET:%s@example.org\r\nEND:VCARD\r\n"
-        % (n, name, last, first, number, first.lower()))
+        "TEL;TYPE=CELL:%s\r\nEMAIL;TYPE=INTERNET:%s@example.org\r\n%sEND:VCARD\r\n"
+        % (n, name, last, first, number, first.lower(), extra))
 
 config.CONFIG_DIR = os.environ["PHONEBRIDGE_CONFIG"]
 # two conversations unread (Anna, Tom), the others read
@@ -250,8 +257,20 @@ def ready():
         Adw.ColorScheme.FORCE_DARK if os.environ.get("DEMO_DARK") else Adw.ColorScheme.FORCE_LIGHT)
     if page == "overview":
         app.window.overview.load(force=True)
+    if os.environ.get("DEMO_CONTACT"):
+        GLib.timeout_add(300, open_contact)
     if os.environ.get("DEMO_SHOT"):
         GLib.timeout_add(4000, shoot)
+    return False
+
+
+def open_contact():
+    """The contact DEMO_CONTACT, once the address book has come."""
+    contacts = app.window.contacts
+    found = [c for c in contacts.contacts if c["name"] == os.environ["DEMO_CONTACT"]]
+    if not found:
+        return True
+    contacts.show_contact(found[0])
     return False
 
 
