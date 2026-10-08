@@ -138,7 +138,7 @@ PhoneBridge looks at the desktop it runs on and adapts:
 | Required | `python-gobject gtk4 libadwaita python-cairo openssh` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-cairo openssh-client` |
 | Passwords in the keyring | `libsecret` | `gir1.2-secret-1` |
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
-| Webcam | `gst-plugins-bad gst-libav gst-plugin-pipewire`; for every program `v4l2loopback-dkms` (Manjaro: `linuxXY-v4l2loopback`) | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire v4l2loopback-dkms` |
+| Webcam | `gst-plugins-bad gst-libav gst-plugin-pipewire`; for every program `v4l2loopback-dkms v4l2loopback-utils` and the kernel's headers (Manjaro: `linuxXY-headers`) | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire v4l2loopback-dkms v4l2loopback-utils` |
 
 Fedora: `python3-gobject gtk4 libadwaita python3-cairo openssh-clients` (and `libsecret`,
 `pipewire-utils`, `pulseaudio-utils`); openSUSE: `python3-gobject typelib-1_0-Gtk-4_0

@@ -64,12 +64,14 @@ def install_hint(release="/etc/os-release"):
             manjaro = "manjaro" in f.read().lower()
     except OSError:
         manjaro = False
+    # the module is built by DKMS, for the running kernel's headers
     if manjaro:
         m = re.match(r"(\d+)\.(\d+)", platform.release())
-        if m:       # Manjaro builds the module for each of its kernels
-            return "sudo pacman -S linux%s%s-v4l2loopback" % m.groups()
-    return {"arch": "sudo pacman -S v4l2loopback-dkms",
-            "debian": "sudo apt install v4l2loopback-dkms",
+        if m:
+            return ("sudo pacman -S v4l2loopback-dkms v4l2loopback-utils linux%s%s-headers"
+                    % m.groups())
+    return {"arch": "sudo pacman -S v4l2loopback-dkms v4l2loopback-utils linux-headers",
+            "debian": "sudo apt install v4l2loopback-dkms v4l2loopback-utils",
             "fedora": "sudo dnf install v4l2loopback   # RPM Fusion",
             "suse": "sudo zypper install v4l2loopback-kmp-default"}.get(d)
 

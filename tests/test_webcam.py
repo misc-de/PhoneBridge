@@ -51,11 +51,11 @@ class Pieces(unittest.TestCase):
             return f.name
         with mock.patch("platform.release", lambda: "7.2.3-2-MANJARO"):
             self.assertEqual(webcam.install_hint(release("ID=manjaro\nID_LIKE=arch\n")),
-                             "sudo pacman -S linux72-v4l2loopback")
+                             "sudo pacman -S v4l2loopback-dkms v4l2loopback-utils linux72-headers")
         self.assertEqual(webcam.install_hint(release("ID=arch\n")),
-                         "sudo pacman -S v4l2loopback-dkms")
+                         "sudo pacman -S v4l2loopback-dkms v4l2loopback-utils linux-headers")
         self.assertEqual(webcam.install_hint(release("ID=ubuntu\nID_LIKE=debian\n")),
-                         "sudo apt install v4l2loopback-dkms")
+                         "sudo apt install v4l2loopback-dkms v4l2loopback-utils")
         self.assertIsNone(webcam.install_hint(release("ID=nixos\n")))
 
     def test_setup_command(self):
