@@ -359,11 +359,52 @@ class Pages(unittest.TestCase):
         self.assertEqual(self.win.current_page(), "messages")
         self.answer.queue.clear()
 
+    def test_calls_in_day_sections(self):
+        page = self.win.phone
+        now = time.time()
+        old_calls = page.calls
+        call = dict(number="+4915550000009", name="", inbound=True, answered=True,
+                    duration=5)
+        page.calls = [dict(call, start=now), dict(call, start=now - 1),
+                      dict(call, start=now - 400 * 86400)]
+        try:
+            page._refill()
+            headings = []
+            child = page.column.get_first_child()
+            while child is not None:
+                if isinstance(child, Gtk.Label):
+                    headings.append(child.get_label())
+                child = child.get_next_sibling()
+            # today's calls at the top (or yesterday's, a second after midnight)
+            self.assertIn(headings[0], ("Today", "Yesterday"))
+            self.assertEqual(headings[-1], "Older")
+            self.assertEqual(len(headings), len(set(headings)))     # each once
+            starts = [r.call["start"] for r in page.rows()]
+            self.assertEqual(starts, sorted(starts, reverse=True))
+        finally:
+            page.calls = old_calls
+            page._refill()
+
+    def test_conversations_in_day_sections(self):
+        page = self.win.messages
+        rows = []
+        i = 0
+        while (row := page.list.get_row_at_index(i)) is not None:
+            rows.append(row)
+            i += 1
+        self.assertTrue(rows)
+        times = [(r.thread.get("last") or {}).get("time") or 0 for r in rows]
+        self.assertEqual(times, sorted(times, reverse=True))
+        self.assertIsNotNone(rows[0].get_header())
+        for before, row in zip(rows, rows[1:]):
+            self.assertEqual(row.get_header() is not None,
+                             row.day_group != before.day_group)
+
     def test_voicebox_in_the_calls(self):
         page = self.win.phone
         page.calls = []
         page._refill()
-        row = page.list.get_row_at_index(0)
+        row = page.rows()[0]
         self.assertEqual(row.call["voicebox"]["id"], "20261007-080000")
         self.assertTrue(row.call["voicebox"]["new"])
         self.assertEqual(self.app.new_voicemails(), 1)

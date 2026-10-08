@@ -10,7 +10,7 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import N_, _
-from .widgets import opens_contact
+from .widgets import opens_contact, section_label
 
 KEYS = (("1", ""), ("2", "ABC"), ("3", "DEF"), ("4", "GHI"), ("5", "JKL"), ("6", "MNO"),
         ("7", "PQRS"), ("8", "TUV"), ("9", "WXYZ"), ("*", ""), ("0", "+"), ("#", ""))
@@ -186,9 +186,8 @@ class PhonePage(Gtk.Box):
         side_view.add_top_bar(side_header)
         sidebar = Adw.NavigationPage(title=_("Dial"), child=side_view)
 
-        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.list.add_css_class("boxed-list")
-        column = self.list
+        # one card per section (today, yesterday, ...), only those with calls
+        column = self.column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.calls = []
         self.player = None
         self.playing = None
@@ -300,13 +299,35 @@ class PhonePage(Gtk.Box):
 
     def _refill(self):
         self._prune_buttons()
-        while (row := self.list.get_row_at_index(0)) is not None:
-            self.list.remove(row)
+        while (child := self.column.get_first_child()) is not None:
+            self.column.remove(child)
         entries = self.entries()
+        now, card, group = time.time(), None, None
         for c in entries:
-            self.list.append(CallRow(self, c))
+            g = text.day_group(c.get("start"), now)
+            if card is None or g != group:
+                label = section_label(g)
+                label.set_margin_top(0 if card is None else 12)
+                self.column.append(label)
+                card = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+                card.add_css_class("boxed-list")
+                self.column.append(card)
+                group = g
+            card.append(CallRow(self, c))
         self.status.set_title(_("No calls"))
         self.stack.set_visible_child_name("list" if entries else "status")
+
+    def rows(self):
+        """The CallRows, all sections in order."""
+        out, card = [], self.column.get_first_child()
+        while card is not None:
+            if isinstance(card, Gtk.ListBox):
+                i = 0
+                while (row := card.get_row_at_index(i)) is not None:
+                    out.append(row)
+                    i += 1
+            card = card.get_next_sibling()
+        return out
 
     def voicebox_changed(self, reload_calls=True):
         self._refill()
@@ -473,7 +494,15 @@ class CallBar(Gtk.Revealer):
         self.pc.set_child(Adw.ButtonContent(icon_name="audio-headset-symbolic",
                                             label=_("Sound on the PC")))
         self.pc.connect("toggled", self._on_pc)
+        # the phone's loudspeaker instead of its earpiece, and back
+        self.speaker = Gtk.ToggleButton(valign=Gtk.Align.CENTER,
+                                        tooltip_text=_("The phone's loudspeaker instead of "
+                                                       "its earpiece"))
+        self.speaker.set_child(Adw.ButtonContent(icon_name="audio-speakers-symbolic",
+                                                 label=_("Loudspeaker")))
+        self.speaker.connect("toggled", self._on_speaker)
         box.append(self.levels)
+        box.append(self.speaker)
         box.append(self.pc)
         box.append(self.answer)
         box.append(self.hangup)
@@ -508,8 +537,12 @@ class CallBar(Gtk.Revealer):
         on = audio is not None and not getattr(audio, "test", False)
         self.pc.set_visible(possible and call["state"] in ("active", "dialing", "alerting",
                                                            "held"))
+        # what the phone reports; None: callaudiod is not there
+        self.speaker.set_visible(not on and call.get("speaker") is not None
+                                 and call["state"] in ("active", "dialing", "alerting", "held"))
         self._syncing = True
         self.pc.set_active(on)
+        self.speaker.set_active(bool(call.get("speaker")))
         self._syncing = False
         self.levels.set_visible(on)
         if on and not self._level_tick:
@@ -523,6 +556,26 @@ class CallBar(Gtk.Revealer):
             return
         dev = self.app.devices.get(self.dev_id)
         self.app.set_pc_audio(dev, button.get_active())
+
+    def _on_speaker(self, button):
+        if self._syncing or self.call is None:
+            return
+        dev = self.app.devices.get(self.dev_id)
+        if dev is None:
+            return
+        on = button.get_active()
+
+        def done(result, error):
+            if error is not None:
+                self.app.toast(text.error(error))
+            elif self.call is not None:
+                self.call["speaker"] = result
+            if self.call is not None:       # back to what the phone has
+                self._syncing = True
+                self.speaker.set_active(bool(self.call.get("speaker")))
+                self._syncing = False
+
+        dev.request("call.speaker", {"on": on}, done)
 
     def _update_levels(self):
         audio = self.app.pc_audio.get(self.dev_id)

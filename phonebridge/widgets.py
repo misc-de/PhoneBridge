@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Small pieces the pages share: picking a date and a time, names of days
 and months in the user's language, a person's picture that opens their
-contact."""
+contact, the "today / yesterday / ..." sections of a list."""
 
 import datetime as dt
 
 from gi.repository import Gdk, GLib, GObject, Gtk
 
+from . import text
 from .i18n import N_, _
 
 WEEKDAYS = (N_("Monday"), N_("Tuesday"), N_("Wednesday"), N_("Thursday"),
@@ -147,3 +148,29 @@ def _contact_tip(app, number, tip):
     tip.set_text(_("Open contact") if app.find_contact(number) is not None
                  else _("Add to contacts"))
     return True
+
+
+def section_label(group):
+    """The heading of one of text.DAY_GROUPS."""
+    label = Gtk.Label(label=_(text.DAY_GROUPS[group]), xalign=0)
+    label.add_css_class("heading")
+    label.add_css_class("dim-label")
+    return label
+
+
+def day_sections(listbox):
+    """Headings over a list sorted newest first, whose rows carry `day_group`:
+    one where a section starts - so only the sections there are shown, and a
+    search hides the headings of what it hides."""
+    def header(row, before):
+        group = getattr(row, "day_group", None)
+        if group is None or (before is not None
+                             and getattr(before, "day_group", None) == group):
+            row.set_header(None)
+            return
+        label = section_label(group)
+        label.set_margin_start(12)
+        label.set_margin_top(6 if before is None else 14)
+        label.set_margin_bottom(4)
+        row.set_header(label)
+    listbox.set_header_func(header)

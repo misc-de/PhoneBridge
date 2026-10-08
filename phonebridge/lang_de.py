@@ -605,6 +605,8 @@ TRANSLATIONS = {
         'Aus',
     'OK':
         'OK',
+    'Older':
+        'Älter',
     'on battery':
         'Akkubetrieb',
     'On hold':
@@ -927,6 +929,10 @@ TRANSLATIONS = {
         'Titel',
     'To which number?':
         'An welche Nummer?',
+    'This month':
+        'Diesen Monat',
+    'This week':
+        'Diese Woche',
     'Today':
         'Heute',
     'Today, %s':
@@ -1440,4 +1446,10 @@ TRANSLATIONS = {
         'pw-play fehlt auf diesem PC',
     'The music on the PC stopped: %s':
         'Die Musik am PC wurde beendet: %s',
+    'Loudspeaker':
+        'Lautsprecher',
+    "The phone's loudspeaker instead of its earpiece":
+        'Lautsprecher des Phones statt der Hörmuschel',
+    'the phone could not switch the speaker':
+        'das Phone konnte den Lautsprecher nicht umschalten',
 }

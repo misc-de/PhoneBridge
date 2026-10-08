@@ -23,6 +23,7 @@ ERRORS = (N_("not connected"), N_("connection lost"), N_("connection closed"),
           N_("number and text are needed"), N_("value out of range"),
           N_("the setting is read only"),
           N_("the phone's microphone could not be muted"), N_("chatty did not stop"),
+          N_("the phone could not switch the speaker"),
           N_("this SIM card is not in the phone"), N_("no such SIP account"),
           N_("unknown line"), N_("login refused"), N_("timeout"),
           N_("PipeWire is not running on the phone"),
@@ -133,6 +134,30 @@ def activity(timestamp, now=None):
     if t[:3] == yesterday[:3]:
         return _("Yesterday, %s") % clock
     return time.strftime(_("%Y-%m-%d, %H:%M"), t)
+
+
+# the sections of the call and conversation lists, newest first
+DAY_GROUPS = (N_("Today"), N_("Yesterday"), N_("This week"), N_("This month"),
+              N_("Older"))
+
+
+def day_group(timestamp, now=None):
+    """Which section of DAY_GROUPS a moment falls in (0-4). The week starts
+    on Monday; a day of this week in last month still counts as this week."""
+    now = now or time.time()
+    if not timestamp:
+        return 4
+    t = time.localtime(now)
+
+    def midnight(day):          # mktime normalises day <= 0 into last month
+        return time.mktime((t.tm_year, t.tm_mon, day, 0, 0, 0, 0, 0, -1))
+
+    today = midnight(t.tm_mday)
+    for group, start in enumerate((today, midnight(t.tm_mday - 1),
+                                   midnight(t.tm_mday - t.tm_wday), midnight(1))):
+        if timestamp >= start:
+            return group
+    return 4
 
 
 def n_voicemails(n):

@@ -57,6 +57,25 @@ class Words(unittest.TestCase):
         self.assertEqual(text.activity(now - 86400, now), "Yesterday, 15:00")
         self.assertEqual(text.activity(now - 86400 * 2 - 60, now), "2026-10-05, 14:59")
 
+    def test_day_group(self):
+        def at(*day, hour=12):
+            return time.mktime(day + (hour, 0, 0, 0, 0, -1))
+        now = at(2026, 10, 8, hour=15)                  # a Thursday
+        self.assertEqual(text.day_group(at(2026, 10, 8, hour=0), now), 0)
+        self.assertEqual(text.day_group(at(2026, 10, 7, hour=23), now), 1)
+        self.assertEqual(text.day_group(at(2026, 10, 5, hour=0), now), 2)   # Monday
+        self.assertEqual(text.day_group(at(2026, 10, 4, hour=23), now), 3)  # Sunday
+        self.assertEqual(text.day_group(at(2026, 10, 1, hour=0), now), 3)
+        self.assertEqual(text.day_group(at(2026, 9, 30, hour=23), now), 4)
+        self.assertEqual(text.day_group(None, now), 4)
+        # on the 1st: yesterday is last month, the week reaches back into it
+        now = at(2026, 10, 1)                           # also a Thursday
+        self.assertEqual(text.day_group(at(2026, 9, 30), now), 1)
+        self.assertEqual(text.day_group(at(2026, 9, 28), now), 2)
+        self.assertEqual(text.day_group(at(2026, 9, 27), now), 4)
+        # on a Monday yesterday is still yesterday, not last week
+        self.assertEqual(text.day_group(at(2026, 10, 4), at(2026, 10, 5)), 1)
+
 
 class SmsParts(unittest.TestCase):
     def test_gsm(self):

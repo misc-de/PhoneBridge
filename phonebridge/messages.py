@@ -8,12 +8,13 @@ goes out through ModemManager like chatty's own messages and is kept in a
 log next to it, so it shows up here even where chatty does not list it."""
 
 import re
+import time
 
 from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import text
 from .i18n import _
-from .widgets import opens_contact
+from .widgets import day_sections, opens_contact
 
 
 def is_number(title):
@@ -31,9 +32,10 @@ def person_avatar(app, dev, thread, size):
 
 
 class ThreadRow(Gtk.ListBoxRow):
-    def __init__(self, app, dev, thread):
+    def __init__(self, app, dev, thread, now=None):
         super().__init__()
         self.thread = thread
+        self.day_group = text.day_group((thread.get("last") or {}).get("time"), now)
         box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6,
                       margin_start=6, margin_end=8)
         box.append(person_avatar(app, dev, thread, 40))
@@ -103,6 +105,7 @@ class MessagesPage(Gtk.Box):
         self.list = Gtk.ListBox()
         self.list.add_css_class("navigation-sidebar")
         self.list.set_filter_func(lambda row: row.matches(self.search.get_text()))
+        day_sections(self.list)
         self.list.connect("row-selected", self._on_row)
         self.list_empty = Adw.StatusPage(icon_name="mail-unread-symbolic",
                                          title=_("No messages"))
@@ -201,9 +204,11 @@ class MessagesPage(Gtk.Box):
         self._selecting = True
         while (row := self.list.get_row_at_index(0)) is not None:
             self.list.remove(row)
-        threads = self.threads()
+        threads = sorted(self.threads(), reverse=True,
+                         key=lambda t: (t.get("last") or {}).get("time") or 0)
+        now = time.time()
         for t in threads:
-            row = ThreadRow(self.app, self.dev, t)
+            row = ThreadRow(self.app, self.dev, t, now)
             self.list.append(row)
             if t["thread"] == self.thread:
                 self.list.select_row(row)
