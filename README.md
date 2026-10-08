@@ -75,7 +75,8 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
 - **Webcam** - the phone's front or back camera as this PC's webcam (*Settings → Webcam* or
   the panel menu): in every program once a virtual camera is set up (v4l2loopback - the
   app does it with one password prompt), else as a PipeWire camera (OBS, GNOME Snapshot …).
-  720p H.264 over SSH, the camera on only while it is used.
+  720p H.264 over SSH, the camera on only while it is used. *Test …* shows the live
+  picture as programs get it, with its size and pictures a second.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).
 - **Hotspot** - switch the phone's hotspot from *Settings → Quick settings*, and keep it on

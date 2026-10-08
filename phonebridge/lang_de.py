@@ -1413,4 +1413,22 @@ TRANSLATIONS = {
         'Das Phone kann keine Webcam dieses PCs sein.',
     'GStreamer is missing on this PC':
         'Auf diesem PC fehlt GStreamer',
+    'The live picture, as programs get it':
+        'Das Live-Bild, wie Programme es bekommen',
+    'Test …':
+        'Testen …',
+    'Webcam test':
+        'Webcam-Test',
+    'Waiting for the first picture …':
+        'Warte auf das erste Bild …',
+    'The webcam did not start':
+        'Die Webcam ist nicht gestartet',
+    'The webcam stopped':
+        'Die Webcam wurde beendet',
+    'Programs see it as “%(name)s” (%(device)s)':
+        'Programme sehen sie als „%(name)s“ (%(device)s)',
+    'Programs that take PipeWire cameras see it as “%s”':
+        'Programme mit PipeWire-Kameras sehen sie als „%s“',
+    'pictures a second':
+        'Bilder pro Sekunde',
 }

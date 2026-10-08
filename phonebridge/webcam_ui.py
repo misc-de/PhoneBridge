@@ -4,7 +4,9 @@
 camera, how sharp, mirrored; where it shows, and setting it up for every
 program."""
 
-from gi.repository import Adw, Gtk
+import time
+
+from gi.repository import Adw, Gdk, GLib, Gtk
 
 from . import config
 from .i18n import N_, _
@@ -35,11 +37,17 @@ class WebcamGroup(Adw.PreferencesGroup):
         self.quality.connect("notify::selected", self._on_choice)
         self.mirror = Adw.SwitchRow(title=_("Mirror the picture"))
         self.mirror.connect("notify::active", self._on_choice)
+        self.test_row = Adw.ActionRow(title=_("Test"), subtitle=_(
+            "The live picture, as programs get it"))
+        test = Gtk.Button(label=_("Test …"), valign=Gtk.Align.CENTER)
+        test.connect("clicked", lambda *a: self.test())
+        self.test_row.add_suffix(test)
         self.where = Adw.ActionRow(title=_("Shown as"))
         self.setup_button = Gtk.Button(label=_("For every program …"), valign=Gtk.Align.CENTER)
         self.setup_button.connect("clicked", lambda *a: self.ask_setup())
         self.where.add_suffix(self.setup_button)
-        for row in (self.switch, self.camera, self.quality, self.mirror, self.where):
+        for row in (self.switch, self.camera, self.quality, self.mirror, self.test_row,
+                    self.where):
             self.add(row)
         app.webcam_listeners.append(lambda dev: dev is self.dev and self.update())
 
@@ -62,6 +70,7 @@ class WebcamGroup(Adw.PreferencesGroup):
             running = dev is not None and dev.id in self.app.webcams
             self.switch.set_active(running)
             self.switch.set_sensitive(dev is not None and dev.online)
+            self.test_row.set_sensitive(dev is not None and dev.online)
             self.camera.set_selected(next((n for n, (i, _l) in enumerate(CAMERAS)
                                            if i == s["camera"]), 0))
             self.quality.set_selected(next((n for n, (k, _l) in enumerate(QUALITY_NAMES)
@@ -133,3 +142,83 @@ class WebcamGroup(Adw.PreferencesGroup):
             persistent.get_active(), done))
         dialog.present(self.get_root())
         return dialog
+
+    def test(self):
+        if self.dev is None or not self.dev.online:
+            return None
+        dialog = TestDialog(self.app, self.dev)
+        dialog.present(self.get_root())
+        return dialog
+
+
+class TestDialog(Adw.Dialog):
+    """The webcam's live picture - switched on for the test if it was off,
+    off again afterwards."""
+
+    def __init__(self, app, dev):
+        from . import webcam
+        super().__init__(title=_("Webcam test"), content_width=700, content_height=500)
+        self.app, self.dev = app, dev
+        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
+                                   vexpand=True, margin_top=12, margin_start=12, margin_end=12)
+        self.state = Gtk.Label(label=_("Waiting for the first picture …"), wrap=True,
+                               justify=Gtk.Justification.CENTER, margin_top=6,
+                               margin_bottom=12, margin_start=12, margin_end=12)
+        self.state.add_css_class("dim-label")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(self.picture)
+        box.append(self.state)
+        view = Adw.ToolbarView(content=box)
+        view.add_top_bar(Adw.HeaderBar())
+        self.set_child(view)
+        self.started_here = dev.id not in app.webcams
+        self.size = None
+        self._last = (0, 0.0)
+        if self.started_here:
+            app.set_webcam(dev, True)
+        cam = app.webcams.get(dev.id)
+        if cam is None:
+            self.state.set_label(_("The webcam did not start"))
+        else:
+            cam.preview = self._show
+            self._last = (cam.frames, time.monotonic())
+        self._timer = GLib.timeout_add(1000, self._tick)
+        self.connect("closed", lambda *a: self._end())
+        self.where = webcam.LABEL
+
+    def _show(self, data, width, height):
+        texture = Gdk.MemoryTexture.new(width, height, Gdk.MemoryFormat.R8G8B8A8,
+                                        GLib.Bytes.new(data), width * 4)
+        self.picture.set_paintable(texture)
+        self.size = (width, height)
+        return False
+
+    def _tick(self):
+        cam = self.app.webcams.get(self.dev.id)
+        if cam is None:
+            self.state.set_label(_("The webcam stopped"))
+            self._timer = 0
+            return False
+        frames, then = self._last
+        now = time.monotonic()
+        fps = (cam.frames - frames) / max(now - then, 0.001)
+        self._last = (cam.frames, now)
+        if cam.frames == 0:
+            return True
+        w, h = cam.params["width"], cam.params["height"]
+        where = (_("Programs see it as “%(name)s” (%(device)s)")
+                 % {"name": self.where, "device": cam.target}
+                 if cam.target.startswith("/dev/") else
+                 _("Programs that take PipeWire cameras see it as “%s”") % self.where)
+        self.state.set_label("%d×%d · %.0f %s\n%s" % (w, h, fps, _("pictures a second"), where))
+        return True
+
+    def _end(self):
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = 0
+        cam = self.app.webcams.get(self.dev.id)
+        if cam is not None:
+            cam.preview = None
+        if self.started_here:
+            self.app.set_webcam(self.dev, False)

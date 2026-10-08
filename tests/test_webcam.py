@@ -165,6 +165,26 @@ class InTheApp(unittest.TestCase):
         self.assertNotIn("test", app.webcams)
         self.assertFalse(group.switch.get_active())
 
+        # the test: the live picture in a window, the webcam on just for it
+        from phonebridge.webcam_ui import TestDialog
+        with mock.patch.object(Adw.Dialog, "present", lambda d, p=None: None):
+            test = group.test()
+        self.assertIsInstance(test, TestDialog)
+        self.assertIn("test", app.webcams)
+        self.assertTrue(run_loop_until(lambda: test.picture.get_paintable() is not None, 30))
+        self.assertEqual(test.size, (640, 360))
+        self.assertTrue(run_loop_until(lambda: "pictures a second" in test.state.get_label(), 10))
+        test.emit("closed")
+        self.assertNotIn("test", app.webcams)                    # off again: it was off
+        group.switch.set_active(True)                            # on before the test: stays on
+        with mock.patch.object(Adw.Dialog, "present", lambda d, p=None: None):
+            test = group.test()
+        self.assertTrue(run_loop_until(lambda: test.picture.get_paintable() is not None, 30))
+        test.emit("closed")
+        self.assertIn("test", app.webcams)
+        self.assertIsNone(app.webcams["test"].preview)
+        group.switch.set_active(False)
+
         dialogs, ran = [], []
         with mock.patch.object(Adw.AlertDialog, "present", lambda d, p=None: dialogs.append(d)), \
                 mock.patch.object(webcam, "loopback_installed", lambda: False), \

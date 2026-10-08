@@ -20,6 +20,7 @@ import re
 import shlex
 import subprocess
 import threading
+import time
 
 import gi
 
@@ -31,6 +32,13 @@ from .connection import BOOTSTRAP, ssh_argv  # noqa: E402
 LABEL = "PhoneBridge camera"
 PHONE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webcam_phone.py")
 QUALITIES = {"480p": (854, 480, 1200), "720p": (1280, 720, 2500), "1080p": (1920, 1080, 4500)}
+PREVIEW = (640, 360)            # the test's picture: smaller, cheap to show
+PREVIEW_EVERY = 0.06            # s between pictures handed to the window (~15 a second)
+# the test's branch: what goes out, scaled down - never holding up the webcam
+PREVIEW_BRANCH = ("t. ! queue leaky=downstream max-size-buffers=1 ! videoscale ! "
+                  "video/x-raw,width=%d,height=%d,pixel-aspect-ratio=1/1 ! videoconvert ! "
+                  "video/x-raw,format=RGBA ! appsink name=preview emit-signals=true "
+                  "drop=true max-buffers=1 sync=false" % PREVIEW)
 MODPROBE_OPTIONS = 'devices=1 exclusive_caps=1 card_label="%s"' % LABEL
 
 
@@ -118,13 +126,16 @@ class Webcam(GObject.Object):
     __gsignals__ = {"stopped": (GObject.SignalFlags.RUN_FIRST, None, (object,))}
 
     def __init__(self, device, camera=0, quality="720p", mirror=False, phone_params=None,
-                 sink=None):
+                 sink=None, preview=None):
         super().__init__()
         self.info, self.password = dict(device.info), device.password
         width, height, kbps = QUALITIES.get(quality, QUALITIES["720p"])
         self.params = dict(camera=int(camera), width=width, height=height, kbps=kbps)
         self.params.update(phone_params or {})
         self.mirror = mirror
+        self.preview = preview          # preview(rgba bytes, width, height) - the test
+        self.frames = 0                 # pictures that went out
+        self._shown = 0.0
         self.sink = sink                # a sink description of its own (the tests)
         self.target = None              # "/dev/videoN", or "pipewire"
         self.ssh = None
@@ -150,13 +161,19 @@ class Webcam(GObject.Object):
             self.stop(str(e))
             return False
         flip = " ! videoflip method=horizontal-flip" if self.mirror else ""
-        desc = ("fdsrc fd=%d ! tsdemux ! h264parse ! %s%s ! %s"
-                % (self.ssh.stdout.fileno(), decoder(), flip, self.sink or sink_description(device)))
+        desc = ("fdsrc fd=%d ! tsdemux ! h264parse ! %s%s ! tee name=t ! "
+                "queue leaky=downstream max-size-buffers=2 ! identity name=sent ! %s %s"
+                % (self.ssh.stdout.fileno(), decoder(), flip,
+                   self.sink or sink_description(device), PREVIEW_BRANCH))
         try:
             self.pipe = Gst.parse_launch(desc)
         except GLib.Error as e:
             self.stop(e.message)
             return False
+        sent = self.pipe.get_by_name("sent")
+        sent.set_property("signal-handoffs", True)
+        sent.connect("handoff", lambda *a: setattr(self, "frames", self.frames + 1))
+        self.pipe.get_by_name("preview").connect("new-sample", self._on_preview)
         pw = self.pipe.get_by_name("pw")
         if pw is not None:
             pw.set_property("stream-properties", Gst.Structure.new_from_string(
@@ -169,6 +186,27 @@ class Webcam(GObject.Object):
         self.running = True
         threading.Thread(target=self._errors, daemon=True).start()
         return True
+
+    def _on_preview(self, sink):
+        """A picture for the test window (in GStreamer's thread)."""
+        sample = sink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.OK
+        callback = self.preview
+        now = time.monotonic()
+        if callback is None or now - self._shown < PREVIEW_EVERY:
+            return Gst.FlowReturn.OK
+        self._shown = now
+        s = sample.get_caps().get_structure(0)
+        width, height = s.get_value("width"), s.get_value("height")
+        buf = sample.get_buffer()
+        ok, info = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            return Gst.FlowReturn.OK
+        data = bytes(info.data)
+        buf.unmap(info)
+        GLib.idle_add(lambda: self.preview is callback and callback(data, width, height) and False)
+        return Gst.FlowReturn.OK
 
     def _errors(self):
         """The phone's own words ("camera: ..."); and its end - which a
