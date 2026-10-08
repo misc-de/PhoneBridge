@@ -21,7 +21,8 @@ DEMO_PAGE picks the page (overview, phone, messages, contacts, calendar,
 files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size;
 DEMO_CONTACT a contact to open on the contacts page (with its calls,
 messages and appointments); DEMO_LINES=1 opens the choice of the line on
-the telephone page (two SIM cards and a SIP account, made up).
+the telephone page (two SIM cards and a SIP account, made up);
+DEMO_THREAD a conversation (its number) to open on the messages page.
 The files are a made-up home, never this PC's; the screen page shows the
 desktop session (sharing the screen would record this PC's here)."""
 
@@ -98,7 +99,12 @@ people = {"+4915550001001": "Anna Becker", "+4915550001002": "Tom Richter",
           "+4915550001003": "Lena Hoffmann", "+4915550001004": "Max Weber",
           "+4915550001005": "Sophie Krüger", "+4915550001006": "Paul Schulz",
           "+4915550001007": "Mia Wagner"}
-msgs = [("+4915550001001", "Are we still on for lunch tomorrow?", True, at(0, 9, 12)),
+msgs = [("+4915550001001", "Have you seen the new climbing gym by the river?", True,
+         at(-1, 18, 2)),
+        ("+4915550001001", "Not yet! Want to try it on Saturday?", False, at(-1, 18, 10)),
+        ("+4915550001001", "Sure - 10 am?", True, at(-1, 18, 12)),
+        ("+4915550001001", "Perfect 👍 I'll bring the shoes", False, at(-1, 18, 13)),
+        ("+4915550001001", "Are we still on for lunch tomorrow?", True, at(0, 9, 12)),
         ("+4915550001001", "Yes, 12:30 at the usual place!", False, at(0, 9, 20)),
         ("+4915550001001", "Great, see you there", True, at(0, 9, 41)),
         ("+4915550001002", "The package arrived, thanks!", True, at(0, 8, 5)),
@@ -206,12 +212,13 @@ for n, (number, name) in enumerate(sorted(people.items(), key=lambda p: p[1]), 1
         % (n, name, last, first, number, first.lower(), extra))
 
 config.CONFIG_DIR = os.environ["PHONEBRIDGE_CONFIG"]
-# two conversations unread (Anna, Tom), the others read
+# two conversations unread (Anna's last message, Tom), the others read - by
+# the messages' ids: Anna 1-7, Tom 8, Lena 9, Max 10, Sophie 11, Paul 12, Mia 13
 config.save(dict(config.DEFAULTS, language="en", devices=[
     {"id": "flx1s", "name": "FLX1s", "host": "phone", "user": "furios"}],
     screen={"quality": "normal", "mode": "desktop", "desktop_size": [1600, 900]},
-    seen={"flx1s": {"baseline": 2, "threads": {
-        "+4915550001004": 6, "+4915550001006": 8, "+4915550001007": 9}}}))
+    seen={"flx1s": {"baseline": 6, "threads": {
+        "+4915550001004": 10, "+4915550001006": 12, "+4915550001007": 13}}}))
 
 import phonebridge.tray as tray_mod  # noqa: E402
 from phonebridge.app import PhoneBridgeApp  # noqa: E402
@@ -277,9 +284,13 @@ def ready():
         app.window.overview.load(force=True)
     if os.environ.get("DEMO_CONTACT"):
         GLib.timeout_add(300, open_contact)
+    if os.environ.get("DEMO_THREAD"):
+        GLib.timeout_add(1000, lambda: app.window.messages.open_thread(
+            os.environ["DEMO_THREAD"]) and False)
     if os.environ.get("DEMO_LINES"):
         GLib.timeout_add(3000, lambda: app.window.phone.line_picker.activate() and False)
     if os.environ.get("DEMO_SHOT"):
+        GLib.timeout_add(3300, clear_typing)
         GLib.timeout_add(4000, shoot)
     return False
 
@@ -291,6 +302,16 @@ def open_contact():
     if not found:
         return True
     contacts.show_contact(found[0])
+    return False
+
+
+def clear_typing():
+    """The window shows on this desktop and may take what is typed there
+    meanwhile: the search fields and the message being written emptied."""
+    win = app.window
+    for entry in (win.messages.search, win.contacts.search, win.messages.entry):
+        if entry.get_text():
+            entry.set_text("")
     return False
 
 
