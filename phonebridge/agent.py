@@ -780,6 +780,11 @@ class Agent:
                 "org.sigxcpu.Feedback", "org.freedesktop.DBus.Properties",
                 "PropertiesChanged", None, None, Gio.DBusSignalFlags.NONE,
                 self._on_signal)
+            # the speaker switched at the phone (GNOME Calls): the bar follows
+            self.session.signal_subscribe(
+                CALLAUDIO, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                CALLAUDIO_PATH, None, Gio.DBusSignalFlags.NONE,
+                lambda *a: self.schedule_calls())
         store = Gio.File.new_for_path(CHATTY_DB)
         try:
             self._monitor = store.monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -851,12 +856,14 @@ class Agent:
         except RuntimeError:
             return []
         out = []
+        speaker = speaker_state(self) if calls else None
         for path, props in calls:
             number = props.get("LineIdentification", "")
             contact = BOOK.lookup(number) if number and number != "withheld" else None
             out.append({"path": path, "state": props.get("State", ""), "number": number,
                         "name": (contact[0] if contact else "") or props.get("Name", ""),
-                        "avatar": avatar_key(contact[1]) if contact else None})
+                        "avatar": avatar_key(contact[1]) if contact else None,
+                        "speaker": speaker})
         return out
 
     def _watchdog(self):
@@ -881,13 +888,16 @@ class Agent:
         send({"event": "calls", "calls": calls})
         return False
 
+    def schedule_calls(self):
+        if not self._calls_pending:
+            self._calls_pending = GLib.timeout_add(150, self._send_calls)
+
     def _on_signal(self, conn, sender, path, iface, signal, params):
         if iface == "org.ofono.Manager":
             self.modem = None           # modems came or went: look again
             self._modem_tried = 0.0
         if iface in ("org.ofono.VoiceCallManager", "org.ofono.VoiceCall"):
-            if not self._calls_pending:
-                self._calls_pending = GLib.timeout_add(150, self._send_calls)
+            self.schedule_calls()
         if iface == "org.ofono.MessageManager" and signal == "IncomingMessage":
             # chatty stores it a moment later; the file monitor catches that
             # too, this is the safety net when it does not fire.
@@ -2292,6 +2302,30 @@ def cmd_answer(agent, args):
     call(agent.system, "org.ofono", args["path"], "org.ofono.VoiceCall", "Answer",
          timeout=15000)
     return True
+
+
+# callaudiod routes the call's sound (earpiece or loudspeaker); GNOME Calls'
+# speaker button uses it too. SpeakerState: 0 off, 1 on, 2 unknown.
+CALLAUDIO = "org.mobian_project.CallAudio"
+CALLAUDIO_PATH = "/org/mobian_project/CallAudio"
+
+
+def speaker_state(agent):
+    """True / False, or None when callaudiod is not there or does not know."""
+    state = get_prop(agent.session, CALLAUDIO, CALLAUDIO_PATH, CALLAUDIO, "SpeakerState")
+    return {0: False, 1: True}.get(state)
+
+
+@command("call.speaker")
+def cmd_speaker(agent, args):
+    """The phone's loudspeaker on or off (back to the earpiece); returns
+    what callaudiod reports afterwards."""
+    ok = call(agent.session, CALLAUDIO, CALLAUDIO_PATH, CALLAUDIO, "EnableSpeaker",
+              GLib.Variant("(b)", (bool(args.get("on")),)), "(b)", timeout=10000)[0]
+    if not ok:
+        raise RuntimeError("the phone could not switch the speaker")
+    agent.schedule_calls()
+    return speaker_state(agent)
 
 
 @command("call.hangup")

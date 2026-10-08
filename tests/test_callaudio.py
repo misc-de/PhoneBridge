@@ -154,6 +154,51 @@ class Mute(unittest.TestCase):
                 agent.cmd_callaudio_mute(self.agent, {"on": True})
 
 
+class Speaker(unittest.TestCase):
+    """call.speaker against a stand-in callaudiod."""
+
+    def setUp(self):
+        self.state = 0          # SpeakerState: 0 off, 1 on, 2 unknown
+        self.works = True
+
+        def fake_call(conn, name, path, iface, method, args=None, reply=None, timeout=5000):
+            self.assertEqual(name, agent.CALLAUDIO)
+            if method == "EnableSpeaker":
+                if self.works:
+                    self.state = 1 if args.unpack()[0] else 0
+                return (self.works,)
+            if method == "Get":
+                self.assertEqual(args.unpack(), (agent.CALLAUDIO, "SpeakerState"))
+                if self.state is None:
+                    raise agent.DBusFailure("not there", "")
+                return (self.state,)
+            raise AssertionError(method)
+
+        p = mock.patch.object(agent, "call", fake_call)
+        p.start()
+        self.addCleanup(p.stop)
+        self.agent = mock.Mock(spec=["session", "schedule_calls"])
+        self.agent.session = None
+
+    def test_on_and_back(self):
+        self.assertTrue(agent.cmd_speaker(self.agent, {"on": True}))
+        self.assertEqual(self.state, 1)
+        self.assertFalse(agent.cmd_speaker(self.agent, {"on": False}))
+        self.assertEqual(self.state, 0)
+        self.assertEqual(self.agent.schedule_calls.call_count, 2)   # the bar follows
+
+    def test_refused_is_an_error(self):
+        self.works = False
+        with self.assertRaises(RuntimeError):
+            agent.cmd_speaker(self.agent, {"on": True})
+        self.assertEqual(self.state, 0)
+
+    def test_state(self):
+        for state, want in ((0, False), (1, True), (2, None), (None, None)):
+            self.state = state
+            self.assertIs(agent.speaker_state(self.agent), want)
+
+
 class PipeWire(unittest.TestCase):
     def test_state(self):
         with mock.patch.object(agent, "run", side_effect=[None]):
