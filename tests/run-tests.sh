@@ -35,6 +35,8 @@ rm -rf "$XDG_CACHE_HOME"
 # and never your settings: the config (and autostart entry) live in the test
 # cache from the start - not only where a test redirects them
 export XDG_CONFIG_HOME="$XDG_CACHE_HOME/config"
+# and data PhoneBridge keeps on the PC (what the photo backup fetched ...)
+export XDG_DATA_HOME="$XDG_CACHE_HOME/data"
 export PHONEBRIDGE_CONFIG="$XDG_CONFIG_HOME/phonebridge"
 # and never your ~/.ssh: neither the PC's keys nor authorized_keys (the
 # agent runs here in the tests)

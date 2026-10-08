@@ -58,6 +58,9 @@ Cinnamon, MATE, Budgie, waybar …).
   the link's text.
 - **Music** - what plays on the phone (any MPRIS player), with back, play/pause and next in
   the overview and the panel menu.
+- **Photo backup** - new photos and videos of the phone's camera come to a folder on the PC
+  by themselves, every half hour while the phone is on Wi-Fi; what was backed up once is
+  not fetched again (*Settings → Photo backup*).
 - **Clipboard** - text to the phone or from it by hand (panel menu, window menu), or shared
   both ways by itself once switched on (*Menu → Share the clipboard with the phone*; off
   by default - passwords pass through clipboards).

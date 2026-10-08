@@ -1247,4 +1247,38 @@ TRANSLATIONS = {
         'Zwischenablage vom Phone holen',
     'Share the clipboard with the phone':
         'Zwischenablage mit dem Phone teilen',
+    'Photo backup':
+        'Foto-Sicherung',
+    'No camera folder on the phone':
+        'Kein Kamera-Ordner auf dem Phone',
+    '%d photo or video backed up':
+        '%d Foto oder Video gesichert',
+    '%d photos and videos backed up':
+        '%d Fotos und Videos gesichert',
+    'Backup: %s':
+        'Sicherung: %s',
+    'Nothing new to back up':
+        'Nichts Neues zu sichern',
+    "New photos and videos of the phone's camera come to this PC by themselves - every half hour while the phone is on Wi-Fi. What was backed up once is not fetched again, even when deleted here.":
+        'Neue Fotos und Videos der Kamera des Phones kommen von selbst auf diesen PC – alle halbe Stunde, solange das Phone im WLAN ist. Was einmal gesichert wurde, wird nicht noch einmal geholt, auch wenn es hier gelöscht wurde.',
+    'Back up photos and videos':
+        'Fotos und Videos sichern',
+    'Saved in':
+        'Gespeichert in',
+    'Choose …':
+        'Wählen …',
+    'Last backup':
+        'Letzte Sicherung',
+    'Back up now':
+        'Jetzt sichern',
+    'Backing up …':
+        'Wird gesichert …',
+    '%d file so far':
+        'bisher %d Datei',
+    '%d files so far':
+        'bisher %d Dateien',
+    'Not yet':
+        'Noch nicht',
+    'Save photos in':
+        'Fotos speichern in',
 }

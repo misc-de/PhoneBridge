@@ -94,6 +94,8 @@ class PhoneBridgeApp(Adw.Application):
             Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         Gtk.Window.set_default_icon_name(APP_ID)     # window frame, task list
         self._actions()
+        from .backup import Backup
+        self.backup = Backup(self)
         try:
             from .tray import Tray
             self.tray = Tray(self.toggle_window, lambda: self.show_window("messages"),
@@ -443,6 +445,7 @@ class PhoneBridgeApp(Adw.Application):
                 dev.request("notifications.watch", {"on": True})
             if self.cfg.get("clipboard_sync", False):
                 dev.request("clipboard.watch", {"on": True})
+            self.backup.device_online(dev)
         if not online and self.calls.get(dev.id):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:

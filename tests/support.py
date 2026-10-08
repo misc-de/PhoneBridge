@@ -102,6 +102,7 @@ class Home:
                 "PHONEBRIDGE_ADDRESSBOOKS": self.books,
                 "PHONEBRIDGE_CACHE": self.cache,
                 "XDG_CONFIG_HOME": os.path.join(self.dir, "xdg"),
+                "XDG_DATA_HOME": os.path.join(self.dir, "xdg-data"),
                 # the phone's files: never the home of whoever runs the tests
                 "PHONEBRIDGE_FILES_HOME": os.path.join(self.dir, "phone-home")}
 

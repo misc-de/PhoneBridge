@@ -190,6 +190,10 @@ class PhoneSettingsPage(Gtk.Box):
             page.add(self.quick.groups[0])
         elif special == "pc":
             page.add(self.quick.groups[1])
+        elif special == "backup":
+            from .backup import BackupGroup
+            self.backup_group = BackupGroup(self.app)
+            page.add(self.backup_group)
         elif special == "browse":
             group = Adw.PreferencesGroup(
                 description=_("Every GSettings key of the phone, searchable and "
@@ -238,10 +242,14 @@ class PhoneSettingsPage(Gtk.Box):
         self.dev = dev
         self._loaded = {}
         self.quick.set_device(dev)
+        if hasattr(self, "backup_group"):
+            self.backup_group.set_device(dev)
         self.device_changed()
 
     def device_changed(self):
         self.quick.update()
+        if hasattr(self, "backup_group"):
+            self.backup_group.update()
         online = self.dev is not None and self.dev.online
         if hasattr(self, "browse_row"):
             self.browse_row.set_sensitive(online)

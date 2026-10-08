@@ -3516,6 +3516,24 @@ def cmd_clipboard_watch(agent, args):
     return bool(args.get("on"))
 
 
+# --- photo backup -----------------------------------------------------------------
+
+CAMERA_DIRS = ("Pictures/furios-camera", "Pictures/Camera", "DCIM/Camera", "DCIM",
+               "Videos/furios-camera", "Videos/Camera")
+
+
+@command("backup.sources", threaded="files")
+def cmd_backup_sources(agent, args):
+    """The phone's camera folders that are there."""
+    out, seen = [], set()
+    for rel in CAMERA_DIRS:
+        path = os.path.join(FILES_HOME, rel)
+        if os.path.isdir(path) and os.path.realpath(path) not in seen:
+            seen.add(os.path.realpath(path))
+            out.append({"path": path})
+    return out
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):
