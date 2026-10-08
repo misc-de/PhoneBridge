@@ -18,8 +18,13 @@ install on the phone.
 <sub>The screenshots show invented people and data (`tools/screenshot-demo.py`,
 light and dark joined by `tools/screenshot-diagonal.py`).</sub>
 
-<details>
-<summary><b>More screenshots</b> - every page</summary>
+Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
+that is where it is developed and tested. Other Phosh phones with the same stack (ofono,
+chatty, GNOME Calls, evolution-data-server) may work, but are not tested; calls at the PC
+need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (see
+[Desktops](#desktops)).
+
+### Every page
 
 | | |
 |:---:|:---:|
@@ -27,14 +32,6 @@ light and dark joined by `tools/screenshot-diagonal.py`).</sub>
 | <a href="data/screenshots/contacts.png"><img src="data/screenshots/contacts.png" alt="Contacts: a contact with its numbers and addresses, and its calls, messages and appointments"></a><br>**Contacts** - a contact with its calls, messages and appointments | <a href="data/screenshots/calendar.png"><img src="data/screenshots/calendar.png" alt="Appointments: month view and agenda"></a><br>**Appointments** - month and agenda |
 | <a href="data/screenshots/files.png"><img src="data/screenshots/files.png" alt="Files: the phone's home folder"></a><br>**Files** - the phone's home folder | <a href="data/screenshots/screen.png"><img src="data/screenshots/screen.png" alt="Screen: sharing the phone's screen, or a desktop session over RDP"></a><br>**Screen** - screen sharing or a desktop session |
 | <a href="data/screenshots/settings.png"><img src="data/screenshots/settings.png" alt="Settings: quick settings of the phone"></a><br>**Settings** - the phone's settings | |
-
-</details>
-
-Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
-that is where it is developed and tested. Other Phosh phones with the same stack (ofono,
-chatty, GNOME Calls, evolution-data-server) may work, but are not tested; calls at the PC
-need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (see
-[Desktops](#desktops)).
 
 ## Features
 
