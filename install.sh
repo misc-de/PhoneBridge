@@ -45,9 +45,26 @@ install -d "$LIB/phonebridge" "$LOCAL/bin" "$LOCAL/share/applications"
 install -m644 phonebridge/*.py "$LIB/phonebridge/"
 echo "${version:-unknown}" > "$LIB/VERSION"
 install -m755 bin/phonebridge "$LOCAL/bin/"
-install -m644 data/$ID.desktop "$LOCAL/share/applications/"
-# Thunar's "Send To" menu: files to the phone
-install -D -m644 data/$ID-sendto.desktop "$LOCAL/share/Thunar/sendto/$ID-sendto.desktop"
+BIN=$LOCAL/bin/phonebridge
+# every launcher with the full path: ~/.local/bin is not on every desktop's PATH
+put() {     # put MODE SOURCE TARGET
+    install -d "$(dirname "$3")"
+    sed "s|@BIN@|$BIN|g; s|^Exec=phonebridge|Exec=$BIN|" "$2" > "$3.tmp"
+    chmod "$1" "$3.tmp"
+    mv -f "$3.tmp" "$3"
+}
+put 644 data/$ID.desktop "$LOCAL/share/applications/$ID.desktop"
+# "Send to the phone" in the file managers that are there
+SEND_NAME="Send to phone (PhoneBridge)"
+case "${LANG:-}" in de*) SEND_NAME="An Phone senden (PhoneBridge)" ;; esac
+has() { command -v "$1" >/dev/null 2>&1; }
+put 644 data/$ID-sendto.desktop "$LOCAL/share/Thunar/sendto/$ID-sendto.desktop"
+has nautilus && put 755 data/send-script "$LOCAL/share/nautilus/scripts/$SEND_NAME"
+has caja && put 755 data/send-script "${XDG_CONFIG_HOME:-$HOME/.config}/caja/scripts/$SEND_NAME"
+has nemo && put 644 data/$ID-send.nemo_action "$LOCAL/share/nemo/actions/$ID-send.nemo_action"
+has dolphin && put 755 data/$ID-send-servicemenu.desktop "$LOCAL/share/kio/servicemenus/$ID-send.desktop"
+{ has pcmanfm-qt || has pcmanfm; } && put 644 data/$ID-send-action.desktop \
+    "$LOCAL/share/file-manager/actions/$ID-send.desktop"
 # the app's icon in every size the theme asks for (the earlier SVG and
 # sizes no longer shipped go)
 rm -f "$LOCAL/share/icons/hicolor/scalable/apps/$ID.svg" \

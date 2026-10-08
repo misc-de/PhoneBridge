@@ -1,0 +1,9 @@
+[Nemo Action]
+Name=Send to phone (PhoneBridge)
+Name[de]=An Phone senden (PhoneBridge)
+Comment=The selected files to the phone's Downloads
+Comment[de]=Die gewählten Dateien in die Downloads des Phones
+Exec=@BIN@ --send %F
+Icon-Name=io.github.miscde.PhoneBridge
+Selection=notnone
+Extensions=any;

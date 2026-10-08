@@ -1,0 +1,3 @@
+#!/bin/sh
+# PhoneBridge: the selected files to the phone (Nautilus and Caja scripts)
+exec "@BIN@" --send "$@"

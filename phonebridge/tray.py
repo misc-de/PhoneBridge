@@ -5,7 +5,9 @@ spoken directly over D-Bus - no libappindicator, which is GTK 3 only.
 
 XFCE's "Status Tray" plugin (systray), KDE, Cinnamon, MATE, Budgie and
 waybar all host these. When the host restarts (panel restart), the item
-registers itself again.
+registers itself again. `hosted` tells whether a panel shows it at all
+(GNOME without the AppIndicator extension does not); on_hosted(bool) is
+called when that changes.
 
 Menu items are dicts: {"id": str, "label": str, "enabled": bool,
 "type": "separator", "radio": bool, "checked": bool}. A click calls
@@ -126,6 +128,8 @@ class Tray:
         self.tooltip = ("", "")
         self.items = []
         self.revision = 1
+        self.hosted = False
+        self.on_hosted = None
         self.conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.name = "org.kde.StatusNotifierItem-%d-1" % os.getpid()
         sni = Gio.DBusNodeInfo.new_for_xml(SNI_XML).interfaces[0]
@@ -140,9 +144,15 @@ class Tray:
             self.conn, self.name, Gio.BusNameOwnerFlags.NONE, None, None)
         self._watch = Gio.bus_watch_name_on_connection(
             self.conn, WATCHER, Gio.BusNameWatcherFlags.NONE,
-            self._watcher_appeared, None)
+            self._watcher_appeared, lambda *a: self._set_hosted(False))
+        self._host_signals = [self.conn.signal_subscribe(
+            None, WATCHER, member, "/StatusNotifierWatcher", None,
+            Gio.DBusSignalFlags.NONE, lambda *a: self._ask_hosted())
+            for member in ("StatusNotifierHostRegistered", "StatusNotifierHostUnregistered")]
 
     def close(self):
+        for sid in self._host_signals:
+            self.conn.signal_unsubscribe(sid)
         Gio.bus_unwatch_name(self._watch)
         Gio.bus_unown_name(self._own)
         for rid in self._ids:
@@ -179,10 +189,30 @@ class Tray:
         except GLib.Error:
             pass
 
+    def _set_hosted(self, hosted):
+        if hosted != self.hosted:
+            self.hosted = hosted
+            if self.on_hosted is not None:
+                self.on_hosted(hosted)
+
+    def _ask_hosted(self):
+        """Whether a panel shows the items the watcher knows."""
+        def done(c, res):
+            try:
+                v = c.call_finish(res).unpack()[0]
+            except GLib.Error:
+                v = False
+            self._set_hosted(bool(v))
+
+        self.conn.call(WATCHER, "/StatusNotifierWatcher", "org.freedesktop.DBus.Properties",
+                       "Get", GLib.Variant("(ss)", (WATCHER, "IsStatusNotifierHostRegistered")),
+                       GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, 3000, None, done)
+
     def _watcher_appeared(self, conn, name, owner, attempt=0):
         def done(c, res):
             try:
                 c.call_finish(res)
+                self._ask_hosted()
             except GLib.Error as e:
                 print("phonebridge: panel icon not registered:", e.message)
                 if attempt < 3:             # the host may still be starting

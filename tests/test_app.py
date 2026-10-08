@@ -220,6 +220,24 @@ class App(unittest.TestCase):
             self.assertEqual(win.messages.entry.get_text(), "See you")
             win.messages.entry.set_text("")
 
+    def test_9_no_panel_icon(self):
+        """No panel shows the icon: told once per desktop, what would show it."""
+        self.app.cfg.pop("tray_hint_told", None)
+        tray = self.app.tray
+        self.addCleanup(setattr, self.app, "tray", tray)
+        self.app.tray = mock.Mock(hosted=True)
+        self.notified.clear()
+        self.app.check_tray()
+        self.assertEqual(self.notified, [])                  # shown: nothing to say
+        self.app.tray = mock.Mock(hosted=False)
+        with mock.patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "GNOME"}):
+            self.app.check_tray()
+            self.app.check_tray()
+        self.assertEqual(self.notified, ["tray"])            # once
+        self.assertEqual(self.app.cfg["tray_hint_told"], "gnome")
+        info = self.app.debug_info()
+        self.assertIn("Panel icon: no panel shows it", info)
+
 
 if __name__ == "__main__":
     unittest.main()

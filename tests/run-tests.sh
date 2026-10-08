@@ -42,6 +42,9 @@ export PHONEBRIDGE_CONFIG="$XDG_CONFIG_HOME/phonebridge"
 # agent runs here in the tests)
 export PHONEBRIDGE_SSH_DIR="$XDG_CACHE_HOME/ssh"
 export PHONEBRIDGE_AUTHORIZED_KEYS="$XDG_CACHE_HOME/phone-ssh/authorized_keys"
+# no desktop of its own: nothing probes the desktop's settings services
+# (xfconf ...) - they would be started on the private bus
+export XDG_CURRENT_DESKTOP=PhoneBridgeTests DESKTOP_SESSION=
 # no desktop portals, no gvfs on the private bus - quieter and faster
 export GDK_DEBUG=no-portals ADW_DISABLE_PORTAL=1 GIO_USE_VFS=local GTK_A11Y=none
 args=()

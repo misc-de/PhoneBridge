@@ -57,18 +57,47 @@ def _ok(check):
         return False
 
 
-def distro():
-    """"arch" (Manjaro too), "debian" (Ubuntu, Mobian ...) or None."""
+# Fedora and openSUSE, by what the entries above call the thing
+OTHER = {
+    "PyGObject (GTK 4)": ("python3-gobject gtk4", "python3-gobject typelib-1_0-Gtk-4_0"),
+    "libadwaita": ("libadwaita", "typelib-1_0-Adw-1"),
+    "pycairo": ("python3-cairo", "python3-pycairo"),
+    "OpenSSH (ssh)": ("openssh-clients", "openssh-clients"),
+    "libsecret": ("libsecret", "typelib-1_0-Secret-1"),
+    "pw-record / pw-play": ("pipewire-utils", "pipewire-tools"),
+    "pactl": ("pulseaudio-utils", "pulseaudio-utils"),
+    "ssh-keygen": ("openssh", "openssh-clients"),
+}
+COMMANDS = {"arch": "sudo pacman -S ", "debian": "sudo apt install ",
+            "fedora": "sudo dnf install ", "suse": "sudo zypper install "}
+
+
+def distro(path="/etc/os-release"):
+    """"arch" (Manjaro too), "debian" (Ubuntu, Mobian ...), "fedora",
+    "suse" or None."""
     try:
-        with open("/etc/os-release", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             text = f.read().lower()
     except OSError:
         return None
-    if any(w in text for w in ("arch", "manjaro", "endeavouros")):
-        return "arch"
-    if any(w in text for w in ("debian", "ubuntu", "mobian", "furios")):
-        return "debian"
+    fields = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    ids = " ".join(fields.get(k, "").strip('"') for k in ("id", "id_like"))
+    for words, key in ((("arch", "manjaro", "endeavouros"), "arch"),
+                       (("debian", "ubuntu", "mobian", "furios"), "debian"),
+                       (("fedora", "rhel", "centos"), "fedora"),
+                       (("suse", "opensuse"), "suse")):
+        if any(w in ids.split() or w in ids for w in words):
+            return key
     return None
+
+
+def packages(entry, d):
+    if d == "arch":
+        return entry[2]
+    if d == "debian":
+        return entry[3]
+    pair = OTHER.get(entry[0])
+    return (pair[0] if d == "fedora" else pair[1]) if pair else ""
 
 
 def missing_required():
@@ -84,12 +113,12 @@ def install_hint(entries):
     d = distro()
     if not entries or d is None:
         return None
-    packages = []
+    wanted = []
     for e in entries:
-        for p in (e[2] if d == "arch" else e[3]).split():
-            if p not in packages:
-                packages.append(p)
-    return ("sudo pacman -S " if d == "arch" else "sudo apt install ") + " ".join(packages)
+        for p in packages(e, d).split():
+            if p not in wanted:
+                wanted.append(p)
+    return COMMANDS[d] + " ".join(wanted)
 
 
 def required_message(missing):
@@ -104,10 +133,14 @@ def required_message(missing):
 def tell(message):
     """Says it without GTK: a dialog of whatever there is, and the terminal."""
     print(message, file=sys.stderr)
-    for argv in (["zenity", "--error", "--title=PhoneBridge", "--no-markup",
-                  "--text=" + message],
+    kde = "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+    dialogs = [["zenity", "--error", "--title=PhoneBridge", "--no-markup", "--text=" + message],
+               ["kdialog", "--title", "PhoneBridge", "--error", message]]
+    if kde:
+        dialogs.reverse()           # KDE's own dialog first
+    for argv in dialogs + [
                  ["notify-send", "-a", "PhoneBridge", "-u", "critical", "PhoneBridge", message],
-                 ["xmessage", "-center", message]):
+                 ["xmessage", "-center", message]]:
         if shutil.which(argv[0]) and (os.environ.get("DISPLAY")
                                       or os.environ.get("WAYLAND_DISPLAY")):
             try:

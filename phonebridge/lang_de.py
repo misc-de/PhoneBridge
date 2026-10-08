@@ -1343,4 +1343,22 @@ TRANSLATIONS = {
         'Dieser PC verbindet sich ab jetzt von selbst mit „%s“',
     'Not saved: %s':
         'Nicht gespeichert: %s',
+    'PhoneBridge has no panel icon here':
+        'PhoneBridge hat hier kein Panel-Icon',
+    'PhoneBridge keeps running in the background - open it from the menu of applications.':
+        'PhoneBridge läuft im Hintergrund weiter – öffnen über das Anwendungsmenü.',
+    'Your panel shows no status icons - add a tray (status notifier) to it to see PhoneBridge there.':
+        'Dein Panel zeigt keine Statussymbole – füge ihm einen Statusbereich (Status Notifier) hinzu, um PhoneBridge dort zu sehen.',
+    'GNOME shows no status icons by itself. The extension “AppIndicator and KStatusNotifierItem Support” shows PhoneBridge in the top bar.':
+        'GNOME zeigt von sich aus keine Statussymbole. Die Erweiterung „AppIndicator and KStatusNotifierItem Support“ zeigt PhoneBridge in der oberen Leiste.',
+    'Add the “Status Tray Plugin” to a panel to see PhoneBridge there.':
+        'Füge einem Panel das Element „Statusbereich“ hinzu, um PhoneBridge dort zu sehen.',
+    'Add the “Notification Area” to a panel to see PhoneBridge there.':
+        'Füge einem Panel den „Benachrichtigungsbereich“ hinzu, um PhoneBridge dort zu sehen.',
+    'Add the “Status Notifier” widget to the panel to see PhoneBridge there.':
+        'Füge dem Panel das Widget „Status Notifier“ hinzu, um PhoneBridge dort zu sehen.',
+    'Add the “Tray” applet to a panel to see PhoneBridge there.':
+        'Füge einem Panel das Applet „Tray“ hinzu, um PhoneBridge dort zu sehen.',
+    'Install the “Ayatana Indicators” panel plugin to see PhoneBridge there.':
+        'Installiere das Panel-Plugin „Ayatana Indicators“, um PhoneBridge dort zu sehen.',
 }

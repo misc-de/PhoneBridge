@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=all/allfiles;inode/directory;
+Actions=send
+
+[Desktop Action send]
+Name=Send to phone (PhoneBridge)
+Name[de]=An Phone senden (PhoneBridge)
+Icon=io.github.miscde.PhoneBridge
+Exec=@BIN@ --send %F

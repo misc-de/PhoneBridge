@@ -93,6 +93,8 @@ class PhoneBridgeApp(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         Gtk.Window.set_default_icon_name(APP_ID)     # window frame, task list
+        from . import desktop
+        desktop.apply_color_scheme(Adw.StyleManager.get_default())
         self._actions()
         from .backup import Backup
         self.backup = Backup(self)
@@ -100,8 +102,10 @@ class PhoneBridgeApp(Adw.Application):
             from .tray import Tray
             self.tray = Tray(self.toggle_window, lambda: self.show_window("messages"),
                              self.on_tray_item)
+            self.tray.on_hosted = lambda hosted: hosted and self.withdraw_notification("tray")
         except GLib.Error as e:
             print("phonebridge: no panel icon:", e.message, file=sys.stderr)
+        GLib.timeout_add_seconds(TRAY_GRACE, lambda: self.check_tray() and False)
         self.sync_devices()
         self.update_tray()
         self._watch_sleep_and_network()
@@ -840,7 +844,8 @@ class PhoneBridgeApp(Adw.Application):
         n.set_priority(Gio.NotificationPriority.HIGH)
 
         target = GLib.Variant("(ss)", (dev.id, c["path"]))
-        if on_gnome():
+        from . import desktop
+        if desktop.click_on_notification():
             n.set_default_action("app.show-phone")
         n.add_button_with_target(_("Answer"), "app.call-answer", target)
         n.add_button_with_target(_("Hang up"), "app.call-hangup", target)
@@ -1259,12 +1264,33 @@ class PhoneBridgeApp(Adw.Application):
             self.set_active(item_id[7:])
 
     # -- window -----------------------------------------------------------
+    def check_tray(self):
+        """No panel shows the icon: said once per desktop - what would show
+        it there; PhoneBridge keeps running in the background meanwhile."""
+        from . import desktop
+        if self._ending or (self.tray is not None and self.tray.hosted):
+            return
+        key = desktop.current() or "?"
+        if self.cfg.get("tray_hint_told") == key:
+            return
+        self.cfg["tray_hint_told"] = key
+        config.save(self.cfg)
+        n = Gio.Notification.new(_("PhoneBridge has no panel icon here"))
+        n.set_body(_(desktop.tray_hint(key)) + "\n" + _(
+            "PhoneBridge keeps running in the background - open it from the menu of "
+            "applications."))
+        n.add_button(_("Open PhoneBridge"), "app.show")
+        self.send_notification("tray", n)
+
     def show_window(self, page=None):
         if self.window is None:
             from .window import MainWindow
             self.window = MainWindow(self)
         if page:
             self.window.show_page(page)
+        if not self.window.is_visible():
+            from . import desktop            # the theme may have changed meanwhile
+            desktop.apply_color_scheme(Adw.StyleManager.get_default())
         self.window.present()
         return self.window
 
@@ -1345,13 +1371,27 @@ class PhoneBridgeApp(Adw.Application):
         from . import send
         return send.ask(self)
 
+    def debug_info(self):
+        from . import desktop, update
+        return "\n".join((
+            "PhoneBridge %s (%s)" % (VERSION, update.installed() or "source tree"),
+            "Desktop: %s (%s)" % (desktop.name(), os.environ.get("XDG_CURRENT_DESKTOP", "")),
+            "Session: %s" % os.environ.get("XDG_SESSION_TYPE", "?"),
+            "Notifications: %s; a click %s" % (
+                desktop.notification_server() or "none",
+                "is taken" if desktop.click_on_notification() else "shows as a button"),
+            "Panel icon: %s" % ("shown" if self.tray is not None and self.tray.hosted
+                                else "no panel shows it"),
+            "Dark: %s" % Adw.StyleManager.get_default().get_dark()))
+
     def show_about(self):
         about = Adw.AboutDialog(
             application_name="PhoneBridge", application_icon=APP_ID,
             version=VERSION, developer_name="misc-de",
             license_type=Gtk.License.MIT_X11,
             comments=_("Your Linux phone in the panel: battery, messages and "
-                       "settings of your FuriOS/Phosh phone, over SSH."))
+                       "settings of your FuriOS/Phosh phone, over SSH."),
+            debug_info=self.debug_info())
         about.present(self.show_window())
 
     def _on_open_thread(self, action, param):
@@ -1524,21 +1564,19 @@ def run_in_thread(fn, then=None):
 
 
 NOTIFY_SECONDS = 10
+TRAY_GRACE = 15                 # s for a panel to show the icon before the hint
 CLIPBOARD_MAX = 1024 * 1024     # bytes of text shared through the clipboard
 FULL_AGAIN = 95                 # % the battery must fall below before "full" is told again
 UPDATE_FIRST = 60               # s after the start: look for an update
 UPDATE_EVERY = 6 * 3600         # and again
 
 
-def on_gnome():
-    return "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
-
-
 def set_click(notification, label, action, target=None):
-    """What clicking does. GNOME takes the click on the notification itself;
-    other servers (xfce4-notifyd ...) show that as a button without text -
-    there it is a button with words instead."""
-    if on_gnome():
+    """What clicking does. Most notification daemons take the click on the
+    notification itself; some (xfce4-notifyd, MATE's) show that as a button
+    without text - there it is a button with words only."""
+    from . import desktop
+    if desktop.click_on_notification():
         if target is None:
             notification.set_default_action(action)
         else:
@@ -1581,7 +1619,8 @@ def notification_text(body):
     """An SMS as a notification body: notification servers outside GNOME
     (KDE, xfce4-notifyd, dunst ...) read body markup - a stranger's SMS
     must not bring links or formatting of its own."""
-    if on_gnome():
+    from . import desktop
+    if desktop.current() == "gnome":
         return body
     return GLib.markup_escape_text(body)
 

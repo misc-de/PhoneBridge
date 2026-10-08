@@ -23,8 +23,8 @@ install on the phone.
 Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
 that is where it is developed and tested. Other Phosh phones with the same stack (ofono,
 chatty, GNOME Calls, evolution-data-server) may work, but are not tested; calls at the PC
-need the FLX1's call audio. On the PC it wants a desktop with a status tray (Xfce, KDE,
-Cinnamon, MATE, Budgie, waybar …).
+need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (see
+[Desktops](#desktops)).
 
 ## Features
 
@@ -110,6 +110,20 @@ apps use:
 Changing chatty's store or GNOME Calls' accounts needs the app to be stopped meanwhile;
 PhoneBridge does that for a moment and starts it again exactly as it ran - never during a call.
 
+## Desktops
+
+PhoneBridge looks at the desktop it runs on and adapts:
+
+| | |
+|---|---|
+| Panel icon | a StatusNotifierItem - Xfce (Status Tray Plugin), KDE Plasma, Cinnamon, MATE (Notification Area), Budgie, LXQt, waybar … show it. When no panel shows it, PhoneBridge says once what would (on GNOME the *AppIndicator and KStatusNotifierItem Support* extension) and keeps running in the background. |
+| Notifications | a click on the notification where the daemon takes one (GNOME, KDE, Cinnamon, dunst, mako …); buttons with words where it would show an empty button (xfce4-notifyd, MATE). |
+| Light or dark | the color-scheme setting where the desktop has it (GNOME, KDE, Cinnamon, Budgie …); elsewhere (Xfce, MATE, LXDE, LXQt) the dark theme's name or *prefer dark* in GTK's settings. |
+| Send to the phone | Thunar's *Send To*, Nautilus and Caja scripts, Nemo actions, Dolphin's service menu, PCManFM's actions - for the file managers that are there. |
+| Messages at the start | zenity, or kdialog on KDE. |
+
+*About PhoneBridge → Troubleshooting* shows what was recognised.
+
 ## Requirements
 
 **On the PC** - checked at every start; what is missing is shown, with the command to install it.
@@ -119,6 +133,11 @@ PhoneBridge does that for a moment and starts it again exactly as it ran - never
 | Required | `python-gobject gtk4 libadwaita python-cairo openssh` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-cairo openssh-client` |
 | Passwords in the keyring | `libsecret` | `gir1.2-secret-1` |
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
+
+Fedora: `python3-gobject gtk4 libadwaita python3-cairo openssh-clients` (and `libsecret`,
+`pipewire-utils`, `pulseaudio-utils`); openSUSE: `python3-gobject typelib-1_0-Gtk-4_0
+typelib-1_0-Adw-1 python3-pycairo openssh-clients`. PhoneBridge names the missing ones with
+the command for the distribution it runs on.
 
 **On the phone** - an SSH server, Python 3 with PyGObject, and the usual mobile stack (ofono,
 ModemManager, chatty, GNOME Calls, evolution-data-server), as FuriOS brings them.

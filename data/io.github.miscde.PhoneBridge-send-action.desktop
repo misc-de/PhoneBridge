@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Action
+Name=Send to phone (PhoneBridge)
+Name[de]=An Phone senden (PhoneBridge)
+Icon=io.github.miscde.PhoneBridge
+Profiles=all;
+
+[X-Action-Profile all]
+MimeTypes=all/all;
+Exec=@BIN@ --send %F
