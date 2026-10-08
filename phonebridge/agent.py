@@ -3534,6 +3534,76 @@ def cmd_backup_sources(agent, args):
     return out
 
 
+# --- search ---------------------------------------------------------------------
+
+SEARCH_FILES_SECONDS = 2.5      # a file search gives up after this long
+SEARCH_SKIP_DIRS = {"node_modules", "__pycache__", ".git", ".cache", ".local", ".var"}
+
+
+def search_messages(query, limit=30, store=None, sent=None):
+    """Messages whose text holds the query, the newest first."""
+    q = (query or "").strip()
+    out = []
+    if len(q) < 2:
+        return out
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    db = open_store(store)
+    if db is not None:
+        with db:
+            for r in db.execute(
+                    "SELECT m.id, m.body, m.direction, m.time, t.name AS thread"
+                    "  FROM messages m JOIN threads t ON t.id = m.thread_id"
+                    " WHERE m.body LIKE ? ESCAPE '\\' ORDER BY m.time DESC LIMIT ?",
+                    (like, int(limit))):
+                out.append({"id": r["id"], "thread": r["thread"], "body": r["body"],
+                            "out": r["direction"] != 1, "time": r["time"]})
+    low = q.casefold()
+    for e in read_sent(sent):
+        if low in (e.get("body") or "").casefold():
+            out.append({"id": e["id"], "thread": e["to"], "body": e["body"], "out": True,
+                        "time": e["time"]})
+    out.sort(key=lambda m: m["time"] or 0, reverse=True)
+    return out[:int(limit)]
+
+
+def search_files(query, limit=40, root=None):
+    """Files and folders whose name holds the query - below the home, not
+    in hidden folders; it gives up after SEARCH_FILES_SECONDS."""
+    q = (query or "").strip().casefold()
+    out, done = [], True
+    if len(q) < 2:
+        return {"entries": out, "complete": True}
+    end = time.monotonic() + SEARCH_FILES_SECONDS
+    for folder, dirs, names in os.walk(root or FILES_HOME):
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in SEARCH_SKIP_DIRS)
+        for name in sorted(dirs + names):
+            if q in name.casefold():
+                path = os.path.join(folder, name)
+                try:
+                    st = os.stat(path)
+                except OSError:
+                    continue
+                is_dir = os.path.isdir(path)
+                out.append({"path": path, "name": name, "dir": is_dir,
+                            "size": 0 if is_dir else st.st_size, "mtime": int(st.st_mtime)})
+                if len(out) >= limit:
+                    return {"entries": out, "complete": False}
+        if time.monotonic() > end:
+            done = False
+            break
+    return {"entries": out, "complete": done}
+
+
+@command("sms.search", threaded=True)
+def cmd_sms_search(agent, args):
+    return search_messages(args.get("query"), args.get("limit", 30))
+
+
+@command("files.search", threaded="files")
+def cmd_files_search(agent, args):
+    return search_files(args.get("query"), args.get("limit", 40))
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):

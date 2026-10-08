@@ -111,6 +111,7 @@ class FilesPage(Gtk.Box):
         self._thumb_timer = 0
         self._watching = {}         # local copy -> (monitor, device, remote, mtime)
         self._name_boxes = []       # every name cell made: their icons follow the zoom
+        self._reveal = None         # a name to show once its folder is there (search)
         self._scrolled = 0.0
         z = app.cfg.get("files_zoom", ZOOM_DEFAULT)
         self.zoom = z if isinstance(z, int) and 0 <= z < len(ZOOM) else ZOOM_DEFAULT
@@ -469,6 +470,10 @@ class FilesPage(Gtk.Box):
             self.search.set_text("")
             if self.sorted.get_n_items():
                 self.view.scroll_to(0, None, Gtk.ListScrollFlags.NONE, None)
+        if self._reveal is not None:
+            self.search.set_text(self._reveal)      # the file looked for, alone
+            self.filter.changed(Gtk.FilterChange.DIFFERENT)
+            self._reveal = None
         self._crumbs()
         self._mark_place()
         if result.get("truncated"):
@@ -545,6 +550,14 @@ class FilesPage(Gtk.Box):
             self.navigate(path)
         if self.split.get_collapsed():
             self.split.set_show_sidebar(False)
+
+    def reveal(self, path, is_dir=False):
+        """A folder opened - or a file shown in its folder (from the search)."""
+        if is_dir:
+            self.navigate(path)
+            return
+        self._reveal = posixpath.basename(path)
+        self.navigate(posixpath.dirname(path))
 
     def go_up(self):
         if self.path and self.path != "/":

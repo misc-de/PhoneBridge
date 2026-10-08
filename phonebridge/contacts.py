@@ -37,6 +37,18 @@ def source_label(source):
     return name
 
 
+def contact_matches(c, query):
+    """Name, organisation, numbers (digits alone, too) and addresses."""
+    hay = " ".join([c["name"], c["org"]] + [p["value"] for p in c["phones"]]
+                   + c["emails"]).lower()
+    digits = "".join(ch for ch in query if ch.isdigit())
+    if digits and len(digits) >= 3 and any(
+            digits in "".join(ch for ch in p["value"] if ch.isdigit())
+            for p in c["phones"]):
+        return True
+    return all(w in hay for w in query.lower().split())
+
+
 def mentions(event, contact, given_counts):
     """Whether an appointment names the person: the full name, or the
     first name alone when no other contact has it."""
@@ -91,15 +103,7 @@ class ContactRow(Gtk.ListBoxRow):
         self.set_child(box)
 
     def matches(self, query):
-        c = self.contact
-        hay = " ".join([c["name"], c["org"]] + [p["value"] for p in c["phones"]]
-                       + c["emails"]).lower()
-        digits = "".join(ch for ch in query if ch.isdigit())
-        if digits and len(digits) >= 3 and any(
-                digits in "".join(ch for ch in p["value"] if ch.isdigit())
-                for p in c["phones"]):
-            return True
-        return all(w in hay for w in query.lower().split())
+        return contact_matches(self.contact, query)
 
 
 class ContactsPage(Gtk.Box):

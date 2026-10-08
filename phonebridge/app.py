@@ -201,6 +201,7 @@ class PhoneBridgeApp(Adw.Application):
         add("login", lambda a, p: self.ask_password(self.devices.get(p.get_string())), "s")
         add("about", lambda *a: self.show_about())
         add("send", lambda *a: self.ask_send())
+        add("search", lambda *a: self.show_search())
         add("notify", self._on_notify_toggle, None, GLib.Variant("b", self.cfg["notify"]))
         add("autostart", self._on_autostart_toggle, None,
             GLib.Variant("b", config.autostart_enabled()))
@@ -216,6 +217,7 @@ class PhoneBridgeApp(Adw.Application):
         self._language = add("language", self._on_language, "s",
                              GLib.Variant("s", self.cfg["language"]))
         self.set_accels_for_action("app.quit", ["<Control>q"])
+        self.set_accels_for_action("app.search", ["<Control>k"])
 
     # -- phones -----------------------------------------------------------
     def sync_devices(self):
@@ -1324,6 +1326,12 @@ class PhoneBridgeApp(Adw.Application):
     def show_devices(self):
         from .devices import DevicesDialog
         DevicesDialog(self).present(self.show_window())
+
+    def show_search(self):
+        from .search import SearchDialog
+        dialog = SearchDialog(self)
+        dialog.present(self.show_window())
+        return dialog
 
     def ask_send(self):
         from . import send

@@ -1281,4 +1281,16 @@ TRANSLATIONS = {
         'Noch nicht',
     'Save photos in':
         'Fotos speichern in',
+    'Search':
+        'Suche',
+    'Contacts, messages, calls, appointments, files':
+        'Kontakte, Nachrichten, Anrufe, Termine, Dateien',
+    'Search everything':
+        'Alles durchsuchen',
+    'At least two letters':
+        'Mindestens zwei Buchstaben',
+    'Nothing found':
+        'Nichts gefunden',
+    'Search everything (Ctrl+K)':
+        'Alles durchsuchen (Strg+K)',
 }

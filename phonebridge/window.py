@@ -58,6 +58,8 @@ class MainWindow(Adw.ApplicationWindow):
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic",
                                        menu_model=self._menu(), primary=True,
                                        tooltip_text=_("Menu")))
+        header.pack_end(Gtk.Button(icon_name="system-search-symbolic", action_name="app.search",
+                                   tooltip_text=_("Search everything (Ctrl+K)")))
 
         self.banner = Adw.Banner(button_label=_("Connect now"), use_markup=False)
         self.banner.connect("button-clicked", self._on_reconnect)
