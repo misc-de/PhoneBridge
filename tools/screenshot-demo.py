@@ -6,12 +6,14 @@ calls and appointments. The "phone" is the agent running on this PC (the
 tests' stand-in ssh) with a made-up chatty store, call history, VoiceBox
 message and a stand-in evolution-data-server - nothing real is shown.
 
-    dbus-run-session -- python3 tools/screenshot-demo.py            # light
-    DEMO_DARK=1 dbus-run-session -- python3 tools/screenshot-demo.py # dark
+    DEMO_SHOT=data/screenshots/overview-light.png \
+        dbus-run-session -- python3 tools/screenshot-demo.py
+    DEMO_DARK=1 DEMO_SHOT=data/screenshots/overview-dark.png \
+        dbus-run-session -- python3 tools/screenshot-demo.py
 
-The window opens on the overview for DEMO_SECONDS (20); take the picture
-meanwhile, e.g. with: import -window "$(xdotool search --onlyvisible
---name '^PhoneBridge$' | tail -1)" overview.png"""
+With DEMO_SHOT the window is drawn into that PNG once everything has come
+and the demo ends; without, it stays open for DEMO_SECONDS (20). A made-up
+music player plays, so the overview shows its bar."""
 
 import datetime as dt
 import json
@@ -26,6 +28,8 @@ sys.path.insert(0, ROOT)
 work = tempfile.mkdtemp(prefix="phonebridge-demo-")
 os.environ.update({
     "PATH": os.path.join(ROOT, "tests", "fakebin") + os.pathsep + os.environ["PATH"],
+    # no desktop of its own: light or dark as asked, not as this desktop's theme
+    "XDG_CURRENT_DESKTOP": "PhoneBridgeDemo",
     "PHONEBRIDGE_CONFIG": os.path.join(work, "config"),
     "XDG_CONFIG_HOME": os.path.join(work, "xdg"),
     "XDG_CACHE_HOME": os.path.join(work, "cache"),
@@ -195,12 +199,29 @@ def ready():
     dev.emit("changed")
     from phonebridge.window import MainWindow
     from gi.repository import Adw
-    if os.environ.get("DEMO_DARK"):
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     app.window = MainWindow(app)
-    app.window.set_default_size(1240, 560)
+    app.window.set_default_size(int(os.environ.get("DEMO_WIDTH", "1600")),
+                                int(os.environ.get("DEMO_HEIGHT", "640")))
     app.show_window("overview")
+    # after showing (that follows the desktop) - light or dark as asked, never
+    # as this desktop is
+    Adw.StyleManager.get_default().set_color_scheme(
+        Adw.ColorScheme.FORCE_DARK if os.environ.get("DEMO_DARK") else Adw.ColorScheme.FORCE_LIGHT)
     app.window.overview.load(force=True)
+    if os.environ.get("DEMO_SHOT"):
+        GLib.timeout_add(4000, shoot)
+    return False
+
+
+def shoot():
+    """The window, drawn into DEMO_SHOT."""
+    from gi.repository import Gtk
+    win = app.window
+    snap = Gtk.Snapshot()
+    Gtk.WidgetPaintable(widget=win).snapshot(snap, win.get_width(), win.get_height())
+    win.get_renderer().render_texture(snap.to_node(), None).save_to_png(os.environ["DEMO_SHOT"])
+    print("saved %s (%dx%d)" % (os.environ["DEMO_SHOT"], win.get_width(), win.get_height()))
+    app.quit()
     return False
 
 
@@ -212,8 +233,13 @@ def keep_status():
     return True
 
 
+from tests.fake_mpris import FakePlayer  # noqa: E402
+
+player = FakePlayer("demo", title="Blue Morning", artist="The Examples")
+player.status = "Playing"
 GLib.timeout_add(300, ready)
 GLib.timeout_add(500, keep_status)
 GLib.timeout_add_seconds(int(os.environ.get("DEMO_SECONDS", "20")), lambda: app.quit() or False)
 app.run(["phonebridge", "--background"])
 eds.close()
+player.close()
