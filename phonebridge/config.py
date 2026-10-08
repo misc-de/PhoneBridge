@@ -97,6 +97,8 @@ def valid_port(port):
         return False
 
 
+# a device may also carry "hotspot_ssid": the phone's hotspot, kept on this PC
+
 def valid_device(d):
     return (isinstance(d, dict) and bool(d.get("id")) and valid_host(d.get("host"))
             and valid_user(d.get("user")) and valid_port(d.get("port") or 22)

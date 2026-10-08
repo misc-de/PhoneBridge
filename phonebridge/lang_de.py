@@ -1311,4 +1311,36 @@ TRANSLATIONS = {
         'Screenshot speichern',
     'Screenshot of the phone':
         'Screenshot vom Phone',
+    'Hotspot':
+        'Hotspot',
+    'This PC in the hotspot':
+        'Dieser PC im Hotspot',
+    'Set up …':
+        'Einrichten …',
+    'Not set up yet - switching it on makes one':
+        'Noch nicht eingerichtet – Einschalten legt einen an',
+    'Joins by itself when no other known Wi-Fi is there':
+        'Verbindet sich von selbst, wenn kein anderes bekanntes WLAN da ist',
+    "Not yet - PhoneBridge needs the hotspot's password once":
+        'Noch nicht – PhoneBridge braucht einmal das Passwort des Hotspots',
+    'Change …':
+        'Ändern …',
+    'Switch on':
+        'Einschalten',
+    "PhoneBridge keeps the hotspot among this PC's networks with a low priority: the PC joins it by itself whenever it is on and no other known Wi-Fi is there, and reaches the phone through it. The password is in the phone's settings under Wi-Fi → Hotspot.":
+        'PhoneBridge speichert den Hotspot mit niedriger Priorität bei den Netzen dieses PCs: Der PC verbindet sich von selbst damit, sobald er an ist und kein anderes bekanntes WLAN da ist, und erreicht das Phone darüber. Das Passwort steht in den Einstellungen des Phones unter WLAN → Hotspot.',
+    'Switch on the hotspot?':
+        'Hotspot einschalten?',
+    'Switch off the hotspot?':
+        'Hotspot ausschalten?',
+    'The phone shares its mobile data. Some phones leave their Wi-Fi network meanwhile - PhoneBridge then reaches the phone only through the hotspot.':
+        'Das Phone teilt seine mobilen Daten. Manche Phones verlassen dabei ihr WLAN – PhoneBridge erreicht das Phone dann nur noch über den Hotspot.',
+    'Devices in the hotspot lose their connection - this PC too, if it is in it.':
+        'Geräte im Hotspot verlieren ihre Verbindung – auch dieser PC, wenn er darin ist.',
+    'This PC in “%s”':
+        'Dieser PC in „%s“',
+    'This PC joins “%s” by itself from now on':
+        'Dieser PC verbindet sich ab jetzt von selbst mit „%s“',
+    'Not saved: %s':
+        'Nicht gespeichert: %s',
 }

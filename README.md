@@ -74,6 +74,9 @@ Cinnamon, MATE, Budgie, waybar …).
   notifications* turns that off.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).
+- **Hotspot** - switch the phone's hotspot from *Settings → Quick settings*, and keep it on
+  this PC once (the password, asked once): NetworkManager then joins it by itself whenever
+  it is on and no other known Wi-Fi is there, and PhoneBridge reaches the phone through it.
 - **Search everything** (Ctrl+K or the search button) - contacts, conversations and the
   messages' text, calls, appointments and the phone's files at once.
 - **Several phones**, one of them shown in the panel. English and German.
@@ -98,6 +101,9 @@ apps use:
 | Wi-Fi, volume, ring profile, power profile | NetworkManager, WirePlumber, feedbackd, power-profiles |
 | Settings | GSettings |
 | Music | MPRIS players on the session bus |
+| Clipboard | wl-copy / wl-paste (the compositor's data-control) |
+| Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
+| Hotspot | NetworkManager on the phone; on the PC a profile over NetworkManager's D-Bus API |
 | The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
 | Files | the file system, as the phone's user; contents over an SSH connection of their own |
 

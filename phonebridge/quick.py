@@ -52,14 +52,24 @@ class QuickSettings:
         self.power.set_model(Gtk.StringList.new([_(l) for _k, l in POWER_PROFILES]))
         self.power.connect("notify::selected", self._on_power)
 
+        self.hotspot = Adw.SwitchRow(title=_("Hotspot"))
+        self.hotspot.connect("notify::active", self._on_hotspot)
+        self.hotspot_pc = Adw.ActionRow(title=_("This PC in the hotspot"))
+        self.hotspot_join = Gtk.Button(label=_("Set up …"), valign=Gtk.Align.CENTER)
+        self.hotspot_join.connect("clicked", lambda *a: self.ask_join())
+        self.hotspot_pc.add_suffix(self.hotspot_join)
+        self._hotspot = None            # the phone's hotspot (hotspot.state)
+        self._hotspot_for = None
+        self._new_password = {}         # device id -> the password of a hotspot just made
+
         self.find = Adw.ActionRow(title=_("Find phone"),
                                   subtitle=_("Rings like a call, even when silent"))
         self.ring = Gtk.Button(valign=Gtk.Align.CENTER)
         self.ring.connect("clicked", lambda *a: self.app.ring(self.dev))
         self.find.add_suffix(self.ring)
 
-        for row in (self.data, self.wifi_switch, self.volume, self.feedback,
-                    self.power, self.find):
+        for row in (self.data, self.wifi_switch, self.hotspot, self.hotspot_pc, self.volume,
+                    self.feedback, self.power, self.find):
             quick.add(row)
 
         # the call's sound on the PC - only where the phone has the nodes for it
@@ -142,11 +152,115 @@ class QuickSettings:
             self.test_levels.set_visible(testing)
             if testing and not self._test_tick:
                 self._test_tick = GLib.timeout_add(100, self._test_levels)
+            self._update_hotspot()
             ringing = dev is not None and dev.id in self.app.ringing
             self.ring.set_label(_("Stop") if ringing else _("Ring"))
             self.find.set_sensitive(status is not None)
         finally:
             self._updating = False
+
+    # -- the hotspot ------------------------------------------------------------
+    def _update_hotspot(self):
+        dev = self.dev
+        online = dev is not None and dev.online
+        if online and self._hotspot_for is not dev:
+            self._hotspot_for = dev
+            dev.request("hotspot.state", {}, lambda r, e, d=dev: self._got_hotspot(d, r, e))
+        if not online:
+            self._hotspot_for = None
+        h = self._hotspot if online else None
+        self.hotspot.set_visible(h is not None)
+        self.hotspot_pc.set_visible(h is not None and h["exists"])
+        if h is None:
+            return
+        self.hotspot.set_active(h["active"])
+        self.hotspot.set_subtitle(GLib.markup_escape_text(h["ssid"]) if h["exists"] else
+                                  _("Not set up yet - switching it on makes one"))
+        joined = dev.info.get("hotspot_ssid") == h["ssid"] and h["ssid"]
+        self.hotspot_pc.set_subtitle(
+            _("Joins by itself when no other known Wi-Fi is there") if joined
+            else _("Not yet - PhoneBridge needs the hotspot's password once"))
+        self.hotspot_join.set_label(_("Change …") if joined else _("Set up …"))
+
+    def _got_hotspot(self, dev, result, error):
+        if dev is not self.dev:
+            return
+        self._hotspot = result if error is None else None
+        self.update()
+
+    def _on_hotspot(self, *args):
+        if self._updating or self._hotspot is None:
+            return
+        on = self.hotspot.get_active()
+        dialog = Adw.AlertDialog(
+            heading=_("Switch on the hotspot?") if on else _("Switch off the hotspot?"),
+            body=_("The phone shares its mobile data. Some phones leave their Wi-Fi "
+                   "network meanwhile - PhoneBridge then reaches the phone only through "
+                   "the hotspot.") if on else
+            _("Devices in the hotspot lose their connection - this PC too, if it is in it."))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("go", _("Switch on") if on else _("Switch off"))
+        dialog.set_response_appearance("go", Adw.ResponseAppearance.SUGGESTED if on
+                                       else Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_close_response("cancel")
+        dev = self.dev
+
+        def answered(d, response):
+            if response != "go":
+                self.update()
+                return
+
+            def done(result, error):
+                if error is not None:
+                    self.app.toast(text.error(error))
+                else:
+                    if result.get("password"):
+                        self._new_password[dev.id] = result.pop("password")
+                    self._hotspot = result
+                self.update()
+
+            dev.request("hotspot.set", {"on": on}, done)
+
+        dialog.connect("response", answered)
+        dialog.present(self.groups[0].get_root())
+
+    def ask_join(self):
+        """The hotspot among this PC's networks - the password once."""
+        from . import hotspot
+        dev, h = self.dev, self._hotspot
+        if dev is None or not h or not h["exists"]:
+            return
+        dialog = Adw.AlertDialog(
+            heading=_("This PC in “%s”") % h["ssid"],
+            body=_("PhoneBridge keeps the hotspot among this PC's networks with a low "
+                   "priority: the PC joins it by itself whenever it is on and no other "
+                   "known Wi-Fi is there, and reaches the phone through it. The password "
+                   "is in the phone's settings under Wi-Fi → Hotspot."))
+        entry = Gtk.PasswordEntry(show_peek_icon=True, activates_default=True,
+                                  text=self._new_password.get(dev.id, ""))
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("save", _("Save"))
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+        entry.connect("changed", lambda *a: dialog.set_response_enabled(
+            "save", len(entry.get_text()) >= 8))
+        dialog.set_response_enabled("save", len(entry.get_text()) >= 8)
+
+        def saved(error, ssid=h["ssid"]):
+            if error is not None:
+                self.app.toast(_("Not saved: %s") % error)
+                return
+            self._new_password.pop(dev.id, None)
+            devices = [dict(d, hotspot_ssid=ssid) if d["id"] == dev.id else d
+                       for d in self.app.cfg["devices"]]
+            self.app.toast(_("This PC joins “%s” by itself from now on") % ssid)
+            self.app.set_devices(devices)
+
+        dialog.connect("response", lambda d, r: r == "save" and hotspot.pc_add_profile(
+            h["ssid"], entry.get_text(), saved))
+        dialog.present(self.groups[0].get_root())
 
     def _show(self, row, available):
         row.set_visible(self.dev is None or not self.dev.online or available)

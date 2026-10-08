@@ -29,7 +29,7 @@ TIMEOUTS = {"sms.send": 120, "pim.sources": 90, "contacts.list": 150,
             "calendar.save": 150, "calendar.delete": 150, "voicebox.audio": 120,
             "sms.delete_thread": 60, "sip.save": 60, "sip.delete": 60,
             "files.list": 60, "files.thumbs": 90, "files.delete": 300,
-            "screen.shot": 60}
+            "screen.shot": 60, "hotspot.set": 60}
 # a ping this often; no answer in PING_TIMEOUT and the connection is dead
 PING_EVERY = 20
 PING_TIMEOUT = 20
@@ -40,6 +40,8 @@ def ssh_argv(device, command=BOOTSTRAP, low_delay=False, password=False):
     from SSH_ASKPASS (secrets.ssh_env), once; else only the key counts.
     An unknown phone is learnt on first contact, a changed host key is
     still refused."""
+    from .hotspot import reach
+    device = reach(device)          # in the phone's hotspot: its gateway address
     ssh = shlex.split(os.environ.get("PHONEBRIDGE_SSH", "ssh"))
     extra = ["-o", "IPQoS=lowdelay", "-o", "Compression=no"] if low_delay else []
     auth = (["-o", "BatchMode=no", "-o", "NumberOfPasswordPrompts=1",

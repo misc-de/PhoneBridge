@@ -3641,6 +3641,67 @@ def cmd_screenshot(agent, args):
     return {"png": base64.b64encode(screenshot(agent.session)).decode("ascii")}
 
 
+# --- the phone's hotspot ----------------------------------------------------------
+
+def nmcli_fields(line):
+    """One line of nmcli -t: fields split at ':' that nmcli did not escape."""
+    return [f.replace("\\:", ":").replace("\\\\", "\\") for f in re.split(r"(?<!\\):", line)]
+
+
+def hotspot_connection():
+    """(uuid, name, ssid) of the phone's hotspot - a Wi-Fi connection in
+    access point mode - or None."""
+    for line in run_checked("nmcli", "-t", "-f", "UUID,TYPE,NAME", "connection",
+                            "show").splitlines():
+        fields = nmcli_fields(line)
+        if len(fields) < 3 or fields[1] != "802-11-wireless":
+            continue
+        values = run_checked("nmcli", "-g", "802-11-wireless.mode,802-11-wireless.ssid",
+                             "connection", "show", fields[0]).splitlines()
+        if values and values[0] == "ap":
+            return fields[0], fields[2], values[1] if len(values) > 1 else ""
+    return None
+
+
+def hotspot_state():
+    found = hotspot_connection()
+    if found is None:
+        return {"exists": False, "active": False, "name": "", "ssid": ""}
+    uuid, name, ssid = found
+    active = uuid in run_checked("nmcli", "-t", "-f", "UUID", "connection", "show",
+                                 "--active").split()
+    return {"exists": True, "active": active, "name": name, "ssid": ssid}
+
+
+@command("hotspot.state", threaded=True)
+def cmd_hotspot_state(agent, args):
+    return hotspot_state()
+
+
+@command("hotspot.set", threaded=True)
+def cmd_hotspot_set(agent, args):
+    """On or off. None there yet: one is made, named after the phone, with
+    a password of its own - told once, so the PC can keep it."""
+    found = hotspot_connection()
+    password = None
+    if args.get("on"):
+        if found is None:
+            import secrets
+            password = secrets.token_urlsafe(9)
+            run_checked("nmcli", "device", "wifi", "hotspot", "ssid",
+                        (socket.gethostname() or "phone")[:24], "password", password,
+                        timeout=40)
+        else:
+            run_checked("nmcli", "connection", "up", found[0], timeout=40)
+    elif found is not None:
+        run_checked("nmcli", "connection", "down", found[0], timeout=20)
+    state = hotspot_state()
+    if password:
+        state["password"] = password
+    agent.schedule_refresh(500, slow=True)
+    return state
+
+
 # --- main ------------------------------------------------------------------
 
 def _reader(agent):
