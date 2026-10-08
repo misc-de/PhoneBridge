@@ -12,13 +12,11 @@ Your Linux phone on your Linux desktop: battery and messages in the panel, and a
 calls, SMS, contacts, appointments and the phone's settings - over SSH, with nothing to
 install on the phone.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="data/screenshots/overview-dark.png">
-  <img alt="PhoneBridge's overview: battery, network and Wi-Fi of the phone, the last calls,
-  conversations and the next appointments" src="data/screenshots/overview-light.png">
-</picture>
+<img alt="PhoneBridge's overview, light and dark: battery, network and Wi-Fi of the phone,
+  the last calls, conversations and the next appointments" src="data/screenshots/overview.png">
 
-<sub>The screenshot shows invented people and data (`tools/screenshot-demo.py`).</sub>
+<sub>The screenshot shows invented people and data (`tools/screenshot-demo.py`,
+light and dark joined by `tools/screenshot-diagonal.py`).</sub>
 
 Made for Phosh phones, and explicitly for the **FuriLabs FLX1 / FLX1s** running FuriOS -
 that is where it is developed and tested. Other Phosh phones with the same stack (ofono,

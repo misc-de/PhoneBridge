@@ -10,6 +10,8 @@ message and a stand-in evolution-data-server - nothing real is shown.
         dbus-run-session -- python3 tools/screenshot-demo.py
     DEMO_DARK=1 DEMO_SHOT=data/screenshots/overview-dark.png \
         dbus-run-session -- python3 tools/screenshot-demo.py
+    python3 tools/screenshot-diagonal.py data/screenshots/overview-light.png \
+        data/screenshots/overview-dark.png data/screenshots/overview.png
 
 With DEMO_SHOT the window is drawn into that PNG once everything has come
 and the demo ends; without, it stays open for DEMO_SECONDS (20). A made-up
