@@ -108,7 +108,7 @@ apps use:
 | Music | MPRIS players on the session bus |
 | Clipboard | wl-copy / wl-paste (the compositor's data-control) |
 | Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
-| Webcam | droidcamsrc → x264 → MPEG-TS over SSH; on the PC GStreamer → v4l2loopback or PipeWire |
+| Webcam | droidcamsrc → x264 (zero latency) → H.264 over SSH; on the PC GStreamer (slice decoding, ~50 ms) → v4l2loopback or PipeWire |
 | Hotspot | NetworkManager on the phone; on the PC a profile over NetworkManager's D-Bus API |
 | The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
 | Files | the file system, as the phone's user; contents over an SSH connection of their own |

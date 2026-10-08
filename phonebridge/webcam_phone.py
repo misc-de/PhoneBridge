@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
 """Runs on the phone, sent over ssh as the agent is (nothing is installed
-there): the camera, as H.264 in an MPEG-TS stream on stdout. It ends when
+there): the camera, as an H.264 byte stream on stdout (no container: it
+would only add delay). It ends when
 stdin closes - the PC went or switched it off.
 
 PARAMS comes before this code: camera (0 back, 1 front), width, height,
@@ -29,9 +30,9 @@ def pipeline(p):
     encoder = p.get("encoder") or (
         "x264enc tune=zerolatency speed-preset=ultrafast bitrate=%d key-int-max=30"
         % int(p.get("kbps", 2500)))
-    return ("%s ! video/x-raw,width=%d,height=%d ! queue leaky=downstream max-size-buffers=2 ! "
+    return ("%s ! video/x-raw,width=%d,height=%d ! queue leaky=downstream max-size-buffers=1 ! "
             "videoconvert ! video/x-raw,format=I420 ! %s ! h264parse config-interval=-1 ! "
-            "mpegtsmux ! fdsink fd=1 sync=false"
+            "video/x-h264,stream-format=byte-stream,alignment=au ! fdsink fd=1 sync=false"
             % (source, int(p.get("width", 1280)), int(p.get("height", 720)), encoder))
 
 

@@ -3,7 +3,9 @@
 """The phone's camera as a webcam of the PC.
 
 The phone sends H.264 (webcam_phone.py, over an ssh of its own); here it
-is decoded and handed on:
+is decoded and handed on, as fast as it comes - the decoder works on
+slices, never on frames in parallel (that held a dozen pictures back,
+1.6 s on an 8-core PC; now the way phone to picture takes ~50 ms):
 
   - to a v4l2loopback device named "PhoneBridge camera" - then every
     program sees it (browsers, Zoom, Teams, OBS ...). The device is made
@@ -153,7 +155,8 @@ class Webcam(GObject.Object):
             env = ssh_env(self.password)
         try:
             self.ssh = subprocess.Popen(
-                ssh_argv(self.info, BOOTSTRAP, password=self.password is not None),
+                ssh_argv(self.info, BOOTSTRAP, low_delay=True,
+                         password=self.password is not None),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
             self.ssh.stdin.write(b"%d\n" % len(code) + code)
             self.ssh.stdin.flush()          # stays open: closing it ends the phone's side
@@ -161,7 +164,7 @@ class Webcam(GObject.Object):
             self.stop(str(e))
             return False
         flip = " ! videoflip method=horizontal-flip" if self.mirror else ""
-        desc = ("fdsrc fd=%d ! tsdemux ! h264parse ! %s%s ! tee name=t ! "
+        desc = ("fdsrc fd=%d ! h264parse ! %s%s ! tee name=t ! "
                 "queue leaky=downstream max-size-buffers=2 ! identity name=sent ! %s %s"
                 % (self.ssh.stdout.fileno(), decoder(), flip,
                    self.sink or sink_description(device), PREVIEW_BRANCH))
@@ -253,8 +256,11 @@ class Webcam(GObject.Object):
 
 
 def decoder():
-    """avdec_h264 (gst-libav), else openh264dec."""
-    return "avdec_h264" if Gst.ElementFactory.find("avdec_h264") else "openh264dec"
+    """avdec_h264 (gst-libav) on slices - its default, frames in parallel,
+    holds pictures back - else openh264dec."""
+    if Gst.ElementFactory.find("avdec_h264"):
+        return "avdec_h264 thread-type=slice max-threads=4"
+    return "openh264dec"
 
 
 Gst.init(None)

@@ -25,7 +25,7 @@ from .support import Home, run_loop_until  # noqa: E402
 HAVE_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 Gst.init(None)
 HAVE_GST = all(Gst.ElementFactory.find(e) for e in
-               ("videotestsrc", "x264enc", "mpegtsmux", "tsdemux", "h264parse"))
+               ("videotestsrc", "x264enc", "h264parse"))
 TEST_PICTURE = {"source": "videotestsrc is-live=true num-buffers=45", "width": 320,
                 "height": 240}
 COUNT = "fakesink name=count signal-handoffs=true sync=false"
