@@ -20,7 +20,8 @@ music player plays, so the overview shows its bar.
 DEMO_PAGE picks the page (overview, phone, messages, contacts, calendar,
 files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size;
 DEMO_CONTACT a contact to open on the contacts page (with its calls,
-messages and appointments).
+messages and appointments); DEMO_LINES=1 opens the choice of the line on
+the telephone page (two SIM cards and a SIP account, made up).
 The files are a made-up home, never this PC's; the screen page shows the
 desktop session (sharing the screen would record this PC's here)."""
 
@@ -225,6 +226,23 @@ class NoTray:                           # no second icon in the user's panel
 
 
 tray_mod.Tray = NoTray
+# the lines calls can go out on: two SIM cards and a SIP account (there is
+# no ofono here to ask)
+LINES = [{"id": "sim:demo1", "kind": "sim", "slot": 1, "operator": "Telco",
+          "number": "+4915550009001", "ready": True},
+         {"id": "sim:demo2", "kind": "sim", "slot": 2, "operator": "Mobilnet",
+          "number": "+4915550009002", "ready": True},
+         {"id": "sip:demo", "kind": "sip", "account": "demo", "name": "Office",
+          "address": "me@sip.example", "ready": True}]
+
+
+def demo_lines(self, dev):
+    self.lines[dev.id] = [dict(line) for line in LINES]
+    if self.window is not None:
+        self.window.lines_changed(dev)
+
+
+PhoneBridgeApp.refresh_lines = demo_lines
 app = PhoneBridgeApp()
 app.set_application_id("io.github.miscde.PhoneBridge.Demo")
 app.send_notification = lambda *a: None
@@ -259,6 +277,8 @@ def ready():
         app.window.overview.load(force=True)
     if os.environ.get("DEMO_CONTACT"):
         GLib.timeout_add(300, open_contact)
+    if os.environ.get("DEMO_LINES"):
+        GLib.timeout_add(3000, lambda: app.window.phone.line_picker.activate() and False)
     if os.environ.get("DEMO_SHOT"):
         GLib.timeout_add(4000, shoot)
     return False
@@ -274,12 +294,35 @@ def open_contact():
     return False
 
 
-def shoot():
-    """The window, drawn into DEMO_SHOT."""
+def open_popovers(widget):
+    """Popovers shown inside widget - each a surface of its own, not in the
+    window's picture."""
     from gi.repository import Gtk
+    found = []
+    child = widget.get_first_child()
+    while child is not None:
+        if isinstance(child, Gtk.Popover) and child.get_visible():
+            found.append(child)
+        found += open_popovers(child)
+        child = child.get_next_sibling()
+    return found
+
+
+def shoot():
+    """The window, drawn into DEMO_SHOT - an open popover (a list) on it,
+    where it shows."""
+    from gi.repository import Graphene, Gtk
     win = app.window
     snap = Gtk.Snapshot()
     Gtk.WidgetPaintable(widget=win).snapshot(snap, win.get_width(), win.get_height())
+    for pop in open_popovers(win):
+        ok, bounds = pop.compute_bounds(win)
+        if ok:
+            snap.save()
+            snap.translate(Graphene.Point().init(bounds.get_x(), bounds.get_y()))
+            Gtk.WidgetPaintable(widget=pop).snapshot(snap, bounds.get_width(),
+                                                     bounds.get_height())
+            snap.restore()
     win.get_renderer().render_texture(snap.to_node(), None).save_to_png(os.environ["DEMO_SHOT"])
     print("saved %s (%dx%d)" % (os.environ["DEMO_SHOT"], win.get_width(), win.get_height()))
     app.quit()
