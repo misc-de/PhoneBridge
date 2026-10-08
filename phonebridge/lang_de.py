@@ -1476,4 +1476,10 @@ TRANSLATIONS = {
         'Das Bild ist abgebrochen',
     'Try again':
         'Erneut versuchen',
+    'Portrait or landscape':
+        'Hochformat oder Querformat',
+    'Full screen (Esc goes back)':
+        'Vollbild (Esc kehrt zurück)',
+    'Esc ends full screen':
+        'Esc beendet das Vollbild',
 }

@@ -22,15 +22,20 @@ own; they are typed with the phone's keyboard layout.
 While this runs the screen does not go dark by itself (an idle inhibitor
 at the session manager).
 
+Turning the screen (portrait, landscape) goes through wlr-randr - Phosh
+follows it. The picture changes its size then: a new stream ("again").
+
 Lines on stdin, coordinates 0..10000 over the screen as shown:
   down X Y | move X Y | up | swipe X Y DX DY MS | key CODE | press CODE
-  | release CODE
-On stderr: "screen: on", "screen: off", "screen: again", "screen: error ...".
+  | release CODE | rotate normal|90|180|270|toggle (portrait <-> landscape)
+On stderr: "screen: on", "screen: turned T" (how the screen is turned),
+"screen: off", "screen: again", "screen: error ...".
 
-PARAMS comes before this code: width (of the picture sent), crf; in the
-tests "recorder" (an argv instead of wf-recorder), "enabled" (an argv
-whose output says whether the screen is on), "input_log" (a file the
-input goes to instead of uinput) and "inhibit" (False: none)."""
+PARAMS comes before this code: width (of the picture sent: the shorter
+side), crf; in the tests "recorder" (an argv instead of wf-recorder),
+"enabled" (an argv whose output stands for wlr-randr's), "rotate" (an argv
+the transform is added to), "input_log" (a file the input goes to instead
+of uinput) and "inhibit" (False: none)."""
 
 import os
 import signal
@@ -43,6 +48,7 @@ PARAMS = globals().get("PARAMS", {})
 RANGE = 10000
 KEYS = range(1, 249)                # every key a keyboard has, power and volume too
 STEP = 0.012                        # s between the points of a swipe
+TRANSFORMS = ("normal", "90", "180", "270")
 
 
 def session_env():
@@ -71,17 +77,33 @@ def recorder_argv(p):
     return ["wf-recorder", "-y", "-m", "flv", "-f", "/dev/stdout", "-c", "libx264",
             "-x", "yuv420p", "-p", "preset=ultrafast", "-p", "tune=zerolatency",
             "-p", "crf=%d" % int(p.get("crf", 26)), "-p", "g=120",
+            # the phone's pictures come upright, as the panel is built; wf-recorder
+            # turns them after this filter - so in landscape too "width" stays
+            # the shorter side
             "-F", "scale=%d:-2" % width]
 
 
-def screen_on(p, env):
-    """Whether the screen is on - wlr-randr's "Enabled: yes"."""
+def output(p, env):
+    """The phone's screen as wlr-randr tells it: (name, on, transform)."""
     argv = p.get("enabled") or ["wlr-randr"]
     try:
         out = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.TimeoutExpired):
-        return True                 # cannot tell: try the recorder
-    return "Enabled: no" not in out
+        return None, True, "normal"     # cannot tell: try the recorder
+    name, on, transform = None, True, "normal"
+    for line in out.splitlines():
+        key, _colon, value = line.strip().partition(":")
+        if key == "Enabled":
+            on = value.strip() != "no"
+        elif key == "Transform":
+            transform = value.strip()
+        elif line and not line[0].isspace() and name is None:
+            name = line.split()[0]
+    return name, on, transform
+
+
+def screen_on(p, env):
+    return output(p, env)[1]
 
 
 # -- touch and keys --------------------------------------------------------------
@@ -167,12 +189,18 @@ def clamp(v):
     return max(0, min(RANGE, int(v)))
 
 
-def handle(dev, line):
+def handle(dev, line, rotate=None):
     """One line from the PC. Wrong lines are dropped: never a crash."""
     words = line.split()
     if not words:
         return
     try:
+        if words[0] == "rotate":
+            if rotate is not None and words[1:2] and words[1] in TRANSFORMS + ("toggle",):
+                rotate(words[1])
+            return
+        if dev is None:
+            return
         cmd, args = words[0], [int(float(w)) for w in words[1:]]
         if cmd == "down":
             dev.down(clamp(args[0]), clamp(args[1]))
@@ -208,6 +236,7 @@ class Picture:
         self.ending = False
         self.state = None
         self.started = False
+        self.turned = False             # the recorder ended for a turn: no error
 
     def tell(self, state):
         if state != self.state:
@@ -216,7 +245,8 @@ class Picture:
 
     def run(self):
         while not self.ending:
-            if not screen_on(self.params, self.env):
+            name, on, transform = output(self.params, self.env)
+            if not on:
                 self.tell("off")
                 time.sleep(1)
                 continue
@@ -232,6 +262,7 @@ class Picture:
                 self.tell("error %s" % e)
                 return
             self.tell("on")
+            say("turned %s" % transform)
             threading.Thread(target=self._watch, args=(self.proc,), daemon=True).start()
             last = b""
             for line in self.proc.stderr:
@@ -241,6 +272,8 @@ class Picture:
             self.proc = None
             if self.ending:
                 return
+            if self.turned:
+                continue                    # "again", at once
             if code != 0 and screen_on(self.params, self.env):
                 self.tell("error %s" % last.decode("utf-8", "replace")[-200:])
                 time.sleep(2)
@@ -255,8 +288,32 @@ class Picture:
                 self.tell("off")
                 proc.terminate()
 
+    def rotate(self, transform):
+        """Turns the screen; the recorder ends, so the PC connects anew.
+        "toggle" goes by how the screen is turned now - not by what the PC
+        last heard, which may be on its way still."""
+        name, _on, now = output(self.params, self.env)
+        if transform == "toggle":
+            transform = "normal" if now in ("90", "270") else "90"
+        argv = (list(self.params["rotate"]) if self.params.get("rotate") else
+                ["wlr-randr", "--output", name or "", "--transform"])
+        try:
+            p = subprocess.run(argv + [transform], env=self.env, capture_output=True,
+                               text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            say("error %s" % e)
+            return
+        if p.returncode != 0:
+            say("error %s" % ((p.stderr or "").strip()[-200:] or "wlr-randr failed"))
+            return
+        self.turned = True
+        self._end_recorder()
+
     def stop(self):
         self.ending = True
+        self._end_recorder()
+
+    def _end_recorder(self):
         proc = self.proc
         if proc is not None and proc.poll() is None:
             # wf-recorder ends cleanly on SIGINT - but only with the next
@@ -312,8 +369,7 @@ def main():
 
     threading.Thread(target=show, daemon=True).start()
     for line in sys.stdin:
-        if dev is not None:
-            handle(dev, line)
+        handle(dev, line, picture.rotate)
     del keep
     end()
 

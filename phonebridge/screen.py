@@ -42,6 +42,7 @@ class Mirror(GObject.Object):
         self.frames = 0
         self.size = None                # (width, height) of the last picture
         self.state = None
+        self.transform = None           # how the phone's screen is turned: "normal", "90" ...
         self.ssh = None
         self.pipe = None
         self.running = False
@@ -108,6 +109,12 @@ class Mirror(GObject.Object):
     def swipe(self, x, y, dx, dy, ms=250):
         return self.send("swipe %d %d %d %d %d" % (x, y, dx, dy, ms))
 
+    def rotate(self, transform):
+        """Turns the phone's screen: "normal", "90", "180", "270" or
+        "toggle" (portrait to landscape and back). The stream ends with
+        "again" then - the picture has a new size."""
+        return self.send("rotate %s" % transform)
+
     def key(self, code, how="key"):
         """how: "key" (press and release), "press" or "release"."""
         return self.send("%s %d" % (how, code))
@@ -160,6 +167,10 @@ class Mirror(GObject.Object):
                 self._errors = (self._errors + [state[6:]])[-5:]
             if state == "again":
                 self.stop("again")
+                return False
+            if state.startswith("turned "):
+                self.transform = state[7:]
+                self.emit("state", state)
                 return False
             self.state = state
             self.emit("state", state)

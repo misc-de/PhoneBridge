@@ -16,7 +16,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst, Gtk  # noqa: E402
+from gi.repository import Gdk, Gst, Gtk  # noqa: E402
 
 from phonebridge import config, screen  # noqa: E402
 
@@ -59,6 +59,13 @@ class Pieces(unittest.TestCase):
         self.assertIn("tune=zerolatency", argv)
         self.assertEqual(ns["recorder_argv"]({"recorder": ["x"]}), ["x"])
 
+    def test_output(self):
+        ns = phone_side()
+        randr = ('HWCOMPOSER-1 "Unknown"\n  Make: hwcomposer\n  Enabled: yes\n  Modes:\n'
+                 '    720x1600 px, 90.000000 Hz (current)\n  Transform: 90\n  Scale: 1.5\n')
+        self.assertEqual(ns["output"]({"enabled": ["printf", randr]}, None),
+                         ("HWCOMPOSER-1", True, "90"))
+
     def test_screen_on(self):
         ns = phone_side()
         self.assertTrue(ns["screen_on"]({"enabled": ["echo", "  Enabled: yes"]}, None))
@@ -76,6 +83,11 @@ class Pieces(unittest.TestCase):
                          "key 30", "press 42", "release 42", "key 999", "down x", "nonsense",
                          "", "up 1"):
                 ns["handle"](dev, line)
+            turned = []
+            for line in ("rotate 90", "rotate sideways", "rotate", "rotate toggle"):
+                ns["handle"](dev, line, turned.append)
+            ns["handle"](None, "rotate normal", turned.append)
+            ns["handle"](None, "down 1 1")               # no touch: nothing, no crash
         dev.close()
         lines = open(log.name).read().splitlines()
         self.assertEqual(lines[:3], ["down 100 200", "move 10000 0", "up"])
@@ -85,6 +97,7 @@ class Pieces(unittest.TestCase):
         self.assertEqual(len(swipe), 5)                  # 36 ms: down, three points, up
         rest = lines[3 + len(swipe):]
         self.assertEqual(rest, ["key 30 1", "key 30 0", "key 42 1", "key 42 0", "up"])
+        self.assertEqual(turned, ["90", "toggle", "normal"])
 
 
 @unittest.skipUnless(HAVE_GST, "no gst-launch or GStreamer elements for the test picture")
@@ -142,9 +155,26 @@ class Streaming(unittest.TestCase):
         m.connect("stopped", lambda _m, r: stopped.append(r))
         m.start()
         self.assertTrue(run_loop_until(lambda: stopped, 20))
-        self.assertEqual(states, ["on", "error broken"])
+        self.assertEqual(states, ["on", "turned normal", "error broken"])
         self.assertEqual(stopped, ["again"])
         self.assertIsNone(m.ssh)
+
+    def test_turning_is_a_new_stream(self):
+        turned = os.path.join(os.path.dirname(self.log), "turned")
+        m, pictures = self.mirror(recorder=recorder(100000),
+                                  rotate=["sh", "-c", 'echo "$0" > ' + turned])
+        states, stopped = [], []
+        m.connect("state", lambda _m, s: states.append(s))
+        m.connect("stopped", lambda _m, r: stopped.append(r))
+        m.start()
+        self.assertTrue(run_loop_until(lambda: pictures, 30))
+        self.assertEqual(m.transform, "normal")
+        self.assertEqual(states[:2], ["on", "turned normal"])
+        self.assertTrue(m.rotate("toggle"))
+        self.assertTrue(run_loop_until(lambda: stopped, 20))
+        self.assertEqual(stopped, ["again"])
+        self.assertEqual(open(turned).read().strip(), "90")
+        self.assertFalse([s for s in states if s.startswith("error")])
 
     def test_the_phone_goes(self):
         m, pictures = self.mirror(recorder=["sh", "-c", "kill -TERM $PPID"])
@@ -197,6 +227,26 @@ class InTheApp(unittest.TestCase):
         self.assertEqual(app.cfg["screen"]["quality"], "sharp")
         self.assertIsNot(page.mirror, first)
         self.assertEqual(page.mirror.params["width"], 720)
+        # full screen: only the picture; Esc goes back
+        window = mock.Mock(fullscreened=False)
+        window.is_fullscreen = lambda: window.fullscreened
+        window.fullscreen = lambda: setattr(window, "fullscreened", True)
+        window.unfullscreen = lambda: setattr(window, "fullscreened", False)
+        page._window = window
+        page.set_fullscreen(True)
+        self.assertTrue(window.fullscreened)
+        self.assertFalse(page.bar.get_visible())
+        window.fullscreened = False                     # the window manager has not said so yet
+        self.assertTrue(page.is_fullscreen())
+        window.set_chrome.assert_called_with(False)
+        self.assertFalse(page._on_escape(None, Gdk.KEY_a, 38, 0))      # a key for the phone
+        self.assertTrue(page._on_escape(None, Gdk.KEY_Escape, 9, 0))
+        self.assertFalse(window.fullscreened)
+        self.assertTrue(page.bar.get_visible())
+        window.set_chrome.assert_called_with(True)
+        self.assertFalse(page._on_escape(None, Gdk.KEY_Escape, 9, 0))  # not full screen: the phone's
+        page._window = None
+
         page._pressed.add(30)
         page.stop()                                      # the page goes: keys up, picture off
         self.assertIsNone(page.mirror)

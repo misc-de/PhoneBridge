@@ -90,6 +90,7 @@ class MainWindow(Adw.ApplicationWindow):
         bar = Adw.ViewSwitcherBar(stack=self.stack)
         view.add_bottom_bar(bar)
         self.set_content(view)
+        self.view = view
 
         # not wide enough for every page's name beside its icon: name below
         middle = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 1400sp"))
@@ -137,6 +138,11 @@ class MainWindow(Adw.ApplicationWindow):
         end.append(_("Quit"), "app.quit")
         menu.append_section(None, end)
         return menu
+
+    def set_chrome(self, shown):
+        """The bars around the pages - gone while the screen page is full screen."""
+        self.view.set_reveal_top_bars(shown)
+        self.view.set_reveal_bottom_bars(shown)
 
     def update_changed(self):
         """The update hint at the top left: there while an update waits."""

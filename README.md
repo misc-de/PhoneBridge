@@ -79,7 +79,8 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
 - **The phone's screen** - live on the *Screen* page, and usable from the PC: a click taps,
   dragging swipes (Phosh's swipes from the edges too), holding is a long press, the mouse
   wheel scrolls, keys typed there are typed on the phone. Buttons for power, the app
-  overview and the volume; three picture qualities. The picture runs only while the page is
+  overview and the volume, for turning the phone between portrait and landscape, and for
+  full screen (Esc goes back); three picture qualities. The picture runs only while the page is
   shown, and the phone's screen stays on meanwhile.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).

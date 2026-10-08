@@ -3,7 +3,9 @@
 """The page with the phone's screen, live: a click is a tap, dragging is a
 swipe (Phosh's swipes from the edges too), holding is a long press, the
 mouse wheel scrolls, and keys typed here are typed on the phone. The
-picture runs only while the page is shown."""
+picture runs only while the page is shown. Full screen shows nothing but
+the picture (Esc goes back); a button turns the phone between portrait
+and landscape."""
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
@@ -42,10 +44,21 @@ class ScreenPage(Gtk.Box):
             b.add_css_class("flat")
             b.connect("clicked", lambda _b, c: self.key(c), code)
             bar.append(b)
+        self.rotate_button = Gtk.Button(icon_name="object-rotate-right-symbolic",
+                                        tooltip_text=_("Portrait or landscape"))
+        self.rotate_button.add_css_class("flat")
+        self.rotate_button.connect("clicked", lambda *a: self.rotate())
+        bar.append(self.rotate_button)
+        full = Gtk.Button(icon_name="view-fullscreen-symbolic",
+                          tooltip_text=_("Full screen (Esc goes back)"))
+        full.add_css_class("flat")
+        full.connect("clicked", lambda *a: self.set_fullscreen(True))
+        bar.append(full)
         self.quality = Gtk.DropDown(model=Gtk.StringList.new([_(n) for _k, n in QUALITY_NAMES]),
                                     tooltip_text=_("Picture quality"))
         self.quality.connect("notify::selected", self._on_quality)
         bar.append(self.quality)
+        self.bar = bar
         self.append(bar)
 
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
@@ -88,8 +101,80 @@ class ScreenPage(Gtk.Box):
         self.state.add_css_class("caption")
         self.append(self.state)
 
-        self.connect("map", lambda *a: self.load())
-        self.connect("unmap", lambda *a: self.stop())
+        # Esc ends full screen - before the picture would send it to the phone
+        esc = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        esc.connect("key-pressed", self._on_escape)
+        self.add_controller(esc)
+        self._window = None
+        self._window_handler = 0
+        self._full = False      # our own word: a window manager may confirm it late
+
+        self.connect("map", lambda *a: self._on_map())
+        self.connect("unmap", lambda *a: self._on_unmap())
+
+    def _on_map(self):
+        root = self.get_root()
+        if isinstance(root, Gtk.Window) and root is not self._window:
+            self._forget_window()
+            self._window = root
+            self._window_handler = root.connect("notify::fullscreened",
+                                                lambda *a: self._on_window_fullscreen())
+        self.load()
+
+    def _on_unmap(self):
+        self.set_fullscreen(False)
+        self.stop()
+
+    def _forget_window(self):
+        if self._window is not None and self._window_handler:
+            self._window.disconnect(self._window_handler)
+        self._window, self._window_handler = None, 0
+
+    # -- full screen and turning ---------------------------------------------------------
+    def is_fullscreen(self):
+        return self._full
+
+    def set_fullscreen(self, on):
+        win = self._window
+        if win is None or on == self._full:
+            return
+        self._full = on
+        if on:
+            win.fullscreen()
+            self.app.toast(_("Esc ends full screen"))
+        else:
+            win.unfullscreen()
+        self._fullscreen_changed(on)
+
+    def _on_window_fullscreen(self):
+        """The window manager ended full screen (F11, a keyboard shortcut ...)."""
+        if self._full and not self._window.is_fullscreen() and self._was_full:
+            self._full = False
+            self._fullscreen_changed(False)
+        self._was_full = self._window.is_fullscreen()
+
+    _was_full = False
+
+    def _fullscreen_changed(self, on):
+        """Full screen: only the picture - the window's bars and the page's
+        own go."""
+        self.bar.set_visible(not on)
+        self.state.set_visible(not on)
+        if hasattr(self._window, "set_chrome"):
+            self._window.set_chrome(not on)
+        if on:
+            self.picture.grab_focus()
+
+    def _on_escape(self, controller, keyval, keycode, state):
+        if keyval == Gdk.KEY_Escape and self.is_fullscreen():
+            self.set_fullscreen(False)
+            return True
+        return False
+
+    def rotate(self):
+        """Portrait to landscape and back. The picture comes anew."""
+        if self.mirror is not None:
+            self.mirror.rotate("toggle")
 
     # -- the phone ---------------------------------------------------------------------
     def set_device(self, dev):
