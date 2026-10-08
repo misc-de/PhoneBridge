@@ -1482,4 +1482,94 @@ TRANSLATIONS = {
         'Vollbild (Esc kehrt zurück)',
     'Esc ends full screen':
         'Esc beendet das Vollbild',
+    "A GNOME desktop of the phone's own, shown only here, in a window of its own. Phosh goes on as it is on the phone. It is drawn without the graphics chip - fine for files, settings and simple apps; videos and animations stutter.":
+        'Ein eigener GNOME-Desktop des Phones, nur hier zu sehen, in einem eigenen Fenster. Phosh läuft am Phone unverändert weiter. Er wird ohne Grafikchip gezeichnet – gut für Dateien, Einstellungen und einfache Apps; Videos und Animationen ruckeln.',
+    'Check again':
+        'Erneut prüfen',
+    'Copied':
+        'Kopiert',
+    'Desktop session':
+        'Desktop-Sitzung',
+    'Desktop session (RDP)':
+        'Desktop-Sitzung (RDP)',
+    'End':
+        'Beenden',
+    'Firewall rule without a password':
+        'Firewall-Regel ohne Passwort',
+    "For the session's certificate and its own D-Bus.":
+        'Für das Zertifikat der Sitzung und ihren eigenen D-Bus.',
+    'GNOME Remote Desktop on the phone':
+        'GNOME Remote Desktop auf dem Phone',
+    'GNOME Shell on the phone':
+        'GNOME Shell auf dem Phone',
+    'How to set it up …':
+        'Anleitung …',
+    'How to …':
+        'Anleitung …',
+    'It shows the desktop over RDP. Installed, it does nothing by itself - PhoneBridge starts it only for a desktop session.':
+        'Es zeigt den Desktop über RDP. Installiert tut es von selbst nichts – PhoneBridge startet es nur für eine Desktop-Sitzung.',
+    'Missing':
+        'Fehlt',
+    'Not running':
+        'Läuft nicht',
+    'On the phone - in its terminal, or from here with “ssh %s@%s”:':
+        'Am Phone – in seinem Terminal oder von hier aus mit „ssh %s@%s“:',
+    "Only the phone itself reaches the desktop's port":
+        'Nur das Phone selbst erreicht den Port des Desktops',
+    'OpenSSL and D-Bus on the phone':
+        'OpenSSL und D-Bus auf dem Phone',
+    'Opening the window …':
+        'Öffne das Fenster …',
+    'Optional - without it the port can be reached in the network, guarded by a password for this session only':
+        'Optional – ohne sie ist der Port im Netzwerk erreichbar, geschützt durch ein Passwort nur für diese Sitzung',
+    'Port reachable in the network (no firewall rule)':
+        'Port im Netzwerk erreichbar (keine Firewall-Regel)',
+    'RDP client on this PC':
+        'RDP-Client auf diesem PC',
+    'Running - closing its window ends it':
+        'Läuft – Schließen des Fensters beendet sie',
+    'Screen sharing':
+        'Bildschirm übertragen',
+    'Start':
+        'Starten',
+    'Start anyway':
+        'Trotzdem starten',
+    'Starting GNOME on the phone … (10-30 s)':
+        'Starte GNOME auf dem Phone … (10–30 s)',
+    "The desktop is GNOME's own shell, started without a screen.":
+        'Der Desktop ist GNOMEs eigene Shell, ohne Bildschirm gestartet.',
+    "The desktop opens in FreeRDP 3 (xfreerdp3 or sdl-freerdp3) - install it with your distribution's package manager.":
+        'Der Desktop öffnet sich in FreeRDP 3 (xfreerdp3 oder sdl-freerdp3) – installiere es mit der Paketverwaltung deiner Distribution.',
+    'The desktop opens in FreeRDP 3 (xfreerdp3). On this PC:':
+        'Der Desktop öffnet sich in FreeRDP 3 (xfreerdp3). Auf diesem PC:',
+    'The desktop session ended: %s':
+        'Die Desktop-Sitzung ist beendet: %s',
+    "The phone cannot close the desktop's port to the network without a password. The desktop can still start: then devices in the same network reach its port - guarded by TLS and a password that is made for this session only.":
+        'Das Phone kann den Port des Desktops ohne Passwort nicht zum Netzwerk hin sperren. Der Desktop kann trotzdem starten: Dann erreichen Geräte im selben Netzwerk seinen Port – geschützt durch TLS und ein Passwort, das nur für diese Sitzung erzeugt wird.',
+    'There':
+        'Vorhanden',
+    'What it needs':
+        'Voraussetzungen',
+    "While the desktop runs, PhoneBridge closes its port to everything but the phone itself (the PC comes in through SSH). For that the phone's user may run iptables without a password - this allows exactly that, nothing else:":
+        'Solange der Desktop läuft, sperrt PhoneBridge seinen Port für alles außer dem Phone selbst (der PC kommt über SSH herein). Dafür darf der Benutzer des Phones iptables ohne Passwort ausführen – das hier erlaubt genau das, sonst nichts:',
+    'Without a firewall rule':
+        'Ohne Firewall-Regel',
+    'Install GNOME Shell':
+        'GNOME Shell installieren',
+    'Install GNOME Remote Desktop':
+        'GNOME Remote Desktop installieren',
+    'Install OpenSSL and D-Bus':
+        'OpenSSL und D-Bus installieren',
+    'Set up the firewall rule':
+        'Firewall-Regel einrichten',
+    'Install an RDP client':
+        'RDP-Client installieren',
+    'Resolution':
+        'Auflösung',
+    'Of the desktop on the phone - the window scales it to its own size':
+        'Des Desktops auf dem Phone – das Fenster skaliert ihn auf seine Größe',
+    'this screen':
+        'dieser Bildschirm',
+    'slow':
+        'langsam',
 }

@@ -5,7 +5,10 @@ swipe (Phosh's swipes from the edges too), holding is a long press, the
 mouse wheel scrolls, and keys typed here are typed on the phone. The
 picture runs only while the page is shown. Full screen shows nothing but
 the picture (Esc goes back); a button turns the phone between portrait
-and landscape."""
+and landscape.
+
+The other way, chosen at the top: a GNOME desktop of the phone's own in
+an RDP window (rdp_ui.py)."""
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
@@ -34,6 +37,19 @@ class ScreenPage(Gtk.Box):
         self._wheel_timer = 0
         self._dragging = False
         self._filling = False
+        self._online = None
+
+        # how: the phone's screen, or a desktop of its own
+        self.switch = Gtk.Box(halign=Gtk.Align.CENTER, margin_top=6)
+        self.switch.add_css_class("linked")
+        self.mirror_mode = Gtk.ToggleButton(label=_("Screen sharing"))
+        self.desktop_mode = Gtk.ToggleButton(label=_("Desktop session (RDP)"),
+                                             group=self.mirror_mode)
+        for b in (self.mirror_mode, self.desktop_mode):
+            b.connect("toggled", self._on_mode)
+            self.switch.append(b)
+        self.append(self.switch)
+        self.mirror_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
         bar = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER, margin_top=6, margin_bottom=6)
         for icon, tip, code in (
@@ -60,7 +76,7 @@ class ScreenPage(Gtk.Box):
         self.quality.connect("notify::selected", self._on_quality)
         bar.append(self.quality)
         self.bar = bar
-        self.append(bar)
+        self.mirror_box.append(bar)
 
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
                                    hexpand=True, vexpand=True, focusable=True,
@@ -93,14 +109,21 @@ class ScreenPage(Gtk.Box):
         self.view = Gtk.Stack(vexpand=True)
         self.view.add_named(self.picture, "picture")
         self.view.add_named(self.status, "status")
-        self.append(self.view)
+        self.mirror_box.append(self.view)
         self.hint = _("Click to tap, drag to swipe, hold for a long press. Keys typed here go "
                       "to the phone.")
         self.state = Gtk.Label(label=self.hint, wrap=True, justify=Gtk.Justification.CENTER,
                                margin_bottom=6, margin_start=12, margin_end=12)
         self.state.add_css_class("dim-label")
         self.state.add_css_class("caption")
-        self.append(self.state)
+        self.mirror_box.append(self.state)
+
+        from .rdp_ui import DesktopPanel
+        self.desktop = DesktopPanel(app)
+        self.modes = Gtk.Stack(vexpand=True, transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.modes.add_named(self.mirror_box, "mirror")
+        self.modes.add_named(self.desktop, "desktop")
+        self.append(self.modes)
 
         # Esc ends full screen - before the picture would send it to the phone
         esc = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
@@ -175,6 +198,7 @@ class ScreenPage(Gtk.Box):
         own go."""
         self.bar.set_visible(not on)
         self.state.set_visible(not on)
+        self.switch.set_visible(not on)
         if hasattr(self._window, "set_chrome"):
             self._window.set_chrome(not on)
         if on:
@@ -197,25 +221,54 @@ class ScreenPage(Gtk.Box):
             self.stop()
             self.dev = dev
             self.picture.set_paintable(None)
+            self._online = None
+        self.desktop.set_device(dev)
         self.device_changed()
 
     def device_changed(self):
         self._filling = True
         try:
-            q = settings(self.app)["quality"]
+            q = settings(self.app).get("quality", "normal")
             self.quality.set_selected(next((n for n, (k, _l) in enumerate(QUALITY_NAMES)
                                             if k == q), 1))
+            desktop = self.mode() == "desktop"
+            self.desktop_mode.set_active(desktop)
+            self.mirror_mode.set_active(not desktop)
+            self.modes.set_visible_child_name(self.mode())
         finally:
             self._filling = False
+        online = self.dev is not None and self.dev.online
+        if online != self._online:
+            self._online = online
+            self.desktop.refresh()          # what the phone has: asked when it comes
+
         if self.dev is None or not self.dev.online:
             self.stop()
             self._show_status(_("Not connected"), self.dev and text.device_state(self.dev))
         elif self.get_mapped():
             self.load()
 
+    def mode(self):
+        return settings(self.app).get("mode", "mirror")
+
+    def _on_mode(self, button):
+        if self._filling or not button.get_active():
+            return
+        mode = "desktop" if button is self.desktop_mode else "mirror"
+        settings(self.app)["mode"] = mode
+        config.save(self.app.cfg)
+        self.modes.set_visible_child_name(mode)
+        if mode == "desktop":
+            self.stop()                 # the picture only runs while it is shown
+            self.desktop.refresh()
+        else:
+            self.load()
+
     def load(self, force=False):
-        """Starts the picture - only while the page is shown."""
+        """Starts the picture - only while the page is shown, and showing it."""
         dev = self.dev
+        if self.mode() != "mirror":
+            return
         if not self.get_mapped() or dev is None or not dev.online:
             if dev is None or not dev.online:
                 self._show_status(_("Not connected"), dev and text.device_state(dev))
@@ -228,7 +281,7 @@ class ScreenPage(Gtk.Box):
         except (ImportError, ValueError):           # no GStreamer on this PC
             self._show_status(_("GStreamer is missing on this PC"), None)
             return
-        self.mirror = Mirror(dev, settings(self.app)["quality"], picture=self._show,
+        self.mirror = Mirror(dev, settings(self.app).get("quality", "normal"), picture=self._show,
                              **self.app._screen_extra)
         self.mirror.connect("state", self._on_state)
         self.mirror.connect("stopped", self._on_stopped)

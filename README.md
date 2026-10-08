@@ -82,6 +82,12 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
   overview and the volume, for turning the phone between portrait and landscape, and for
   full screen (Esc goes back); three picture qualities. The picture runs only while the page is
   shown, and the phone's screen stays on meanwhile.
+- **A desktop of the phone's own** - the other way on the *Screen* page: a GNOME desktop
+  started on the phone without a screen and shown here in an RDP window (FreeRDP 3), in a
+  resolution chosen beforehand (720p upwards). Phosh goes on as it is; the desktop has its
+  own D-Bus and dconf database, but the user's files and apps. It is drawn without the
+  graphics chip - fine for files, settings and simple apps. What is missing on the phone
+  or the PC is listed, with the commands that set it up.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).
 - **Hotspot** - switch the phone's hotspot from *Settings → Quick settings*, and keep it on
@@ -114,6 +120,7 @@ apps use:
 | Clipboard | wl-copy / wl-paste (the compositor's data-control) |
 | Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
 | Screen | wf-recorder (wlr-screencopy, x264, only changed pictures) → FLV over SSH → GStreamer on the PC; taps and keys back through a virtual touchscreen and keyboard (uinput, python3-evdev) |
+| Desktop session | gnome-shell --headless and GNOME Remote Desktop on a D-Bus of their own; RDP through SSH (one ssh per connection - the phone's sshd forwards no ports); the port closed to the network by an iptables rule while it runs |
 | Webcam | droidcamsrc → x264 (zero latency) → H.264 over SSH; on the PC GStreamer (slice decoding, ~50 ms) → v4l2loopback or PipeWire |
 | Hotspot | NetworkManager on the phone; on the PC a profile over NetworkManager's D-Bus API |
 | The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
@@ -146,6 +153,7 @@ PhoneBridge looks at the desktop it runs on and adapts:
 | Passwords in the keyring | `libsecret` | `gir1.2-secret-1` |
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
 | The phone's screen | `gst-plugins-good gst-plugins-bad gst-libav` | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav` |
+| Desktop session | `freerdp` (FreeRDP 3); on the phone `gnome-shell gnome-remote-desktop` | `freerdp3-x11`; on the phone `gnome-shell gnome-remote-desktop` |
 | Webcam | `gst-plugins-bad gst-libav gst-plugin-pipewire`; for every program `v4l2loopback-dkms v4l2loopback-utils` and the kernel's headers (Manjaro: `linuxXY-headers`) | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire v4l2loopback-dkms v4l2loopback-utils` |
 
 Fedora: `python3-gobject gtk4 libadwaita python3-cairo openssh-clients` (and `libsecret`,

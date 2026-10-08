@@ -80,6 +80,9 @@ class PhoneBridgeApp(Adw.Application):
         self.music_pc = {}              # device id -> MusicOnPC while its music plays here
         self._music_retry = {}          # device id -> timeout after the stream failed
         self.webcam_listeners = []
+        self.rdp_sessions = {}          # device id -> rdp.Desktop while a desktop session runs
+        self.rdp_listeners = []
+        self.rdp_last_error = {}        # device id -> why the last desktop session ended
         self._clip_last = None          # the clipboard text last passed either way
         self._clip_handler = 0
         self.update_available = None    # {"sha", "count", "changes"} from update.check
@@ -176,6 +179,8 @@ class PhoneBridgeApp(Adw.Application):
         self._ending = True
         for cam in list(self.webcams.values()):
             cam.stop()
+        for session in list(self.rdp_sessions.values()):
+            session.stop()
         for stream in list(self.music_pc.values()):
             stream.stop()
         for dev_id, audio in list(self.pc_audio.items()):
@@ -467,6 +472,8 @@ class PhoneBridgeApp(Adw.Application):
             self.set_pc_audio(dev, False)
         if not online and dev.id in self.webcams:
             self.set_webcam(dev, False)
+        if not online and dev.id in self.rdp_sessions:
+            self.set_rdp(dev, False)
         if not online and self.media.get(dev.id):
             self._on_media(dev, [])
         if not online:
@@ -630,6 +637,48 @@ class PhoneBridgeApp(Adw.Application):
 
     _webcam_extra = {}      # the tests' camera and sink
     _screen_extra = {}      # the tests' phone side of the screen page
+    _rdp_extra = {}         # the tests' phone side and RDP client of the desktop session
+
+    # -- a desktop session of the phone's own (RDP) --------------------------------------
+    def set_rdp(self, dev, on, allow_open=False):
+        """Starts a GNOME desktop on the phone, shown here in an RDP window -
+        or ends it."""
+        old = self.rdp_sessions.pop(dev.id, None)
+        if old is not None:
+            old.stop()
+        if on and dev.online:
+            from .rdp import Desktop
+            from .rdp_ui import settings, state_text
+            from .rdp_ui import DEFAULT_SIZE
+            size = settings(self).get("desktop_size")
+            session = Desktop(dev, size=size or DEFAULT_SIZE, allow_open=allow_open,
+                              **self._rdp_extra)
+            session.state_text = state_text("starting")
+            session.open = False
+            session.connect("state", self._rdp_state, dev)
+            session.connect("stopped", self._rdp_stopped, dev)
+            self.rdp_last_error.pop(dev.id, None)
+            if session.start():
+                self.rdp_sessions[dev.id] = session
+        for listener in list(self.rdp_listeners):
+            listener(dev)
+
+    def _rdp_state(self, session, state, dev):
+        from .rdp_ui import state_text
+        if state == "open":
+            session.open = True
+        session.state_text = state_text(state)
+        for listener in list(self.rdp_listeners):
+            listener(dev)
+
+    def _rdp_stopped(self, session, reason, dev):
+        if self.rdp_sessions.get(dev.id) is session:
+            del self.rdp_sessions[dev.id]
+        if reason is not None:
+            self.rdp_last_error[dev.id] = text.error(reason)
+            self.tell(_("The desktop session ended: %s") % text.error(reason))
+        for listener in list(self.rdp_listeners):
+            listener(dev)
 
     def _webcam_stopped(self, cam, reason, dev):
         if self.webcams.get(dev.id) is cam:

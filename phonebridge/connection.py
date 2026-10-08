@@ -29,7 +29,7 @@ TIMEOUTS = {"sms.send": 120, "pim.sources": 90, "contacts.list": 150,
             "calendar.save": 150, "calendar.delete": 150, "voicebox.audio": 120,
             "sms.delete_thread": 60, "sip.save": 60, "sip.delete": 60,
             "files.list": 60, "files.thumbs": 90, "files.delete": 300,
-            "screen.shot": 60, "hotspot.set": 60}
+            "screen.shot": 60, "desktop.check": 60, "hotspot.set": 60}
 # a ping this often; no answer in PING_TIMEOUT and the connection is dead
 PING_EVERY = 20
 PING_TIMEOUT = 20

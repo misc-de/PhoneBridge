@@ -3675,6 +3675,35 @@ def cmd_screenshot(agent, args):
     return {"png": base64.b64encode(screenshot(agent.session)).decode("ascii")}
 
 
+# --- a desktop of its own, for the PC (rdp_phone.py) --------------------------------
+
+def desktop_check():
+    """What a GNOME desktop for the PC needs on the phone - and whether a
+    firewall rule can be set without a password. The paths can be set for
+    the tests."""
+    def have(name, env):
+        path = os.environ.get(env)
+        return bool(path and os.path.exists(path)) if path is not None else bool(
+            shutil.which(name))
+    grd = os.environ.get("PHONEBRIDGE_GRD", "/usr/libexec/gnome-remote-desktop-daemon")
+    iptables = shutil.which("iptables") or "/usr/sbin/iptables"
+    try:        # may iptables run without a password (all of sudo, or just it)?
+        sudo = subprocess.run(["sudo", "-n", "-l", iptables], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        sudo = False
+    return {"gnome_shell": have("gnome-shell", "PHONEBRIDGE_GNOME_SHELL"),
+            "remote_desktop": os.path.exists(grd) and bool(shutil.which("grdctl")),
+            "openssl": bool(shutil.which("openssl")),
+            "dbus_daemon": bool(shutil.which("dbus-daemon")),
+            "firewall": sudo, "iptables": iptables}
+
+
+@command("desktop.check", threaded=True)
+def cmd_desktop_check(agent, args):
+    return desktop_check()
+
+
 # --- the phone's hotspot ----------------------------------------------------------
 
 def nmcli_fields(line):
