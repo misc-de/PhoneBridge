@@ -34,6 +34,8 @@ SECTIONS = (
      "special": "pc"},
     {"id": "backup", "title": N_("Photo backup"), "icon": "camera-photo-symbolic",
      "special": "backup"},
+    {"id": "webcam", "title": N_("Webcam"), "icon": "camera-web-symbolic",
+     "special": "webcam"},
     {"id": "appearance", "title": N_("Appearance"), "icon": "preferences-desktop-appearance-symbolic",
      "groups": (
          (None, None, (

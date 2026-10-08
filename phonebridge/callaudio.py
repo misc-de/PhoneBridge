@@ -158,7 +158,9 @@ class CallAudio(GObject.Object):
             return False
         self._procs = [self.mic, self.speaker, self.ssh]
         self.running = True
-        for target in (self._uplink, self._downlink, self._errors):
+        self._errors_thread = threading.Thread(target=self._errors, daemon=True)
+        self._errors_thread.start()
+        for target in (self._uplink, self._downlink):
             threading.Thread(target=target, daemon=True).start()
         return True
 
@@ -196,6 +198,11 @@ class CallAudio(GObject.Object):
 
     def _ended(self, which):
         if self.running:
+            # ssh's last words (why the connection went) may come after the
+            # stream's end: a moment for them
+            errors = getattr(self, "_errors_thread", None)
+            if errors is not None and errors is not threading.current_thread():
+                errors.join(1.0)
             reason = self._stderr[-1] if self._stderr else "%s stream ended" % which
             GLib.idle_add(lambda: self.stop(reason) and False)
 

@@ -72,6 +72,10 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
   The phone's other apps too (messengers, mail, calendar …): *Close on the phone* closes one
   there, and one closed on the phone goes here as well. *Menu → Show the phone's
   notifications* turns that off.
+- **Webcam** - the phone's front or back camera as this PC's webcam (*Settings → Webcam* or
+  the panel menu): in every program once a virtual camera is set up (v4l2loopback - the
+  app does it with one password prompt), else as a PipeWire camera (OBS, GNOME Snapshot …).
+  720p H.264 over SSH, the camera on only while it is used.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).
 - **Hotspot** - switch the phone's hotspot from *Settings → Quick settings*, and keep it on
@@ -103,6 +107,7 @@ apps use:
 | Music | MPRIS players on the session bus |
 | Clipboard | wl-copy / wl-paste (the compositor's data-control) |
 | Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
+| Webcam | droidcamsrc → x264 → MPEG-TS over SSH; on the PC GStreamer → v4l2loopback or PipeWire |
 | Hotspot | NetworkManager on the phone; on the PC a profile over NetworkManager's D-Bus API |
 | The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
 | Files | the file system, as the phone's user; contents over an SSH connection of their own |
@@ -133,6 +138,7 @@ PhoneBridge looks at the desktop it runs on and adapts:
 | Required | `python-gobject gtk4 libadwaita python-cairo openssh` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-cairo openssh-client` |
 | Passwords in the keyring | `libsecret` | `gir1.2-secret-1` |
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
+| Webcam | `gst-plugins-bad gst-libav gst-plugin-pipewire`; for every program `v4l2loopback-dkms` (Manjaro: `linuxXY-v4l2loopback`) | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire v4l2loopback-dkms` |
 
 Fedora: `python3-gobject gtk4 libadwaita python3-cairo openssh-clients` (and `libsecret`,
 `pipewire-utils`, `pulseaudio-utils`); openSUSE: `python3-gobject typelib-1_0-Gtk-4_0

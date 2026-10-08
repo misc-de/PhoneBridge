@@ -76,6 +76,8 @@ class PhoneBridgeApp(Adw.Application):
         self._vb_known = {}
         self._was_online = {}
         self.media = {}                 # device id -> the phone's players (media_players)
+        self.webcams = {}               # device id -> Webcam while the phone is the webcam
+        self.webcam_listeners = []
         self._clip_last = None          # the clipboard text last passed either way
         self._clip_handler = 0
         self.update_available = None    # {"sha", "count", "changes"} from update.check
@@ -170,6 +172,8 @@ class PhoneBridgeApp(Adw.Application):
 
     def do_shutdown(self):
         self._ending = True
+        for cam in list(self.webcams.values()):
+            cam.stop()
         for dev_id, audio in list(self.pc_audio.items()):
             self.pc_audio.pop(dev_id, None)
             if audio is not PENDING:
@@ -457,6 +461,8 @@ class PhoneBridgeApp(Adw.Application):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:
             self.set_pc_audio(dev, False)
+        if not online and dev.id in self.webcams:
+            self.set_webcam(dev, False)
         if not online and self.media.get(dev.id):
             self._on_media(dev, [])
         if not online:
@@ -586,6 +592,46 @@ class PhoneBridgeApp(Adw.Application):
         for dev in self.devices.values():
             if dev.online:
                 dev.request("clipboard.watch", {"on": on})
+
+    # -- the phone as webcam -----------------------------------------------------
+    def set_webcam(self, dev, on):
+        """Switches the phone's camera on as this PC's webcam (again, with
+        the settings as they are) - or off."""
+        old = self.webcams.pop(dev.id, None)
+        if old is not None:
+            old.stop()
+        if on and dev.online:
+            try:
+                from .webcam import Webcam
+            except (ImportError, ValueError):
+                self.tell(_("GStreamer is missing on this PC"))
+                on = False
+        if on and dev.online:
+            from .webcam import Webcam
+            from .webcam_ui import settings
+            s = settings(self)
+            cam = Webcam(dev, camera=s["camera"], quality=s["quality"], mirror=s["mirror"],
+                         **self._webcam_extra)
+            cam.connect("stopped", self._webcam_stopped, dev)
+            if cam.start():
+                self.webcams[dev.id] = cam
+                self.tell(_("%(phone)s is the webcam now: %(where)s") % {
+                    "phone": dev.name, "where": cam.target if cam.target != "pipewire"
+                    else _("a PipeWire camera")})
+        for listener in list(self.webcam_listeners):
+            listener(dev)
+        self.update_tray()
+
+    _webcam_extra = {}      # the tests' camera and sink
+
+    def _webcam_stopped(self, cam, reason, dev):
+        if self.webcams.get(dev.id) is cam:
+            del self.webcams[dev.id]
+            if reason is not None:
+                self.tell(_("The webcam stopped: %s") % text.error(reason))
+            for listener in list(self.webcam_listeners):
+                listener(dev)
+            self.update_tray()
 
     # -- music on the phone ---------------------------------------------------
     def _on_media(self, dev, players):
@@ -1214,6 +1260,8 @@ class PhoneBridgeApp(Adw.Application):
                 {"id": "clipboard-from-phone", "label": _("Clipboard from the phone"),
                  "enabled": online},
                 {"id": "screenshot", "label": _("Screenshot of the phone"), "enabled": online},
+                {"id": "webcam", "enabled": online,
+                 "label": _("Webcam off") if dev.id in self.webcams else _("Phone as webcam")},
                 {"id": "ring", "enabled": online,
                  "label": _("Stop ringing") if dev.id in self.ringing
                  else _("Ring the phone")},
@@ -1242,6 +1290,8 @@ class PhoneBridgeApp(Adw.Application):
                 (self.answer_call if item_id == "answer" else self.hangup_call)(dev.id, call)
         elif item_id == "send":
             self.ask_send()
+        elif item_id == "webcam" and dev is not None:
+            self.set_webcam(dev, dev.id not in self.webcams)
         elif item_id == "screenshot":
             self.screenshot()
         elif item_id == "clipboard-to-phone":

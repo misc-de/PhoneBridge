@@ -190,6 +190,10 @@ class PhoneSettingsPage(Gtk.Box):
             page.add(self.quick.groups[0])
         elif special == "pc":
             page.add(self.quick.groups[1])
+        elif special == "webcam":
+            from .webcam_ui import WebcamGroup
+            self.webcam_group = WebcamGroup(self.app)
+            page.add(self.webcam_group)
         elif special == "backup":
             from .backup import BackupGroup
             self.backup_group = BackupGroup(self.app)
@@ -244,12 +248,16 @@ class PhoneSettingsPage(Gtk.Box):
         self.quick.set_device(dev)
         if hasattr(self, "backup_group"):
             self.backup_group.set_device(dev)
+        if hasattr(self, "webcam_group"):
+            self.webcam_group.set_device(dev)
         self.device_changed()
 
     def device_changed(self):
         self.quick.update()
         if hasattr(self, "backup_group"):
             self.backup_group.update()
+        if hasattr(self, "webcam_group"):
+            self.webcam_group.update()
         online = self.dev is not None and self.dev.online
         if hasattr(self, "browse_row"):
             self.browse_row.set_sensitive(online)

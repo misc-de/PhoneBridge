@@ -1361,4 +1361,56 @@ TRANSLATIONS = {
         'Füge einem Panel das Applet „Tray“ hinzu, um PhoneBridge dort zu sehen.',
     'Install the “Ayatana Indicators” panel plugin to see PhoneBridge there.':
         'Installiere das Panel-Plugin „Ayatana Indicators“, um PhoneBridge dort zu sehen.',
+    '%(phone)s is the webcam now: %(where)s':
+        '%(phone)s ist jetzt die Webcam: %(where)s',
+    'The webcam stopped: %s':
+        'Die Webcam wurde beendet: %s',
+    'Webcam off':
+        'Webcam aus',
+    'Phone as webcam':
+        'Phone als Webcam',
+    'a PipeWire camera':
+        'eine PipeWire-Kamera',
+    'Webcam':
+        'Webcam',
+    'Back camera':
+        'Rückkamera',
+    'Front camera':
+        'Frontkamera',
+    'Set up':
+        'Einrichten',
+    "The phone's camera as a webcam of this PC - for video calls in the browser, Zoom, Teams, OBS … The camera is on only while this is switched on.":
+        'Die Kamera des Phones als Webcam dieses PCs – für Videoanrufe im Browser, Zoom, Teams, OBS … Die Kamera ist nur an, solange das eingeschaltet ist.',
+    'Use the phone as webcam':
+        'Phone als Webcam nutzen',
+    'Camera':
+        'Kamera',
+    'Quality':
+        'Qualität',
+    'Mirror the picture':
+        'Bild spiegeln',
+    'Shown as':
+        'Erscheint als',
+    'For every program …':
+        'Für alle Programme …',
+    'A PipeWire camera - seen by OBS, GNOME Snapshot and browsers that take PipeWire cameras':
+        'Eine PipeWire-Kamera – sichtbar für OBS, GNOME Snapshot und Browser, die PipeWire-Kameras nutzen',
+    'A webcam for every program':
+        'Eine Webcam für alle Programme',
+    'Also at every start of the PC':
+        'Auch bei jedem Start des PCs',
+    '“%(name)s” in every program (%(device)s)':
+        '„%(name)s“ in allen Programmen (%(device)s)',
+    'For that this PC needs the kernel module v4l2loopback, which is not installed. Until then the phone shows as a PipeWire camera.':
+        'Dafür braucht dieser PC das Kernelmodul v4l2loopback, das nicht installiert ist. Bis dahin erscheint das Phone als PipeWire-Kamera.',
+    "PhoneBridge makes a virtual camera “%s” with v4l2loopback. That needs the administrator's rights once - the system asks for the password.":
+        'PhoneBridge legt mit v4l2loopback eine virtuelle Kamera „%s“ an. Dafür braucht es einmal Administratorrechte – das System fragt nach dem Passwort.',
+    'Not set up: %s':
+        'Nicht eingerichtet: %s',
+    '“%s” is there now':
+        '„%s“ ist jetzt da',
+    'The phone cannot be a webcam of this PC.':
+        'Das Phone kann keine Webcam dieses PCs sein.',
+    'GStreamer is missing on this PC':
+        'Auf diesem PC fehlt GStreamer',
 }
