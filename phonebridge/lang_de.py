@@ -1221,4 +1221,12 @@ TRANSLATIONS = {
         'An %(phone)s gesendet: %(what)s',
     'Opened on %(phone)s: %(what)s':
         'Auf %(phone)s geöffnet: %(what)s',
+    'Pause':
+        'Pause',
+    'Play':
+        'Abspielen',
+    'Next track':
+        'Nächster Titel',
+    'Previous track':
+        'Vorheriger Titel',
 }

@@ -56,6 +56,8 @@ Cinnamon, MATE, Budgie, waybar …).
 - **Phone links** - `tel:`, `callto:` and `sms:` links anywhere on the desktop (browser, mail)
   open in PhoneBridge: the number in the dial pad, one click to call; the conversation with
   the link's text.
+- **Music** - what plays on the phone (any MPRIS player), with back, play/pause and next in
+  the overview and the panel menu.
 - **Send to the phone** - a web link opens in the phone's browser, files and folders land in
   its Downloads (never over an existing file) with a notification there. From the panel
   menu, the window's menu, Thunar's *Send To* menu or `phonebridge --send FILE|URL …`.
@@ -82,6 +84,7 @@ apps use:
 | Voice messages | [VoiceBox](https://github.com/misc-de/VoiceBox), when it is installed |
 | Wi-Fi, volume, ring profile, power profile | NetworkManager, WirePlumber, feedbackd, power-profiles |
 | Settings | GSettings |
+| Music | MPRIS players on the session bus |
 | Files | the file system, as the phone's user; contents over an SSH connection of their own |
 
 Changing chatty's store or GNOME Calls' accounts needs the app to be stopped meanwhile;

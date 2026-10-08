@@ -68,6 +68,7 @@ class Device(GObject.Object):
         # the key is refused (and no password, or a wrong one): bool wrong
         "auth-needed": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
         "voicebox": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "media": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
     }
 
     def __init__(self, info):
@@ -313,6 +314,8 @@ class Device(GObject.Object):
                 self.emit("calls", msg.get("calls") or [])
             elif msg["event"] == "voicebox":
                 self.emit("voicebox")
+            elif msg["event"] == "media":
+                self.emit("media", msg.get("players") or [])
             return
         if not isinstance(msg, dict):
             return

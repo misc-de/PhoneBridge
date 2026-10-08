@@ -124,6 +124,7 @@ class OverviewPage(Gtk.ScrolledWindow):
         for t in (self.battery, self.mobile, self.wifi, self.conn):
             self.tiles.append(t)
         column.append(self.tiles)
+        column.append(self._media_bar())
 
         # what happened and what comes: three cards, three or two columns
         self.cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
@@ -142,6 +143,53 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.set_child(Adw.Clamp(child=column, maximum_size=1400, tightening_threshold=1000))
         self.connect("map", lambda *a: self.load())
 
+    def _media_bar(self):
+        """What plays on the phone, with back / play-pause / next - there
+        while a player is there."""
+        box = Gtk.Box(spacing=12, margin_top=8, margin_bottom=8, margin_start=14,
+                      margin_end=10)
+        box.append(Gtk.Image(icon_name="audio-x-generic-symbolic", pixel_size=24))
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                        valign=Gtk.Align.CENTER)
+        self.media_title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+        self.media_title.add_css_class("heading")
+        self.media_sub = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+        self.media_sub.add_css_class("dim-label")
+        self.media_sub.add_css_class("caption")
+        lines.append(self.media_title)
+        lines.append(self.media_sub)
+        box.append(lines)
+        self.media_buttons = {}
+        for action, icon, tip in (("Previous", "media-skip-backward-symbolic", _("Previous track")),
+                                  ("PlayPause", "media-playback-start-symbolic", _("Play")),
+                                  ("Next", "media-skip-forward-symbolic", _("Next track"))):
+            b = Gtk.Button(icon_name=icon, valign=Gtk.Align.CENTER, tooltip_text=tip)
+            b.add_css_class("flat")
+            b.add_css_class("circular")
+            b.connect("clicked", lambda _b, a=action: self.app.media_control(a, self.dev))
+            box.append(b)
+            self.media_buttons[action] = b
+        self.media = Gtk.Frame(child=box, visible=False)
+        self.media.add_css_class("card")
+        return self.media
+
+    def show_media(self):
+        p = self.app.player(self.dev.id) if self.dev is not None and self.dev.online else None
+        self.media.set_visible(p is not None)
+        if p is None:
+            return
+        self.media_title.set_label(p["title"] or p["identity"])
+        self.media_sub.set_label(" · ".join(x for x in (p["artist"], p["album"], p["identity"])
+                                           if x))
+        playing = p["status"] == "Playing"
+        play = self.media_buttons["PlayPause"]
+        play.set_icon_name("media-playback-pause-symbolic" if playing
+                           else "media-playback-start-symbolic")
+        play.set_tooltip_text(_("Pause") if playing else _("Play"))
+        play.set_sensitive(p["can_pause"] if playing else p["can_play"])
+        self.media_buttons["Previous"].set_sensitive(p["can_prev"])
+        self.media_buttons["Next"].set_sensitive(p["can_next"])
+
     # -- the phone ------------------------------------------------------------------
     def set_device(self, dev):
         if dev is not self.dev:
@@ -150,6 +198,7 @@ class OverviewPage(Gtk.ScrolledWindow):
             self._serial += 1           # late answers of the last phone: not here
             self.calls, self.events = [], []
         self.update()
+        self.show_media()
         self.show_threads()             # what the app already has, at once
         self.show_calls()
         self.show_events()
@@ -157,6 +206,7 @@ class OverviewPage(Gtk.ScrolledWindow):
 
     def device_changed(self):
         self.update()
+        self.show_media()
         self.load()
 
     def take_calls(self, calls):

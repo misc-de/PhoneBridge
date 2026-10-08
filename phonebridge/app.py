@@ -75,6 +75,7 @@ class PhoneBridgeApp(Adw.Application):
         self._pc_wanted = {}        # device id -> when a call to talk at the PC was dialled          # device id -> CallAudio while the PC has the sound
         self._vb_known = {}
         self._was_online = {}
+        self.media = {}                 # device id -> the phone's players (media_players)
         self.update_available = None    # {"sha", "count", "changes"} from update.check
         self.updating = False
 
@@ -223,6 +224,7 @@ class PhoneBridgeApp(Adw.Application):
                 dev.connect("sms", self._on_sms)
                 dev.connect("calls", self._on_calls)
                 dev.connect("voicebox", lambda d: self.refresh_voicebox(d))
+                dev.connect("media", self._on_media)
                 self.devices[dev_id] = dev
                 self._start_with_keyring(dev)
         if self.cfg["active"] not in self.devices:
@@ -421,10 +423,14 @@ class PhoneBridgeApp(Adw.Application):
             self.refresh_lines(dev)
             dev.request("calls.active", {},
                         lambda r, e: e is None and self._on_calls(dev, r))
+            dev.request("media.state", {},
+                        lambda r, e: e is None and self._on_media(dev, r))
         if not online and self.calls.get(dev.id):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:
             self.set_pc_audio(dev, False)
+        if not online and self.media.get(dev.id):
+            self._on_media(dev, [])
         if not online:
             self.ringing.pop(dev.id, None)
             self._pc_wanted.pop(dev.id, None)
@@ -434,6 +440,27 @@ class PhoneBridgeApp(Adw.Application):
         self.update_tray()
         if self.window is not None:
             self.window.device_changed(dev)
+
+    # -- music on the phone ---------------------------------------------------
+    def _on_media(self, dev, players):
+        self.media[dev.id] = players or []
+        self.update_tray()
+        if self.window is not None and dev is self.active_device():
+            self.window.overview.show_media()
+
+    def player(self, dev_id=None):
+        """The phone's player that plays (or the first), or None."""
+        dev_id = dev_id or (self.active_device().id if self.active_device() else None)
+        players = self.media.get(dev_id) or []
+        return players[0] if players else None
+
+    def media_control(self, action, dev=None):
+        dev = dev or self.active_device()
+        p = self.player(dev.id) if dev is not None else None
+        if p is None or not dev.online:
+            return
+        dev.request("media.control", {"bus": p["bus"], "action": action},
+                    lambda r, e: e is not None and self.toast(text.error(e)))
 
     def refresh_threads(self, dev):
         seen = config.seen_for(self.cfg, dev.id)
@@ -1013,6 +1040,15 @@ class PhoneBridgeApp(Adw.Application):
                 if call["state"] in ("incoming", "waiting"):
                     items.append({"id": "answer", "label": _("Answer")})
                 items.append({"id": "hangup", "label": _("Hang up")})
+        p = self.player(dev.id) if dev is not None and dev.online else None
+        if p is not None:
+            items.append({"type": "separator"})
+            items.append({"label": media_line(p), "enabled": False})
+            playing = p["status"] == "Playing"
+            items.append({"id": "media:PlayPause", "label": _("Pause") if playing else _("Play"),
+                          "enabled": p["can_pause"] if playing else p["can_play"]})
+            if p["can_next"]:
+                items.append({"id": "media:Next", "label": _("Next track")})
         if len(self.devices) > 1:
             items.append({"type": "separator"})
             for d in self.devices.values():
@@ -1064,6 +1100,8 @@ class PhoneBridgeApp(Adw.Application):
             self.show_devices()
         elif item_id == "quit":
             self.quit()
+        elif item_id.startswith("media:"):
+            self.media_control(item_id[6:])
         elif item_id.startswith("device:"):
             self.set_active(item_id[7:])
 
@@ -1269,6 +1307,12 @@ class PhoneBridgeApp(Adw.Application):
 
 
 PENDING = object()      # in pc_audio while the phone's microphone is being muted
+
+
+def media_line(player):
+    """♪ title – artist, or the player's name when it tells nothing."""
+    what = " – ".join(x for x in (player["title"], player["artist"]) if x)
+    return "♪ " + (what or player["identity"])
 
 
 def parse_link(uri):

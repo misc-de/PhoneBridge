@@ -795,6 +795,49 @@ class Agent:
         except GLib.Error:
             self._vb_monitor = None
         GLib.timeout_add_seconds(30, lambda: guarded(self.check_voicebox)(keep=True) or True)
+        self._watch_media()
+
+    # -- music and other players (MPRIS) ----------------------------------------
+    def _watch_media(self):
+        self._media_last = None
+        self._media_pending = 0
+        self._media_busy = False
+        if self.session is None:
+            return
+        self.session.signal_subscribe(
+            "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+            "/org/freedesktop/DBus", MPRIS, Gio.DBusSignalFlags.MATCH_ARG0_NAMESPACE,
+            lambda *a: self.schedule_media())
+        self.session.signal_subscribe(
+            None, "org.freedesktop.DBus.Properties", "PropertiesChanged", MPRIS_PATH,
+            None, Gio.DBusSignalFlags.NONE, lambda *a: self.schedule_media())
+
+    def schedule_media(self):
+        if not self._media_pending:
+            self._media_pending = GLib.timeout_add(300, self._media_check)
+
+    def _media_check(self):
+        """The players asked in a thread of their own: one that hangs must
+        not hold up calls and messages. A change goes to the PC."""
+        self._media_pending = 0
+        if self._media_busy:
+            self.schedule_media()
+            return False
+        self._media_busy = True
+
+        def ask():
+            try:
+                players = media_players(self.session)
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                players = None
+            self._media_busy = False
+            if players is not None and players != self._media_last:
+                self._media_last = players
+                send({"event": "media", "players": players})
+
+        threading.Thread(target=ask, daemon=True).start()
+        return False
 
     def active_calls(self):
         if not self.modem:
@@ -3190,6 +3233,60 @@ def cmd_files_free_name(agent, args):
     while os.path.lexists(os.path.join(folder, candidate)):
         candidate, n = "%s (%d)%s" % (stem, n, ext), n + 1
     return {"path": os.path.join(folder, candidate)}
+
+
+# --- music and other players (MPRIS) ------------------------------------------
+
+MPRIS = "org.mpris.MediaPlayer2"
+MPRIS_PATH = "/org/mpris/MediaPlayer2"
+MEDIA_ACTIONS = ("PlayPause", "Play", "Pause", "Next", "Previous", "Stop")
+
+
+def media_players(conn):
+    """Every player on the phone: what it plays and what it can - the one
+    playing first."""
+    if conn is None:
+        return []
+    names = call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                 "ListNames", reply="(as)")[0]
+    out = []
+    for name in sorted(n for n in names if n.startswith(MPRIS + ".")):
+        try:
+            props = call(conn, name, MPRIS_PATH, "org.freedesktop.DBus.Properties", "GetAll",
+                         GLib.Variant("(s)", (MPRIS + ".Player",)), "(a{sv})", timeout=2000)[0]
+            identity = call(conn, name, MPRIS_PATH, "org.freedesktop.DBus.Properties", "Get",
+                            GLib.Variant("(ss)", (MPRIS, "Identity")), "(v)", timeout=2000)[0]
+        except DBusFailure:
+            continue
+        meta = props.get("Metadata") or {}
+        artist = meta.get("xesam:artist") or []
+        out.append({
+            "bus": name, "identity": str(identity or name.rsplit(".", 1)[-1]),
+            "status": str(props.get("PlaybackStatus") or "Stopped"),
+            "title": str(meta.get("xesam:title") or ""),
+            "artist": ", ".join(map(str, artist)) if isinstance(artist, list) else str(artist),
+            "album": str(meta.get("xesam:album") or ""),
+            "can_next": bool(props.get("CanGoNext")),
+            "can_prev": bool(props.get("CanGoPrevious")),
+            "can_play": bool(props.get("CanPlay", True)),
+            "can_pause": bool(props.get("CanPause", True))})
+    out.sort(key=lambda p: (p["status"] != "Playing", p["status"] != "Paused"))
+    return out
+
+
+@command("media.state", threaded=True)
+def cmd_media_state(agent, args):
+    return media_players(agent.session)
+
+
+@command("media.control")
+def cmd_media_control(agent, args):
+    action, bus = args.get("action"), args.get("bus") or ""
+    if action not in MEDIA_ACTIONS or not bus.startswith(MPRIS + "."):
+        raise RuntimeError("unknown player or action")
+    call(agent.session, bus, MPRIS_PATH, MPRIS + ".Player", action)
+    agent.schedule_media()
+    return True
 
 
 # --- main ------------------------------------------------------------------
