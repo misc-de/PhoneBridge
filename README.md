@@ -53,6 +53,9 @@ Cinnamon, MATE, Budgie, waybar …).
   lock screen, notifications (per app too), sound and vibration, GNOME Calls and its SIP
   accounts, Chatty, contacts, calendar reminders, keyboard, privacy and location - plus a
   search over every GSettings key.
+- **Phone links** - `tel:`, `callto:` and `sms:` links anywhere on the desktop (browser, mail)
+  open in PhoneBridge: the number in the dial pad, one click to call; the conversation with
+  the link's text.
 - **Notifications** on the desktop for new messages, calls, voice messages, a full battery
   and one running empty - with the person's picture, text buttons, gone after 10 seconds.
 - **Several phones**, one of them shown in the panel. English and German.

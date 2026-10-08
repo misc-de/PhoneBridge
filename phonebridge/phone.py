@@ -213,6 +213,13 @@ class PhonePage(Gtk.Box):
         self.append(self.split)
         self._update()
 
+    def show_number(self, number):
+        """A number in the dial pad, ready to call (a tel: link)."""
+        self.number.set_text(number)
+        self.split.set_show_content(False)
+        self.number.grab_focus()
+        self.number.set_position(-1)
+
     def set_device(self, dev):
         if dev is not self.dev:
             self.stop()

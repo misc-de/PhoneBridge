@@ -202,6 +202,24 @@ class App(unittest.TestCase):
             self.assertNotIn(self.dev.id, self.app._pc_wanted)
             self.app._on_calls(self.dev, [])
 
+    def test_8_links(self):
+        from phonebridge.app import parse_link
+        self.assertEqual(parse_link("tel:+49%20155%2050000001"), ("tel", "+4915550000001", ""))
+        self.assertEqual(parse_link("callto://0155-50000001;ext=1"), ("tel", "015550000001", ""))
+        self.assertEqual(parse_link("sms:+4915550000001,+4915550000002?body=Hi%20there"),
+                         ("sms", "+4915550000001", "Hi there"))
+        for bad in ("tel:", "tel:abc", "mailto:anna@example.org", "https://example.org", "x"):
+            self.assertIsNone(parse_link(bad), bad)
+        win = self.window()
+        with mock.patch.object(win, "present", lambda: None):
+            self.app.open_link("tel:0155%2050000001")
+            self.assertEqual(win.current_page(), "phone")
+            self.assertEqual(win.phone.number.get_text(), "015550000001")    # not dialled
+            self.app.open_link("sms:+4915550000002?body=See%20you")
+            self.assertEqual(win.current_page(), "messages")
+            self.assertEqual(win.messages.entry.get_text(), "See you")
+            win.messages.entry.set_text("")
+
 
 if __name__ == "__main__":
     unittest.main()

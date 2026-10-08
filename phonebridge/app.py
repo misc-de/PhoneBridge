@@ -9,10 +9,13 @@ every phone and - when asked for - the window.
                               --phone, --contacts, --calendar, --files,
                               --settings)
   phonebridge --quit          ends the running instance
+  phonebridge tel:+49…        the number in the dial pad (likewise sms:, callto:
+                              - PhoneBridge takes these links on the desktop)
 
 A second start hands its arguments to the running instance."""
 
 import os
+import re
 import shutil
 import sys
 import time
@@ -130,8 +133,11 @@ class PhoneBridgeApp(Adw.Application):
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]
         pages = [a[2:] for a in args if a[2:] in PAGES]
+        links = [a for a in args if parse_link(a) is not None]
         if "--quit" in args:
             self.quit()
+        elif links:
+            self.open_link(links[0])
         elif pages:
             self.show_window(pages[0])
         elif "--background" not in args:
@@ -852,6 +858,23 @@ class PhoneBridgeApp(Adw.Application):
             args["line"] = line["id"]
         dev.request("call", args, done)
 
+    def open_link(self, uri):
+        """tel:, callto: - the number in the dial pad, to call with one
+        click (a link clicked by mistake calls nobody); sms: - the
+        conversation, with the text the link brings."""
+        parsed = parse_link(uri)
+        if parsed is None:
+            return
+        kind, number, body = parsed
+        if kind == "sms":
+            self.open_sms(number)
+            if body and self.window is not None:
+                self.window.messages.entry.set_text(body)
+                self.window.messages.entry.set_position(-1)
+        else:
+            self.show_window("phone")
+            self.window.phone.show_number(number)
+
     def open_sms(self, number):
         if number:
             self.show_window("messages")
@@ -1220,6 +1243,23 @@ class PhoneBridgeApp(Adw.Application):
 
 
 PENDING = object()      # in pc_audio while the phone's microphone is being muted
+
+
+def parse_link(uri):
+    """("tel" | "sms", number, text) of a tel:, callto: or sms: link - or None."""
+    from urllib.parse import parse_qs, unquote
+    scheme, sep, rest = (uri or "").partition(":")
+    scheme = scheme.lower()
+    if not sep or scheme not in ("tel", "callto", "sms"):
+        return None
+    rest = rest.lstrip("/")
+    rest, _q, query = rest.partition("?")
+    first = unquote(rest).split(",")[0].split(";")[0]
+    number = re.sub(r"[^\d+*#]", "", first)
+    if not re.search(r"\d", number):
+        return None
+    body = parse_qs(query).get("body", [""])[0] if scheme == "sms" else ""
+    return ("sms" if scheme == "sms" else "tel"), number, body
 
 
 def run_in_thread(fn, then=None):

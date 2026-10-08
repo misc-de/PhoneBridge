@@ -56,6 +56,12 @@ for png in data/icons/$ID-*.png; do
 done
 gtk-update-icon-cache -q -t "$LOCAL/share/icons/hicolor" 2>/dev/null || true
 update-desktop-database -q "$LOCAL/share/applications" 2>/dev/null || true
+# tel:, sms: and callto: links on the desktop - unless another program has them
+for scheme in tel sms callto; do
+    if [ -z "$(xdg-mime query default x-scheme-handler/$scheme 2>/dev/null)" ]; then
+        xdg-mime default $ID.desktop x-scheme-handler/$scheme 2>/dev/null || true
+    fi
+done
 
 if [ -z "$NO_AUTOSTART" ]; then
     python3 -c "import sys; sys.path.insert(0, '$LIB'); from phonebridge import config; config.set_autostart(True, '$LOCAL/bin/phonebridge')"

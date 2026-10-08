@@ -172,6 +172,11 @@ class InstallScript(unittest.TestCase):
             self.assertEqual(f.read().strip(), NEW)
         self.assertTrue(os.path.isfile(os.path.join(lib, "phonebridge", "update.py")))
         self.assertTrue(os.access(os.path.join(home, ".local", "bin", "phonebridge"), os.X_OK))
+        # tel: links go to PhoneBridge (no other program had them here)
+        q = subprocess.run(["xdg-mime", "query", "default", "x-scheme-handler/tel"], env=env,
+                           capture_output=True, text=True)
+        if q.returncode == 0:
+            self.assertEqual(q.stdout.strip(), "io.github.miscde.PhoneBridge.desktop")
 
 
 @unittest.skipUnless(HAVE_DISPLAY and Gtk.init_check(), "no display")
