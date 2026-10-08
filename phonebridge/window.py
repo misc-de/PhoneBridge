@@ -123,6 +123,7 @@ class MainWindow(Adw.ApplicationWindow):
         prefs = Gio.Menu()
         prefs.append(_("Notify about new messages"), "app.notify")
         prefs.append(_("Show the phone's notifications"), "app.phone-notifications")
+        prefs.append(_("… also of apps open on this PC"), "app.phone-notifications-twice")
         prefs.append(_("Share the clipboard with the phone"), "app.clipboard-sync")
         prefs.append(_("Start at login"), "app.autostart")
         prefs.append(_("Look for updates"), "app.updates")

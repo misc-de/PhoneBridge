@@ -1239,6 +1239,8 @@ TRANSLATIONS = {
         'Auf dem Phone schließen',
     "Show the phone's notifications":
         'Benachrichtigungen des Phones zeigen',
+    "… also of apps open on this PC":
+        '… auch von Apps, die am PC offen sind',
     'The clipboard holds no text':
         'In der Zwischenablage ist kein Text',
     'Clipboard sent to %s':

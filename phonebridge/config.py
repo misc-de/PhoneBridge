@@ -11,6 +11,8 @@
   notify    desktop notification for every new SMS
   language  "system", "en" or "de"
   phone_notifications  the phone's own notifications (all apps) on the desktop
+  phone_notifications_twice  them too for apps that run on this PC as well
+            (off: those come here once, of their own)
   clipboard_sync  the clipboard shared with the phone by itself (off: by hand)
   updates   look on GitHub for a newer PhoneBridge (installed ones only)
   call_audio_*  the call's sound on the PC: gain for the caller, echo
@@ -40,6 +42,7 @@ DEFAULTS = {
     "seen": {},
     "updates": True,
     "phone_notifications": True,    # the notifications of the phone's apps, here too
+    "phone_notifications_twice": False,     # ... also of apps running here (localapps.py)
     "clipboard_sync": False,        # the clipboard (text) shared with the phone, both ways
     "music_on_pc": [],          # devices whose music plays on this PC (music.py)
     "files_zoom": 2,            # size of the icons in the file list (files_page.ZOOM)

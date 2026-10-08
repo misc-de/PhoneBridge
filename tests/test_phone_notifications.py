@@ -74,9 +74,23 @@ class OnThePC(unittest.TestCase):
             from phonebridge.app import notification_text
             self.assertIn(notification_text("Hi & bye"), bodies)    # escaped for the daemon
             daemon.notify("Chats", "Anna", "an SMS - PhoneBridge tells that itself")
-            daemon.notify("Calendar", "Dentist", "")
-            self.assertTrue(run_loop_until(lambda: len(shown) == 2, 10))
+            # an app that runs on this PC too tells it here itself
+            with mock.patch.object(app.local_apps, "running",
+                                   lambda name, entry="": name == "Element"):
+                daemon.notify("Element", "Carl", "twice?")
+                daemon.notify("Calendar", "Dentist", "")
+                self.assertTrue(run_loop_until(lambda: len(shown) == 2, 10))
+                run_loop_until(lambda: False, 0.3)
             self.assertNotIn("Chats: Anna", titles)
+            self.assertNotIn("Element: Carl", titles)
+            # ... unless wanted twice
+            app.activate_action("phone-notifications-twice", None)
+            self.assertTrue(app.cfg["phone_notifications_twice"])
+            with mock.patch.object(app.local_apps, "running", lambda *a: True):
+                daemon.notify("Element", "Carl", "twice!")
+                self.assertTrue(run_loop_until(lambda: "Element: Carl" in titles, 10))
+            app.activate_action("phone-notifications-twice", None)
+            shown[2:] = []
 
         # closed here with the button: closed on the phone, gone here
         app.activate_action("phone-dismiss", GLib.Variant("(su)", ("test", nid)))

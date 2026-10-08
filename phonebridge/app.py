@@ -33,6 +33,7 @@ from . import APP_ID, VERSION, config, i18n, icon, phone, text  # noqa: E402
 from .avatars import Avatars  # noqa: E402
 from .connection import Device  # noqa: E402
 from .i18n import _, n_  # noqa: E402
+from .localapps import LocalApps  # noqa: E402
 
 RING_SECONDS = 20
 PAGES = ("overview", "phone", "messages", "contacts", "calendar", "files", "settings")
@@ -92,6 +93,7 @@ class PhoneBridgeApp(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         self.cfg = config.load()
+        self.local_apps = LocalApps()     # apps of the phone that run here too
         from .callaudio import unload_leftovers
         run_in_thread(unload_leftovers)     # an echo canceller a crash left behind
         i18n.setup(self.cfg["language"])
@@ -225,6 +227,8 @@ class PhoneBridgeApp(Adw.Application):
             GLib.Variant("b", config.autostart_enabled()))
         add("phone-notifications", self._on_phone_notifications_toggle, None,
             GLib.Variant("b", bool(self.cfg.get("phone_notifications", True))))
+        add("phone-notifications-twice", self._on_phone_notifications_twice_toggle, None,
+            GLib.Variant("b", bool(self.cfg.get("phone_notifications_twice", False))))
         add("phone-dismiss", self._on_phone_dismiss, "(su)")
         add("clipboard-sync", self._on_clipboard_sync_toggle, None,
             GLib.Variant("b", bool(self.cfg.get("clipboard_sync", False))))
@@ -495,6 +499,9 @@ class PhoneBridgeApp(Adw.Application):
         if not self.cfg.get("phone_notifications", True):
             return
         app_name = n.get("app") or ""
+        if not self.cfg.get("phone_notifications_twice", False) and \
+                self.local_apps.running(app_name, n.get("desktop") or ""):
+            return          # the app here tells it itself
         title = n.get("title") or app_name or dev.name
         if app_name and app_name != title:
             title = "%s: %s" % (app_name, title)
@@ -505,6 +512,11 @@ class PhoneBridgeApp(Adw.Application):
         note.add_button_with_target(_("Close on the phone"), "app.phone-dismiss",
                                     GLib.Variant("(su)", (dev.id, int(n["id"]))))
         self._send_briefly(phone_note_id(dev.id, n["id"]), note)
+
+    def _on_phone_notifications_twice_toggle(self, action, value):
+        action.set_state(value)
+        self.cfg["phone_notifications_twice"] = value.get_boolean()
+        config.save(self.cfg)
 
     def _on_phone_dismiss(self, action, param):
         dev_id, nid = param.unpack()
