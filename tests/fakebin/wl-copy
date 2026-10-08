@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for wl-copy: the "phone's" clipboard is a file - never yours.
+cat > "${FAKE_CLIPBOARD:-/dev/null}"

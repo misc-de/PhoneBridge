@@ -58,6 +58,9 @@ Cinnamon, MATE, Budgie, waybar …).
   the link's text.
 - **Music** - what plays on the phone (any MPRIS player), with back, play/pause and next in
   the overview and the panel menu.
+- **Clipboard** - text to the phone or from it by hand (panel menu, window menu), or shared
+  both ways by itself once switched on (*Menu → Share the clipboard with the phone*; off
+  by default - passwords pass through clipboards).
 - **Send to the phone** - a web link opens in the phone's browser, files and folders land in
   its Downloads (never over an existing file) with a notification there. From the panel
   menu, the window's menu, Thunar's *Send To* menu or `phonebridge --send FILE|URL …`.

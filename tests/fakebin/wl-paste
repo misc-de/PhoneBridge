@@ -1,0 +1,25 @@
+#!/bin/sh
+# Stand-in for wl-paste: the "phone's" clipboard is a file - never yours.
+# --watch CMD...: CMD with the content on stdin at every change.
+clip="${FAKE_CLIPBOARD:-/nonexistent}"
+watch=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --watch) shift; watch=1; break ;;
+        -t|--type) shift ;;
+    esac
+    shift
+done
+if [ -z "$watch" ]; then
+    [ -f "$clip" ] && cat "$clip"
+    exit 0
+fi
+last=""
+while :; do
+    now=$(stat -c %Y.%s "$clip" 2>/dev/null; md5sum < "$clip" 2>/dev/null)
+    if [ -n "$now" ] && [ "$now" != "$last" ]; then
+        last="$now"
+        "$@" < "$clip"
+    fi
+    sleep 0.2
+done

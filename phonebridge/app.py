@@ -76,6 +76,8 @@ class PhoneBridgeApp(Adw.Application):
         self._vb_known = {}
         self._was_online = {}
         self.media = {}                 # device id -> the phone's players (media_players)
+        self._clip_last = None          # the clipboard text last passed either way
+        self._clip_handler = 0
         self.update_available = None    # {"sha", "count", "changes"} from update.check
         self.updating = False
 
@@ -101,6 +103,7 @@ class PhoneBridgeApp(Adw.Application):
         self.sync_devices()
         self.update_tray()
         self._watch_sleep_and_network()
+        self._watch_pc_clipboard(self.cfg.get("clipboard_sync", False))
         GLib.timeout_add_seconds(UPDATE_FIRST, lambda: self.look_for_update() and False)
         GLib.timeout_add_seconds(UPDATE_EVERY, lambda: self.look_for_update() or True)
         self.hold()
@@ -202,6 +205,10 @@ class PhoneBridgeApp(Adw.Application):
         add("phone-notifications", self._on_phone_notifications_toggle, None,
             GLib.Variant("b", bool(self.cfg.get("phone_notifications", True))))
         add("phone-dismiss", self._on_phone_dismiss, "(su)")
+        add("clipboard-sync", self._on_clipboard_sync_toggle, None,
+            GLib.Variant("b", bool(self.cfg.get("clipboard_sync", False))))
+        add("clipboard-to-phone", lambda *a: self.clipboard_to_phone())
+        add("clipboard-from-phone", lambda *a: self.clipboard_from_phone())
         add("updates", self._on_updates_toggle, None,
             GLib.Variant("b", bool(self.cfg["updates"])))
         self._language = add("language", self._on_language, "s",
@@ -229,6 +236,7 @@ class PhoneBridgeApp(Adw.Application):
                 dev.connect("voicebox", lambda d: self.refresh_voicebox(d))
                 dev.connect("media", self._on_media)
                 dev.connect("notification", self._on_phone_notification)
+                dev.connect("clipboard", self._on_phone_clipboard)
                 dev.connect("notification-closed",
                             lambda d, nid: self.withdraw_notification(phone_note_id(d.id, nid)))
                 self.devices[dev_id] = dev
@@ -433,6 +441,8 @@ class PhoneBridgeApp(Adw.Application):
                         lambda r, e: e is None and self._on_media(dev, r))
             if self.cfg.get("phone_notifications", True):
                 dev.request("notifications.watch", {"on": True})
+            if self.cfg.get("clipboard_sync", False):
+                dev.request("clipboard.watch", {"on": True})
         if not online and self.calls.get(dev.id):
             self._on_calls(dev, [])
         if not online and dev.id in self.pc_audio:
@@ -481,6 +491,91 @@ class PhoneBridgeApp(Adw.Application):
         for dev in self.devices.values():
             if dev.online:
                 dev.request("notifications.watch", {"on": value.get_boolean()})
+
+    # -- the clipboard ----------------------------------------------------------
+    def _clipboard(self):
+        return Gdk.Display.get_default().get_clipboard()
+
+    def set_pc_clipboard(self, text):
+        self._clip_last = text
+        self._clipboard().set_content(Gdk.ContentProvider.new_for_value(text))
+
+    def read_pc_clipboard(self, then):
+        def done(clipboard, res):
+            try:
+                value = clipboard.read_text_finish(res)
+            except GLib.Error:
+                value = None
+            then(value)
+        self._clipboard().read_text_async(None, done)
+
+    def clipboard_to_phone(self, dev=None):
+        dev = dev or self.active_device()
+        if dev is None or not dev.online:
+            return
+
+        def got(value):
+            if not value:
+                self.tell(_("The clipboard holds no text"))
+                return
+            self._clip_last = value
+            dev.request("clipboard.set", {"text": value}, lambda r, e: self.tell(
+                _("Clipboard sent to %s") % dev.name if e is None
+                else _("Not sent: %s") % text.error(e)))
+
+        self.read_pc_clipboard(got)
+
+    def clipboard_from_phone(self, dev=None):
+        dev = dev or self.active_device()
+        if dev is None or not dev.online:
+            return
+
+        def got(result, error):
+            if error is not None:
+                self.tell(text.error(error))
+            elif not result["text"]:
+                self.tell(_("The phone's clipboard holds no text"))
+            else:
+                self.set_pc_clipboard(result["text"])
+                self.tell(_("The phone's clipboard is on this PC now"))
+
+        dev.request("clipboard.get", {}, got)
+
+    def _on_phone_clipboard(self, dev, value):
+        if self.cfg.get("clipboard_sync", False) and value and value != self._clip_last:
+            self.set_pc_clipboard(value)
+
+    def _watch_pc_clipboard(self, on):
+        clipboard = self._clipboard()
+        if on and not self._clip_handler:
+            self._clip_handler = clipboard.connect("changed", self._on_pc_clipboard_changed)
+        elif not on and self._clip_handler:
+            clipboard.disconnect(self._clip_handler)
+            self._clip_handler = 0
+
+    def _on_pc_clipboard_changed(self, clipboard):
+        if not clipboard.is_local():        # not what came from the phone
+            self.read_pc_clipboard(self.pc_clipboard_text)
+
+    def pc_clipboard_text(self, value):
+        """Text copied on the PC: to the phone, while they share it."""
+        if (not value or value == self._clip_last or not self.cfg.get("clipboard_sync", False)
+                or len(value.encode("utf-8")) > CLIPBOARD_MAX):
+            return
+        self._clip_last = value
+        dev = self.active_device()
+        if dev is not None and dev.online:
+            dev.request("clipboard.set", {"text": value})
+
+    def _on_clipboard_sync_toggle(self, action, value):
+        action.set_state(value)
+        on = value.get_boolean()
+        self.cfg["clipboard_sync"] = on
+        config.save(self.cfg)
+        self._watch_pc_clipboard(on)
+        for dev in self.devices.values():
+            if dev.online:
+                dev.request("clipboard.watch", {"on": on})
 
     # -- music on the phone ---------------------------------------------------
     def _on_media(self, dev, players):
@@ -1103,6 +1198,10 @@ class PhoneBridgeApp(Adw.Application):
                 {"id": "messages", "label": _("Messages")},
                 {"id": "compose", "label": _("New message …"), "enabled": online},
                 {"id": "send", "label": _("Send to phone …"), "enabled": online},
+                {"id": "clipboard-to-phone", "label": _("Clipboard to the phone"),
+                 "enabled": online},
+                {"id": "clipboard-from-phone", "label": _("Clipboard from the phone"),
+                 "enabled": online},
                 {"id": "ring", "enabled": online,
                  "label": _("Stop ringing") if dev.id in self.ringing
                  else _("Ring the phone")},
@@ -1131,6 +1230,10 @@ class PhoneBridgeApp(Adw.Application):
                 (self.answer_call if item_id == "answer" else self.hangup_call)(dev.id, call)
         elif item_id == "send":
             self.ask_send()
+        elif item_id == "clipboard-to-phone":
+            self.clipboard_to_phone()
+        elif item_id == "clipboard-from-phone":
+            self.clipboard_from_phone()
         elif item_id == "ring":
             self.ring(dev)
         elif item_id == "reconnect" and dev is not None:
@@ -1402,6 +1505,7 @@ def run_in_thread(fn, then=None):
 
 
 NOTIFY_SECONDS = 10
+CLIPBOARD_MAX = 1024 * 1024     # bytes of text shared through the clipboard
 FULL_AGAIN = 95                 # % the battery must fall below before "full" is told again
 UPDATE_FIRST = 60               # s after the start: look for an update
 UPDATE_EVERY = 6 * 3600         # and again

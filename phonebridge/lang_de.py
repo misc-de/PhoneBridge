@@ -1233,4 +1233,18 @@ TRANSLATIONS = {
         'Auf dem Phone schließen',
     "Show the phone's notifications":
         'Benachrichtigungen des Phones zeigen',
+    'The clipboard holds no text':
+        'In der Zwischenablage ist kein Text',
+    'Clipboard sent to %s':
+        'Zwischenablage an %s gesendet',
+    "The phone's clipboard holds no text":
+        'In der Zwischenablage des Phones ist kein Text',
+    "The phone's clipboard is on this PC now":
+        'Die Zwischenablage des Phones ist jetzt auf diesem PC',
+    'Clipboard to the phone':
+        'Zwischenablage ans Phone',
+    'Clipboard from the phone':
+        'Zwischenablage vom Phone holen',
+    'Share the clipboard with the phone':
+        'Zwischenablage mit dem Phone teilen',
 }

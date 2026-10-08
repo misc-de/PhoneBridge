@@ -72,6 +72,7 @@ class Device(GObject.Object):
         # a notification of the phone's apps; and one closed there (its id)
         "notification": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "notification-closed": (GObject.SignalFlags.RUN_FIRST, None, (int,)),
+        "clipboard": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
 
     def __init__(self, info):
@@ -323,6 +324,8 @@ class Device(GObject.Object):
                 self.emit("notification", msg)
             elif msg["event"] == "notification-closed":
                 self.emit("notification-closed", int(msg.get("id") or 0))
+            elif msg["event"] == "clipboard":
+                self.emit("clipboard", str(msg.get("text") or ""))
             return
         if not isinstance(msg, dict):
             return

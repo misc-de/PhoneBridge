@@ -630,6 +630,9 @@ class Agent:
         self._call_audio_tried = 0.0
         self.work = queue.Queue()
         self.files_work = queue.Queue()     # the file browser's: never behind the others
+        self.clip_last = None               # the clipboard text last passed on
+        self.clip_watch = None
+        self.notify_watch = None
         self.last_rx = time.monotonic()
         self._watch()
 
@@ -3394,7 +3397,7 @@ class NotificationWatch:
 @command("notifications.watch")
 def cmd_notifications_watch(agent, args):
     """The PC wants the phone's notifications (or no more)."""
-    watch = getattr(agent, "notify_watch", None)
+    watch = agent.notify_watch
     if watch is not None:
         watch.stop()
         agent.notify_watch = None
@@ -3414,6 +3417,103 @@ def cmd_notification_close(agent, args):
     call(agent.session, NOTIFY_IFACE, "/org/freedesktop/Notifications", NOTIFY_IFACE,
          "CloseNotification", GLib.Variant("(u)", (int(args["id"]),)))
     return True
+
+
+# --- the clipboard ------------------------------------------------------------
+
+CLIPBOARD_MAX = 1024 * 1024     # text larger than this is not passed on
+
+
+def clipboard_get():
+    try:
+        p = subprocess.run(["wl-paste", "--no-newline", "--type", "text"], env=session_env(),
+                           capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(str(e))
+    return p.stdout[:CLIPBOARD_MAX].decode("utf-8", "replace") if p.returncode == 0 else ""
+
+
+def clipboard_set(text):
+    argv = ["wl-copy"]
+    if shutil.which("systemd-run"):     # it keeps serving the text after this login
+        argv = ["systemd-run", "--user", "--scope", "--collect", "--quiet", "--"] + argv
+    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, env=session_env(),
+                         start_new_session=True, cwd=HOME)
+    p.stdin.write(text.encode("utf-8"))
+    p.stdin.close()
+
+
+class ClipboardWatch:
+    """wl-paste --watch: every change of the phone's clipboard (text) to
+    the PC - but not the one there was when watching began, nor what the
+    PC itself just put there."""
+
+    QUIET = 1.0         # s after the start: what is there already
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.proc = None
+
+    def start(self):
+        self.started = time.monotonic()
+        self.proc = subprocess.Popen(
+            ["wl-paste", "--type", "text", "--watch", "sh", "-c", "base64 -w0; echo"],
+            stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=session_env(), start_new_session=True)
+        threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
+
+    def _read(self, proc):
+        for line in proc.stdout:
+            try:
+                data = base64.b64decode(line.strip() or b"")
+            except (binascii.Error, ValueError):
+                continue
+            if len(data) > CLIPBOARD_MAX or time.monotonic() - self.started < self.QUIET:
+                continue
+            text = data.decode("utf-8", "replace")
+            if text and text != self.agent.clip_last:
+                self.agent.clip_last = text
+                send({"event": "clipboard", "text": text})
+
+    def stop(self):
+        proc, self.proc = self.proc, None
+        if proc is not None and proc.poll() is None:
+            try:
+                os.killpg(proc.pid, 15)
+            except OSError:
+                proc.terminate()
+
+
+@command("clipboard.get", threaded=True)
+def cmd_clipboard_get(agent, args):
+    return {"text": clipboard_get()}
+
+
+@command("clipboard.set")
+def cmd_clipboard_set(agent, args):
+    text = str(args.get("text") or "")
+    if len(text.encode("utf-8")) > CLIPBOARD_MAX:
+        raise RuntimeError("too large")
+    agent.clip_last = text
+    clipboard_set(text)
+    return True
+
+
+@command("clipboard.watch")
+def cmd_clipboard_watch(agent, args):
+    watch = agent.clip_watch
+    if watch is not None:
+        watch.stop()
+        agent.clip_watch = None
+    if args.get("on"):
+        watch = ClipboardWatch(agent)
+        try:
+            watch.start()
+        except OSError as e:
+            raise RuntimeError(str(e))
+        agent.clip_watch = watch
+    return bool(args.get("on"))
 
 
 # --- main ------------------------------------------------------------------
@@ -3454,6 +3554,8 @@ def main():
         loop.run()
     finally:
         pc_audio_release(agent)     # the PC is gone: never leave the phone muted
+        if agent.clip_watch is not None:
+            agent.clip_watch.stop()     # wl-paste --watch would outlive us
 
 
 if __name__ == "__main__":
