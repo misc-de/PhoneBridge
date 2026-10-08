@@ -76,6 +76,11 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
   app does it with one password prompt), else as a PipeWire camera (OBS, GNOME Snapshot …).
   720p H.264 over SSH, the camera on only while it is used. *Test …* shows the live
   picture as programs get it, with its size and pictures a second.
+- **The phone's screen** - live on the *Screen* page, and usable from the PC: a click taps,
+  dragging swipes (Phosh's swipes from the edges too), holding is a long press, the mouse
+  wheel scrolls, keys typed there are typed on the phone. Buttons for power, the app
+  overview and the volume; three picture qualities. The picture runs only while the page is
+  shown, and the phone's screen stays on meanwhile.
 - **Screenshot of the phone** - from the panel or window menu, shown on the PC to copy or
   save (while the phone's screen is on and unlocked).
 - **Hotspot** - switch the phone's hotspot from *Settings → Quick settings*, and keep it on
@@ -107,6 +112,7 @@ apps use:
 | Music | MPRIS players on the session bus; on the PC: the players' streams (`target.object`) into a pw-record sink → raw 48 kHz stereo over SSH → pw-play |
 | Clipboard | wl-copy / wl-paste (the compositor's data-control) |
 | Screenshot | grim (wlr-screencopy), else Phosh's screenshot service |
+| Screen | wf-recorder (wlr-screencopy, x264, only changed pictures) → FLV over SSH → GStreamer on the PC; taps and keys back through a virtual touchscreen and keyboard (uinput, python3-evdev) |
 | Webcam | droidcamsrc → x264 (zero latency) → H.264 over SSH; on the PC GStreamer (slice decoding, ~50 ms) → v4l2loopback or PipeWire |
 | Hotspot | NetworkManager on the phone; on the PC a profile over NetworkManager's D-Bus API |
 | The phone's notifications | watched on the session bus (a D-Bus monitor), closed through the notification daemon |
@@ -138,6 +144,7 @@ PhoneBridge looks at the desktop it runs on and adapts:
 | Required | `python-gobject gtk4 libadwaita python-cairo openssh` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-cairo openssh-client` |
 | Passwords in the keyring | `libsecret` | `gir1.2-secret-1` |
 | Calls at the PC | `pipewire` (`pw-record`, `pw-play`), `libpulse` (`pactl`) | `pipewire-bin`, `pulseaudio-utils` |
+| The phone's screen | `gst-plugins-good gst-plugins-bad gst-libav` | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav` |
 | Webcam | `gst-plugins-bad gst-libav gst-plugin-pipewire`; for every program `v4l2loopback-dkms v4l2loopback-utils` and the kernel's headers (Manjaro: `linuxXY-headers`) | `gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire v4l2loopback-dkms v4l2loopback-utils` |
 
 Fedora: `python3-gobject gtk4 libadwaita python3-cairo openssh-clients` (and `libsecret`,

@@ -14,6 +14,7 @@ from .messages import MessagesPage
 from .overview import OverviewPage
 from .phone import CallBar, PhonePage
 from .phone_settings import PhoneSettingsPage
+from .screen_page import ScreenPage
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -30,9 +31,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.contacts = ContactsPage(app)
         self.calendar = CalendarPage(app)
         self.files = FilesPage(app)
+        self.screen = ScreenPage(app)
         self.settings = PhoneSettingsPage(app)
         self.pages = (self.overview, self.phone, self.messages, self.contacts,
-                      self.calendar, self.files, self.settings)
+                      self.calendar, self.files, self.screen, self.settings)
         self.stack = Adw.ViewStack()
         for page, name, title, icon in (
                 (self.overview, "overview", _("Overview"), "phone-symbolic"),
@@ -41,6 +43,7 @@ class MainWindow(Adw.ApplicationWindow):
                 (self.contacts, "contacts", _("Contacts"), "x-office-address-book-symbolic"),
                 (self.calendar, "calendar", _("Appointments"), "x-office-calendar-symbolic"),
                 (self.files, "files", _("Files"), "folder-symbolic"),
+                (self.screen, "screen", _("Screen"), "video-display-symbolic"),
                 (self.settings, "settings", _("Settings"), "emblem-system-symbolic")):
             self.stack.add_titled_with_icon(page, name, title, icon)
         self.stack.connect("notify::visible-child", self._on_page)

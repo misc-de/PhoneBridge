@@ -1452,4 +1452,28 @@ TRANSLATIONS = {
         'Lautsprecher des Phones statt der Hörmuschel',
     'the phone could not switch the speaker':
         'das Phone konnte den Lautsprecher nicht umschalten',
+    'Fast':
+        'Schnell',
+    'Sharp':
+        'Scharf',
+    'Screen on or off (power button)':
+        'Bildschirm ein oder aus (Ein-/Aus-Taste)',
+    'Overview of the apps':
+        'Übersicht der Apps',
+    'Quieter':
+        'Leiser',
+    'Louder':
+        'Lauter',
+    'Picture quality':
+        'Bildqualität',
+    'Click to tap, drag to swipe, hold for a long press. Keys typed here go to the phone.':
+        'Klicken tippt, Ziehen wischt, Halten drückt lange. Tasten, die hier getippt werden, gehen ans Phone.',
+    "The phone's screen is off":
+        'Der Bildschirm des Phones ist aus',
+    'Only the picture - the phone takes no taps: %s':
+        'Nur das Bild – das Phone nimmt kein Tippen an: %s',
+    'The picture stopped':
+        'Das Bild ist abgebrochen',
+    'Try again':
+        'Erneut versuchen',
 }

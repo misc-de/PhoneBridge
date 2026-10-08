@@ -629,6 +629,7 @@ class PhoneBridgeApp(Adw.Application):
         self.update_tray()
 
     _webcam_extra = {}      # the tests' camera and sink
+    _screen_extra = {}      # the tests' phone side of the screen page
 
     def _webcam_stopped(self, cam, reason, dev):
         if self.webcams.get(dev.id) is cam:
