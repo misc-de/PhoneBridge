@@ -201,6 +201,20 @@ git clone https://github.com/misc-de/PhoneBridge.git
 cd PhoneBridge && ./install.sh
 ```
 
+Or as a Flatpak, built from a checkout (needs `flatpak-builder` and the GNOME 50 runtime):
+
+```sh
+flatpak-builder --user --install --force-clean build-flatpak flatpak/io.github.miscde.PhoneBridge.yml
+flatpak run io.github.miscde.PhoneBridge
+```
+
+The Flatpak keeps the phones in the same `~/.config/phonebridge` as an install without it, and
+Flatpak updates it, not PhoneBridge. FreeRDP's client for the desktop session comes along
+(built without H.264: the session falls back to RemoteFX). Not in the Flatpak: the phone's
+hotspot from the PC (no `nmcli`), loading `v4l2loopback` for the webcam (it works once the
+module is loaded), *Send to the phone* in the file managers' menus, and spotting apps that run
+on this PC too (the sandbox does not see them). Run only one of the two at a time.
+
 At the first start PhoneBridge asks for the phone's address and user (`furios` on FuriOS) and
 connects right away. If the phone does not take the PC's SSH key yet, it asks for the password
 once and puts the key on the phone (like `ssh-copy-id`); without an SSH key on the PC it offers

@@ -67,6 +67,15 @@ class Config(unittest.TestCase):
         config.set_autostart(False)
         self.assertFalse(config.autostart_enabled())
 
+    def test_autostart_in_a_flatpak_through_the_portal(self):
+        asked = []
+        with mock.patch.object(config, "FLATPAK", True), \
+                mock.patch.object(config, "request_background", asked.append):
+            config.set_autostart(True, "/app/bin/phonebridge")
+            config.set_autostart(False)
+        self.assertEqual(asked, [True, False])
+        self.assertFalse(os.path.exists(config.AUTOSTART))     # the portal writes it
+
 
 if __name__ == "__main__":
     unittest.main()

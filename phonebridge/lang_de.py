@@ -1053,6 +1053,8 @@ TRANSLATIONS = {
         'Update nach dem Anruf.',
     'Update available':
         'Update verfügbar',
+    'Could not change the start at login: %s':
+        'Der Start bei der Anmeldung ließ sich nicht ändern: %s',
     'Update PhoneBridge?':
         'PhoneBridge aktualisieren?',
     'Update PhoneBridge to %s?':

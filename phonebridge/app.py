@@ -1590,9 +1590,13 @@ class PhoneBridgeApp(Adw.Application):
         config.save(self.cfg)
 
     def _on_autostart_toggle(self, action, value):
-        action.set_state(value)
         exe = shutil.which("phonebridge") or os.path.realpath(sys.argv[0])
-        config.set_autostart(value.get_boolean(), exe)
+        try:
+            config.set_autostart(value.get_boolean(), exe)
+        except GLib.Error as e:             # a Flatpak without the Background portal
+            self.toast(_("Could not change the start at login: %s") % e.message)
+            return
+        action.set_state(value)
 
     def _on_updates_toggle(self, action, value):
         action.set_state(value)

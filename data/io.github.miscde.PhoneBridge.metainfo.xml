@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 misc-de -->
+<!-- SPDX-License-Identifier: MIT -->
+<component type="desktop-application">
+  <id>io.github.miscde.PhoneBridge</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>PhoneBridge</name>
+  <summary>Your Linux phone on your Linux desktop</summary>
+  <summary xml:lang="de">Dein Linux-Phone auf deinem Linux-Desktop</summary>
+  <developer id="io.github.miscde">
+    <name>misc-de</name>
+  </developer>
+  <description>
+    <p>
+      Battery and messages in the panel, and a window for calls, SMS, contacts,
+      appointments, files and the phone's settings - over SSH, with nothing to
+      install on the phone.
+    </p>
+    <p xml:lang="de">
+      Akku und Nachrichten im Panel, dazu ein Fenster für Anrufe, SMS, Kontakte,
+      Termine, Dateien und die Einstellungen des Telefons - über SSH, ohne etwas
+      auf dem Telefon zu installieren.
+    </p>
+    <p>
+      Made for Phosh phones, and explicitly for the FuriLabs FLX1 / FLX1s running FuriOS.
+    </p>
+    <p xml:lang="de">
+      Gemacht für Phosh-Telefone, ausdrücklich für das FuriLabs FLX1 / FLX1s mit FuriOS.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.miscde.PhoneBridge.desktop</launchable>
+  <url type="homepage">https://github.com/misc-de/PhoneBridge</url>
+  <url type="bugtracker">https://github.com/misc-de/PhoneBridge/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/misc-de/PhoneBridge/main/data/screenshots/overview.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/misc-de/PhoneBridge/main/data/screenshots/messages.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/misc-de/PhoneBridge/main/data/screenshots/contacts.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-10"/>
+  </releases>
+</component>

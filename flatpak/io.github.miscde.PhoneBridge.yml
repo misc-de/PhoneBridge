@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
+# SPDX-License-Identifier: MIT
+#
+# PhoneBridge as a Flatpak, built from this checkout:
+#
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       flatpak/io.github.miscde.PhoneBridge.yml
+#   flatpak run io.github.miscde.PhoneBridge
+#
+# Everything it needs on the PC is in the GNOME runtime (ssh, PipeWire's
+# tools, pactl, GStreamer, libadwaita, libsecret). The updater stays off:
+# Flatpak updates it.
+id: io.github.miscde.PhoneBridge
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: phonebridge
+finish-args:
+  - --share=network                 # SSH to the phone
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --device=all                    # the phone's camera as a webcam (v4l2loopback)
+  - --socket=pulseaudio             # pactl: echo cancellation for calls
+  - --filesystem=xdg-run/pipewire-0 # pw-play / pw-record: calls and music at the PC
+  - --socket=ssh-auth               # keys in the SSH agent
+  # ~/.ssh (keys, known_hosts), ~/.config/phonebridge (the phones, shared
+  # with an install without Flatpak), files to and from the phone, the
+  # photo backup's folder
+  - --filesystem=home
+  - --talk-name=org.freedesktop.secrets           # SSH passwords in the keyring
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher     # the panel icon
+  - --own-name=org.kde.*
+  - --system-talk-name=org.freedesktop.login1     # back from sleep: connect anew
+  - --system-talk-name=org.freedesktop.NetworkManager  # the phone's hotspot
+modules:
+  # xfreerdp3 for the desktop session (Screen): the client alone, with
+  # sound and clipboard - no server, no SDL or Wayland client, no smart
+  # cards, USB or printers
+  - name: freerdp
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DWITH_SERVER=OFF
+      - -DWITH_SAMPLE=OFF
+      - -DWITH_CLIENT=ON
+      - -DWITH_CLIENT_X11=ON
+      - -DWITH_X11=ON
+      - -DWITH_CLIENT_SDL=OFF
+      - -DWITH_WAYLAND=OFF
+      - -DWITH_PULSE=ON
+      - -DWITH_ALSA=OFF
+      - -DWITH_OSS=OFF
+      - -DWITH_CUPS=OFF
+      - -DWITH_PCSC=OFF
+      - -DWITH_SMARTCARD_EMULATE=OFF
+      - -DWITH_FUSE=OFF
+      - -DWITH_KRB5=OFF
+      - -DWITH_FFMPEG=OFF
+      - -DWITH_SWSCALE=OFF
+      - -DWITH_DSP_FFMPEG=OFF
+      - -DWITH_OPUS=OFF
+      - -DWITH_FAAD2=OFF
+      - -DWITH_FAAC=OFF
+      - -DWITH_SOXR=OFF
+      - -DWITH_WEBVIEW=OFF
+      - -DWITH_AAD=OFF
+      - -DWITH_JSON_DISABLED=ON
+      - -DWITH_URIPARSER=OFF
+      - -DWITH_MANPAGES=OFF
+      - -DWITH_SHADOW=OFF
+      - -DWITH_PROXY=OFF
+      - -DWITH_PLATFORM_SERVER=OFF
+      - -DWITH_SERVER_CHANNELS=OFF
+      - -DCHANNEL_URBDRC=OFF
+      - -DWITH_UNICODE_BUILTIN=ON
+      - -DWITH_BINARY_VERSIONING=ON     # xfreerdp3, the name rdp.py looks for
+    cleanup:
+      - /bin/winpr-*
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/FreeRDP/FreeRDP/releases/download/3.31.1/freerdp-3.31.1.tar.gz
+        sha256: 4a2629026896cb4e26fb8ed2d6ca6aa4ab89ca95528dfbae2550c2f6bc866991
+
+  - name: phonebridge
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/phonebridge/phonebridge
+      - install -m644 phonebridge/*.py /app/lib/phonebridge/phonebridge/
+      - install -Dm755 bin/phonebridge /app/bin/phonebridge
+      - install -Dm644 data/io.github.miscde.PhoneBridge.desktop
+        /app/share/applications/io.github.miscde.PhoneBridge.desktop
+      - install -Dm644 data/io.github.miscde.PhoneBridge.metainfo.xml
+        /app/share/metainfo/io.github.miscde.PhoneBridge.metainfo.xml
+      - |
+        for png in data/icons/io.github.miscde.PhoneBridge-*.png; do
+          size=${png##*-}; size=${size%.png}
+          install -Dm644 "$png" \
+            /app/share/icons/hicolor/${size}x${size}/apps/io.github.miscde.PhoneBridge.png
+        done
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - build-flatpak
+          - .flatpak-builder
+          - htmlcov
+          - .coverage
+          - data/screenshots

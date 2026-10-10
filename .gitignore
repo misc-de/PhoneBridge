@@ -5,3 +5,5 @@ __pycache__/
 htmlcov/
 .ruff_cache/
 .pytest_cache/
+build-flatpak/
+.flatpak-builder/

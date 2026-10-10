@@ -26,12 +26,15 @@ import re
 
 from . import APP_ID
 
-CONFIG_DIR = os.environ.get("PHONEBRIDGE_CONFIG") or os.path.join(
-    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
-    "phonebridge")
-AUTOSTART = os.path.join(
-    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
-    "autostart", APP_ID + ".desktop")
+# In a Flatpak, XDG_CONFIG_HOME is the app's own (~/.var/app/...): the
+# settings stay in ~/.config/phonebridge all the same - the phones are the
+# same as without the Flatpak - and the autostart entry is the one the
+# Background portal writes there.
+FLATPAK = os.path.exists("/.flatpak-info")
+_CONFIG_HOME = (os.path.expanduser("~/.config") if FLATPAK
+                else os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"))
+CONFIG_DIR = os.environ.get("PHONEBRIDGE_CONFIG") or os.path.join(_CONFIG_HOME, "phonebridge")
+AUTOSTART = os.path.join(_CONFIG_HOME, "autostart", APP_ID + ".desktop")
 
 DEFAULTS = {
     "language": "system",
@@ -126,6 +129,9 @@ def autostart_enabled():
 
 
 def set_autostart(on, exec_path="phonebridge"):
+    if FLATPAK:
+        request_background(on)
+        return
     if not on:
         try:
             os.remove(AUTOSTART)
@@ -137,3 +143,18 @@ def set_autostart(on, exec_path="phonebridge"):
         f.write("[Desktop Entry]\nType=Application\nName=PhoneBridge\n"
                 "Exec=%s --background\nIcon=%s\nX-GNOME-Autostart-enabled=true\n"
                 "NoDisplay=true\n" % (exec_path, APP_ID))
+
+
+def request_background(autostart):
+    """In a Flatpak: start at login, or no longer, through the Background
+    portal - it writes (or removes) the autostart entry outside the
+    sandbox. Raises GLib.Error when there is no portal."""
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    options = {"autostart": GLib.Variant("b", autostart),
+               "commandline": GLib.Variant("as", ["phonebridge", "--background"]),
+               "reason": GLib.Variant("s", "Battery and messages of the phone in the panel")}
+    bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                  "org.freedesktop.portal.Background", "RequestBackground",
+                  GLib.Variant("(sa{sv})", ("", options)), None,
+                  Gio.DBusCallFlags.NONE, 10000, None)
