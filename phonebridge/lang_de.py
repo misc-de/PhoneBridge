@@ -1055,6 +1055,8 @@ TRANSLATIONS = {
         'Update verfügbar',
     'Update PhoneBridge?':
         'PhoneBridge aktualisieren?',
+    'Update PhoneBridge to %s?':
+        'PhoneBridge auf %s aktualisieren?',
     'Updating …':
         'Wird aktualisiert …',
     'Documents':

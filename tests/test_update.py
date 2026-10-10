@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
-"""Updates: what is installed, what GitHub says (answers made up here -
+"""Updates: what is installed, what GitHub says of its latest release (answers made up here -
 no network), installing a fetched commit (a tarball from a file://
 address), install.sh recording the version, and the hint and question in
 the window."""
@@ -52,36 +52,50 @@ class Installed(unittest.TestCase):
             self.assertEqual(update.launcher(), "/x/.local/bin/phonebridge")
 
 
-class Check(unittest.TestCase):
-    def answers(self, compare):
-        def get(url):
-            if url.endswith("/commits/main"):
-                return {"sha": NEW}
-            self.assertIn("/compare/%s...%s" % (OLD, NEW), url)
-            if isinstance(compare, Exception):
-                raise compare
-            return compare
-        return mock.patch.object(update, "_get_json", get)
+def github(sha=NEW, tag="v1.0", compare=None):
+    """A made-up GitHub: the latest release `tag` at commit `sha` (none
+    when tag is None), and the comparison of OLD with it."""
+    def get(url):
+        if url.endswith("/releases/latest"):
+            if tag is None:
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            return {"tag_name": tag}
+        if url.endswith("/commits/" + str(tag)):
+            return {"sha": sha}
+        assert "/compare/%s...%s" % (OLD, sha) in url, url
+        if isinstance(compare, Exception):
+            raise compare
+        return compare
+    return mock.patch.object(update, "_get_json", get)
 
+
+class Check(unittest.TestCase):
     def test_up_to_date(self):
-        with mock.patch.object(update, "_get_json", lambda url: {"sha": OLD}):
+        with github(sha=OLD):
             self.assertIsNone(update.check(OLD))
 
-    def test_newer_with_changes_newest_first(self):
-        with self.answers({"status": "ahead", "ahead_by": 2,
-                           "commits": [commit("First\n\nmore"), commit("Second")]}):
+    def test_no_release_yet(self):
+        with github(tag=None):
+            self.assertIsNone(update.check(OLD))
+
+    def test_newer_release_with_changes_newest_first(self):
+        with github(compare={"status": "ahead", "ahead_by": 2,
+                             "commits": [commit("First\n\nmore"), commit("Second")]}):
             info = update.check(OLD)
-        self.assertEqual(info, {"sha": NEW, "count": 2, "changes": ["Second", "First"]})
+        self.assertEqual(info, {"tag": "v1.0", "sha": NEW, "count": 2,
+                                "changes": ["Second", "First"]})
 
     def test_installed_is_newer(self):
-        with self.answers({"status": "behind", "ahead_by": 0, "commits": []}):
+        # installed from main after the release: nothing to offer
+        with github(compare={"status": "behind", "ahead_by": 0, "commits": []}):
             self.assertIsNone(update.check(OLD))
 
     def test_commit_github_does_not_know(self):
         err = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
-        with self.answers(err):
-            self.assertEqual(update.check(OLD), {"sha": NEW, "count": None, "changes": []})
-        with mock.patch.object(update, "_get_json", lambda url: {"sha": NEW}):
+        with github(compare=err):
+            self.assertEqual(update.check(OLD),
+                             {"tag": "v1.0", "sha": NEW, "count": None, "changes": []})
+        with github():
             self.assertEqual(update.check("unknown")["count"], None)
 
     def test_github_unreachable_or_strange(self):
@@ -91,7 +105,11 @@ class Check(unittest.TestCase):
             self.assertRaises(OSError, update.check, OLD)
         with mock.patch.object(update, "_get_json", lambda url: {"message": "rate limit"}):
             self.assertRaises(ValueError, update.check, OLD)
-        with self.answers(urllib.error.HTTPError("u", 500, "x", {}, None)):
+        with github(tag="v1.0; rm -rf ~"):
+            self.assertRaises(ValueError, update.check, OLD)
+        with github(sha="not a commit"):
+            self.assertRaises(ValueError, update.check, OLD)
+        with github(compare=urllib.error.HTTPError("u", 500, "x", {}, None)):
             self.assertRaises(OSError, update.check, OLD)
 
 
@@ -215,7 +233,8 @@ class Window(unittest.TestCase):
         self.look(None)
         self.assertFalse(button.get_visible())
 
-        info = {"sha": NEW, "count": 10, "changes": ["Change %d" % i for i in range(10)]}
+        info = {"tag": "v1.0", "sha": NEW, "count": 10,
+                "changes": ["Change %d" % i for i in range(10)]}
         self.look(info)
         self.assertTrue(button.get_visible())
         self.assertEqual(button.get_label(), "Update available")
@@ -225,6 +244,7 @@ class Window(unittest.TestCase):
         with mock.patch.object(Adw.AlertDialog, "present",
                                lambda d, parent=None: asked.append(d)):
             self.app.ask_update()
+        self.assertEqual(asked[0].get_heading(), "Update PhoneBridge to v1.0?")
         body = asked[0].get_body()
         self.assertIn("10 changes:", body)
         self.assertIn("• Change 0", body)

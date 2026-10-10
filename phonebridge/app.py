@@ -86,7 +86,7 @@ class PhoneBridgeApp(Adw.Application):
         self.rdp_last_error = {}        # device id -> why the last desktop session ended
         self._clip_last = None          # the clipboard text last passed either way
         self._clip_handler = 0
-        self.update_available = None    # {"sha", "count", "changes"} from update.check
+        self.update_available = None    # {"tag", "sha", "count", "changes"} from update.check
         self.updating = False
 
     # -- start ------------------------------------------------------------
@@ -1643,7 +1643,9 @@ class PhoneBridgeApp(Adw.Application):
         else:
             body = _("A new version of PhoneBridge is available.")
         body += "\n\n" + _("PhoneBridge starts anew afterwards.")
-        dialog = Adw.AlertDialog(heading=_("Update PhoneBridge?"), body=body)
+        heading = (_("Update PhoneBridge to %s?") % info["tag"] if info.get("tag")
+                   else _("Update PhoneBridge?"))
+        dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.add_response("cancel", _("Not now"))
         dialog.add_response("update", _("Update"))
         dialog.set_response_appearance("update", Adw.ResponseAppearance.SUGGESTED)

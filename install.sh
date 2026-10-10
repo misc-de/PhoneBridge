@@ -21,7 +21,10 @@ if [ ! -f "$here/phonebridge/agent.py" ]; then
     trap 'rm -rf "$here"' EXIT
     echo "Downloading PhoneBridge …"
     if [ -z "$PHONEBRIDGE_SOURCE" ] && [ -z "$version" ]; then
-        version=$(curl -fsSL https://api.github.com/repos/misc-de/PhoneBridge/commits/main 2>/dev/null \
+        # the latest release; main only while there is none
+        ref=$(curl -fsSL https://api.github.com/repos/misc-de/PhoneBridge/releases/latest 2>/dev/null \
+              | grep -m1 -o '"tag_name": *"[A-Za-z0-9._+-]*"' | sed 's/.*"\([^"]*\)"$/\1/' || true)
+        version=$(curl -fsSL "https://api.github.com/repos/misc-de/PhoneBridge/commits/${ref:-main}" 2>/dev/null \
                   | grep -m1 -o '"sha": *"[0-9a-f]\{40\}"' | grep -o '[0-9a-f]\{40\}' || true)
     fi
     curl -fsSL "${PHONEBRIDGE_SOURCE:-https://github.com/misc-de/PhoneBridge/archive/${version:-refs/heads/main}.tar.gz}" \

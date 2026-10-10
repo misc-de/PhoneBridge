@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 misc-de
 # SPDX-License-Identifier: MIT
-"""Updates from GitHub: which commit is installed, whether main has moved
-on since, and installing the new one - with its own install.sh, as the
-first time.
+"""Updates from GitHub: which commit is installed, whether a newer release
+is out since, and installing it - with its own install.sh, as the first
+time. Only releases count, not every commit on main: what is pushed
+there comes to nobody until it is released. Pre-releases and drafts do
+not count either.
 
 Only an installed PhoneBridge looks for updates: install.sh writes the
 commit to VERSION next to the package. Run from the source tree, there is
@@ -15,6 +17,7 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 
 REPO = "misc-de/PhoneBridge"
@@ -24,6 +27,7 @@ TARBALL = (os.environ.get("PHONEBRIDGE_UPDATE_TARBALL")
 LIB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VERSION_FILE = os.path.join(LIB, "VERSION")
 SHA = re.compile(r"[0-9a-f]{40}")
+TAG = re.compile(r"[\w.+-]{1,64}")
 SHOWN = 8           # changes listed when asking
 
 
@@ -55,14 +59,33 @@ def _get_json(url):
         return json.load(r)
 
 
-def check(current):
-    """{"sha", "count", "changes"} when main has moved on from `current`,
-    else None. count is None when GitHub does not know `current` (any
-    more); changes are first lines, newest first. Raises OSError or
-    ValueError when GitHub cannot be asked."""
-    head = _get_json(API + "/commits/main").get("sha", "")
-    if not SHA.fullmatch(head):
+def latest():
+    """(tag, commit) of the latest release, or None when there is none yet.
+    Raises OSError or ValueError when GitHub cannot be asked."""
+    try:
+        release = _get_json(API + "/releases/latest")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:                       # no release yet
+            return None
+        raise
+    tag = release.get("tag_name") or ""
+    if not TAG.fullmatch(tag):
+        raise ValueError("no release")
+    sha = _get_json("%s/commits/%s" % (API, urllib.parse.quote(tag))).get("sha", "")
+    if not SHA.fullmatch(sha):
         raise ValueError("no commit")
+    return tag, sha
+
+
+def check(current):
+    """{"tag", "sha", "count", "changes"} when a release newer than
+    `current` is out, else None. count is None when GitHub does not know
+    `current` (any more); changes are first lines, newest first. Raises
+    OSError or ValueError when GitHub cannot be asked."""
+    release = latest()
+    if release is None:
+        return None
+    tag, head = release
     if head == current:
         return None
     commits, count = [], None
@@ -82,7 +105,7 @@ def check(current):
         line = ((c.get("commit") or {}).get("message") or "").strip().splitlines()
         if line:
             changes.append(line[0])
-    return {"sha": head, "count": count, "changes": changes}
+    return {"tag": tag, "sha": head, "count": count, "changes": changes}
 
 
 def install(sha, autostart):

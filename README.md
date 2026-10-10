@@ -188,9 +188,10 @@ curl -fsSL https://raw.githubusercontent.com/misc-de/PhoneBridge/main/install.sh
 It installs into `~/.local` only, puts PhoneBridge in the menu and starts it at login
 (`… | NO_AUTOSTART=1 bash` leaves that out). Nothing is installed on the phone.
 
-**Updates** - PhoneBridge looks on GitHub for a newer version (a minute after the start, then
-every six hours). When there is one, *Update available* shows at the top left of the window;
-a click lists the changes and asks, and PhoneBridge installs the update and starts anew.
+**Updates** - PhoneBridge looks on GitHub for a newer release (a minute after the start, then
+every six hours) - only releases, not every change on `main`. When there is one, *Update
+available* shows at the top left of the window; a click lists the changes and asks, and
+PhoneBridge installs the update and starts anew.
 *Menu → Look for updates* turns that off. Running the install line again updates as well.
 
 Or from a checkout:
