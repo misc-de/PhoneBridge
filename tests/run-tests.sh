@@ -14,6 +14,8 @@
 set -e
 cd "$(dirname "$0")/.."
 export PATH="$PWD/tests/fakebin:$PATH"
+# tests/__init__.py refuses to run without this script
+export PHONEBRIDGE_TESTS=1
 export PYTHONWARNINGS=ignore::DeprecationWarning
 export PHONEBRIDGE_LANGUAGE=en
 # never your own address book or picture cache

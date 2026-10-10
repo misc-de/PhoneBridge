@@ -41,6 +41,8 @@ os.environ.update({
     "PATH": os.path.join(ROOT, "tests", "fakebin") + os.pathsep + os.environ["PATH"],
     # no desktop of its own: light or dark as asked, not as this desktop's theme
     "XDG_CURRENT_DESKTOP": "PhoneBridgeDemo",
+    # set apart like tests/run-tests.sh: tests/__init__.py lets fake_eds be imported
+    "PHONEBRIDGE_TESTS": "1",
     "PHONEBRIDGE_CONFIG": os.path.join(work, "config"),
     "XDG_CONFIG_HOME": os.path.join(work, "xdg"),
     "XDG_CACHE_HOME": os.path.join(work, "cache"),
