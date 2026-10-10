@@ -369,6 +369,16 @@ class Page(unittest.TestCase):
         self.page._shown[item.thumb_key] = Gtk.Image()
         self.page._want_thumb(item)
         self.assertTrue(run_loop_until(lambda: self.page._thumbs.get(item.thumb_key), 10))
+        # selected alone: its thumbnail bottom left in the sidebar
+        self.page.selection.unselect_all()
+        self.assertFalse(self.page.preview.get_visible())
+        self.select("photo.png")
+        self.assertTrue(self.page.preview.get_visible())
+        self.assertIs(self.page.preview_picture.get_paintable(),
+                      self.page._thumbs[item.thumb_key])
+        self.assertEqual(self.page.preview_name.get_label(), "photo.png")
+        self.page.selection.unselect_all()
+        self.assertFalse(self.page.preview.get_visible())
         self.page.go_back()
         self.assertTrue(run_loop_until(lambda: self.page.path == self.phone, 10))
         self.go(os.path.join(self.phone, "Documents"))

@@ -189,7 +189,22 @@ class FilesPage(Gtk.Box):
         self.place_list.connect("row-activated", self._on_place)
         scroller = Gtk.ScrolledWindow(child=self.place_list, vexpand=True,
                                       hscrollbar_policy=Gtk.PolicyType.NEVER)
-        return scroller
+        # bottom left: the thumbnail of the one picture or video selected
+        self.preview = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                               margin_top=6, margin_bottom=12, margin_start=12,
+                               margin_end=12, visible=False)
+        self.preview.key = None
+        self.preview_picture = Gtk.Picture(content_fit=Gtk.ContentFit.SCALE_DOWN,
+                                           halign=Gtk.Align.START, can_shrink=True)
+        self.preview_name = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE)
+        self.preview_name.add_css_class("caption")
+        self.preview_name.add_css_class("dim-label")
+        self.preview.append(self.preview_picture)
+        self.preview.append(self.preview_name)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(scroller)
+        box.append(self.preview)
+        return box
 
     def _content(self):
         bar = Gtk.Box(spacing=6, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
@@ -613,6 +628,8 @@ class FilesPage(Gtk.Box):
             if error is not None:
                 for key in keys.values():
                     self._thumbs.setdefault(key, None)
+            if self.preview.key in keys.values():
+                self._update_preview()
             self._thumb_queue = rest + self._thumb_queue
             if self._thumb_queue:
                 self._ask_thumbs()
@@ -644,6 +661,23 @@ class FilesPage(Gtk.Box):
         self.action_bar.set_revealed(bool(sel))
         if sel:
             self.selected_label.set_label(n_("%d selected", "%d selected", len(sel)))
+        self._update_preview(sel)
+
+    def _update_preview(self, sel=None):
+        """The sidebar's thumbnail: one picture or video selected and its
+        thumbnail there - otherwise nothing."""
+        if sel is None:
+            sel = self.selected() if self.dev is not None and self.dev.online else []
+        item = sel[0] if len(sel) == 1 and sel[0].wants_thumb else None
+        self.preview.key = item.thumb_key if item is not None else None
+        texture = self._thumbs.get(item.thumb_key) if item is not None else None
+        if texture is None:
+            self.preview.set_visible(False)
+            self.preview_picture.set_paintable(None)
+            return
+        self.preview_picture.set_paintable(texture)
+        self.preview_name.set_label(item.name)
+        self.preview.set_visible(True)
 
     def _popup(self, widget, list_item, x, y):
         pos = list_item.get_position()
