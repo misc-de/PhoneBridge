@@ -71,6 +71,27 @@ class Connection(unittest.TestCase):
         self.assertEqual(env["SSH_ASKPASS_REQUIRE"], "force")
         self.assertEqual(env["PHONEBRIDGE_SSH_PASSWORD"], "x")
 
+    def test_askpass_helper_never_one_others_may_change(self):
+        # a helper anyone may write to is replaced, not handed the password
+        helper = os.path.join(self.home.dir, "phonebridge-askpass")
+        with open(helper, "w") as f:
+            f.write(secrets.ASKPASS)
+        os.chmod(helper, 0o777)
+        self.assertEqual(secrets.askpass_helper(), helper)
+        self.assertEqual(stat.S_IMODE(os.stat(helper).st_mode), 0o700)
+        # a runtime directory others may write to is not used at all
+        os.chmod(self.home.dir, 0o777)
+        self.addCleanup(os.chmod, self.home.dir, 0o700)
+        path = secrets.askpass_helper()
+        self.assertNotEqual(os.path.dirname(path), self.home.dir)
+        st = os.stat(os.path.dirname(path))
+        self.assertEqual(st.st_uid, os.getuid())
+        self.assertEqual(stat.S_IMODE(st.st_mode), 0o700)
+        # nor is a shared temporary directory when there is none
+        with mock.patch.dict(os.environ):
+            del os.environ["XDG_RUNTIME_DIR"]
+            self.assertEqual(secrets.askpass_helper(), path)
+
     def test_call_sound_logs_in_too(self):
         from phonebridge import callaudio
         audio = callaudio.CallAudio(INFO, echo_cancel=False, test=True, password="geheim")

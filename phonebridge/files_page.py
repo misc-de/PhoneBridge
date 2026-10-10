@@ -732,9 +732,9 @@ class FilesPage(Gtk.Box):
     def _launch(self, local):
         launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(local))
 
-        def launched(l, res):
+        def launched(source, res):
             try:
-                l.launch_finish(res)
+                source.launch_finish(res)
             except GLib.Error as e:
                 self.app.toast(_("Could not open %(name)s: %(error)s") % {
                     "name": os.path.basename(local), "error": e.message})

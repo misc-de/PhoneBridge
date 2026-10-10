@@ -259,7 +259,7 @@ class Device(GObject.Object):
         reason = self._stderr[-1] if self._stderr else None
         if reason is None and proc.get_if_exited() and proc.get_exit_status() != 0:
             reason = "ssh exited with %d" % proc.get_exit_status()
-        if self.state != "online" and any("Permission denied" in l for l in self._stderr):
+        if self.state != "online" and any("Permission denied" in line for line in self._stderr):
             # the key is not taken - a password is needed (or was wrong):
             # no retries until there is one, they would only be refused
             wrong = self.password is not None

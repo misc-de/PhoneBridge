@@ -236,7 +236,7 @@ class Pages(unittest.TestCase):
                          1)                                  # the call
         launched = []
         with mock.patch.object(Gtk.UriLauncher, "launch",
-                               lambda l, *a: launched.append(l.get_uri())):
+                               lambda launcher, *a: launched.append(launcher.get_uri())):
             page.write_email(" dora+test@example.org ")
         self.assertEqual(launched, ["mailto:dora%2Btest@example.org"])
 
@@ -444,8 +444,8 @@ class Pages(unittest.TestCase):
         row = page.sip_group.rows_[0]
         self.assertEqual(row.get_title(), "Private")
         self.assertIn("TLS", row.get_subtitle())
-        self.wait(lambda: any(l["id"] == "sip:me@voip.example.net"
-                              for l in self.app.lines.get("test", [])))
+        self.wait(lambda: any(line["id"] == "sip:me@voip.example.net"
+                              for line in self.app.lines.get("test", [])))
         self.answer.queue.append("remove")
         page.delete_sip({"id": "me@voip.example.net", "display_name": "Private",
                          "user": "me", "host": "voip.example.net"})

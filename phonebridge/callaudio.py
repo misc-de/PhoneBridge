@@ -23,7 +23,6 @@ The test mode uses the phone's ordinary speaker and microphone (droid-sink,
 droid-source) instead - to try the way without a call."""
 
 import array
-import os
 import shlex
 import shutil
 import subprocess

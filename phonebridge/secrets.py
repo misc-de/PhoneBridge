@@ -7,7 +7,10 @@ PhoneBridge's.
 ssh gets the password through SSH_ASKPASS: a tiny helper prints it from
 the environment of that one ssh process (readable by the user only)."""
 
+import atexit
 import os
+import shutil
+import stat
 import tempfile
 
 import gi
@@ -112,14 +115,42 @@ def clear(info, callback=None):
     Secret.password_clear(SCHEMA, attributes(info), None, done)
 
 
+_PRIVATE_DIR = None
+
+
+def _ours_alone(st):
+    """Ours, and nobody else may write to it."""
+    return st.st_uid == os.getuid() and not st.st_mode & 0o022
+
+
+def _helper_dir():
+    """The runtime directory when it is ours alone; else a private one of
+    this process - never a shared /tmp, where another user could leave a
+    helper of their own that would then be handed the password."""
+    global _PRIVATE_DIR
+    d = os.environ.get("XDG_RUNTIME_DIR")
+    if d:
+        try:
+            st = os.stat(d)
+            if stat.S_ISDIR(st.st_mode) and _ours_alone(st):
+                return d
+        except OSError:
+            pass
+    if _PRIVATE_DIR is None:
+        _PRIVATE_DIR = tempfile.mkdtemp(prefix="phonebridge-")
+        atexit.register(shutil.rmtree, _PRIVATE_DIR, True)
+    return _PRIVATE_DIR
+
+
 def askpass_helper():
     """The SSH_ASKPASS program - written once into the runtime directory."""
-    d = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    path = os.path.join(d, "phonebridge-askpass")
+    path = os.path.join(_helper_dir(), "phonebridge-askpass")
     try:
-        with open(path) as f:
-            if f.read() == ASKPASS:
-                return path
+        st = os.lstat(path)
+        if stat.S_ISREG(st.st_mode) and _ours_alone(st):
+            with open(path) as f:
+                if f.read() == ASKPASS:
+                    return path
     except OSError:
         pass
     tmp = "%s.%d" % (path, os.getpid())

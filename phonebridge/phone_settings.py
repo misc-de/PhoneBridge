@@ -41,7 +41,7 @@ class SettingRow:
             self.widget = Adw.ComboRow(title=_(label))
             self.widget.connect("notify::selected", self._changed)
             if kind == "choice":
-                self._set_choices([(v, _(l)) for v, l in extra])
+                self._set_choices([(v, _(label)) for v, label in extra])
         elif kind == "spin":
             low, high, step, digits = extra
             self.widget = Adw.SpinRow.new_with_range(low, high, step)
@@ -69,7 +69,7 @@ class SettingRow:
 
     def _set_choices(self, pairs):
         self.values = [v for v, _l in pairs]
-        self.widget.set_model(Gtk.StringList.new([l for _v, l in pairs]))
+        self.widget.set_model(Gtk.StringList.new([label for _v, label in pairs]))
 
     def show(self, info, required=True):
         """info: what gsettings.get said about the key (None: not there)."""
@@ -91,10 +91,10 @@ class SettingRow:
         elif self.kind == "choice":
             if v not in self.values:
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    pairs = [(x, _(l)) for x, l in self.extra] + [(v, str(v))]
+                    pairs = [(x, _(label)) for x, label in self.extra] + [(v, str(v))]
                     self._set_choices(sorted(pairs, key=lambda p: (p[0] == 0, p[0])))
                 else:
-                    self._set_choices([(x, _(l)) for x, l in self.extra] + [(v, str(v))])
+                    self._set_choices([(x, _(label)) for x, label in self.extra] + [(v, str(v))])
             self.widget.set_selected(self.values.index(v))
         elif self.kind == "spin":
             self.widget.set_value(v)

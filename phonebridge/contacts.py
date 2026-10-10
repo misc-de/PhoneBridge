@@ -598,7 +598,7 @@ class ListEditor:
         row = Adw.EntryRow(title=self.group.get_title(), text=value)
         dropdown = None
         if self.types:
-            dropdown = Gtk.DropDown.new_from_strings([_(l) for _k, l in self.types])
+            dropdown = Gtk.DropDown.new_from_strings([_(label) for _k, label in self.types])
             dropdown.set_valign(Gtk.Align.CENTER)
             keys = [k for k, _l in self.types]
             dropdown.set_selected(keys.index(kind) if kind in keys else 0)

@@ -124,7 +124,7 @@ class OverTheWire(unittest.TestCase):
         accounts, _e = self.ask("sip.list")
         self.assertEqual([a["display_name"] for a in accounts], ["Private"])
         lines, _e = self.ask("lines.list")
-        self.assertIn("sip:me@voip.example.net", [l["id"] for l in lines])
+        self.assertIn("sip:me@voip.example.net", [line["id"] for line in lines])
         self.calls.wait(5)                                      # the first Calls ended ...
         self.assertTrue(run_loop_until(lambda: agent.processes_named("gnome-calls"), 5))
         with open(self.log) as f:

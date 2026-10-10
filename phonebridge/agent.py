@@ -1470,8 +1470,8 @@ def vcard_from_contact(c, original=None, photo=None):
     "" removes it, else (mime, bytes) sets it."""
     lines = _unfold(original) if original else ["BEGIN:VCARD", "VERSION:3.0", "END:VCARD"]
     owned = CONTACT_OWNED | ({"PHOTO"} if photo is not None else set())
-    kept = [l for l in lines
-            if l != "END:VCARD" and not (":" in l and _prop(l)[0] in owned)]
+    kept = [line for line in lines
+            if line != "END:VCARD" and not (":" in line and _prop(line)[0] in owned)]
     given, family = c.get("given", "").strip(), c.get("family", "").strip()
     org = c.get("org", "").strip()
     name = " ".join(p for p in (given, family) if p) or org or c.get("name", "").strip()
@@ -1496,7 +1496,7 @@ def vcard_from_contact(c, original=None, photo=None):
         mime, raw = photo
         kind = "PNG" if "png" in mime else "JPEG"
         new.append("PHOTO;ENCODING=b;TYPE=%s:%s" % (kind, base64.b64encode(raw).decode()))
-    return "\r\n".join(_fold(l) for l in kept + new + ["END:VCARD"]) + "\r\n"
+    return "\r\n".join(_fold(line) for line in kept + new + ["END:VCARD"]) + "\r\n"
 
 
 # --- events ----------------------------------------------------------------------
@@ -1926,7 +1926,7 @@ def vevent_from_fields(f, original=None, shift=None):
                 continue
         out.append(line)
     new = []
-    if not any(l.startswith("UID") for l in out):
+    if not any(line.startswith("UID") for line in out):
         new.append("UID:" + hashlib.sha1(("%s%f%s" % (now, time.time(), f.get("summary")))
                                          .encode()).hexdigest())
     new += ["DTSTAMP:" + now, "LAST-MODIFIED:" + now, "SEQUENCE:%d" % sequence]
@@ -1949,7 +1949,7 @@ def vevent_from_fields(f, original=None, shift=None):
                  "DESCRIPTION:" + _escape(f.get("summary", "").strip() or "Reminder"),
                  "TRIGGER;RELATED=START:%sPT%dM" % ("-" if minutes >= 0 else "", abs(minutes)),
                  "END:VALARM"]
-    return "\r\n".join(_fold(l) for l in ["BEGIN:VEVENT"] + body + ["END:VEVENT"]) + "\r\n"
+    return "\r\n".join(_fold(line) for line in ["BEGIN:VEVENT"] + body + ["END:VEVENT"]) + "\r\n"
 
 
 # --- evolution-data-server over D-Bus ---------------------------------------------
@@ -2223,7 +2223,7 @@ def cmd_event_save(agent, args):
         original = agent.pim.call("calendar", source, "GetObject",
                                   GLib.Variant("(ss)", (uid, args["rid"])), "(s)")[0]
         mine = [c for c in components(original, "VEVENT")
-                if any(l.startswith("RECURRENCE-ID") for l in c)]
+                if any(line.startswith("RECURRENCE-ID") for line in c)]
         text = vevent_from_fields(fields, "\r\n".join(mine[0]) if mine else original)
         agent.pim.call("calendar", source, "ModifyObjects",
                        GLib.Variant("(assu)", ([text], "this", 0)))
@@ -2232,7 +2232,7 @@ def cmd_event_save(agent, args):
         original = agent.pim.call("calendar", old_source, "GetObject",
                                   GLib.Variant("(ss)", (uid, "")), "(s)")[0]
         masters = [c for c in components(original, "VEVENT")
-                   if not any(l.startswith("RECURRENCE-ID") for l in c)]
+                   if not any(line.startswith("RECURRENCE-ID") for line in c)]
         original = "\r\n".join(masters[0]) if masters else original
     shift = None
     if args.get("occurrence_start") is not None:
@@ -2273,10 +2273,10 @@ def cmd_event_delete(agent, args):
     original = agent.pim.call("calendar", source, "GetObject",
                               GLib.Variant("(ss)", (uid, "")), "(s)")[0]
     masters = [c for c in components(original, "VEVENT")
-               if not any(l.startswith("RECURRENCE-ID") for l in c)]
+               if not any(line.startswith("RECURRENCE-ID") for line in c)]
     if not masters:
         raise RuntimeError("no such event")
-    text = "\r\n".join(_fold(l) for l in add_exdate(masters[0], args["start"])) + "\r\n"
+    text = "\r\n".join(_fold(line) for line in add_exdate(masters[0], args["start"])) + "\r\n"
     agent.pim.call("calendar", source, "ModifyObjects",
                    GLib.Variant("(assu)", ([text], "all", 0)))
     return True
@@ -2830,14 +2830,14 @@ def cmd_lines(agent, args):
 
 def dial_on_line(agent, number, line):
     if line.startswith("sim:"):
-        sims = {l["id"]: l for l in sim_lines(agent)}
+        sims = {line["id"]: line for line in sim_lines(agent)}
         if line not in sims:
             raise RuntimeError("this SIM card is not in the phone")
         call(agent.system, "org.ofono", sims[line]["modem"], "org.ofono.VoiceCallManager",
              "Dial", GLib.Variant("(ss)", (number, "default")), "(o)", timeout=30000)
         return
     if line.startswith("sip:"):
-        accounts = {l["id"] for l in sip_lines()}
+        accounts = {line["id"] for line in sip_lines()}
         if line not in accounts:
             raise RuntimeError("no such SIP account")
         call(agent.session, "org.gnome.Calls", "/org/gnome/Calls", "org.gtk.Actions",

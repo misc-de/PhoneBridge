@@ -46,10 +46,10 @@ class QuickSettings:
         self.volume.add_suffix(self.mute)
 
         self.feedback = Adw.ComboRow(title=_("Ring profile"))
-        self.feedback.set_model(Gtk.StringList.new([_(l) for _k, l in FEEDBACK_PROFILES]))
+        self.feedback.set_model(Gtk.StringList.new([_(label) for _k, label in FEEDBACK_PROFILES]))
         self.feedback.connect("notify::selected", self._on_feedback)
         self.power = Adw.ComboRow(title=_("Power profile"))
-        self.power.set_model(Gtk.StringList.new([_(l) for _k, l in POWER_PROFILES]))
+        self.power.set_model(Gtk.StringList.new([_(label) for _k, label in POWER_PROFILES]))
         self.power.connect("notify::selected", self._on_power)
 
         self.hotspot = Adw.SwitchRow(title=_("Hotspot"))

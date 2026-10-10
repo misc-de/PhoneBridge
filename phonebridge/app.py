@@ -1155,7 +1155,7 @@ class PhoneBridgeApp(Adw.Application):
         is there, else the first one."""
         lines = self.lines.get(dev.id, []) if dev else []
         wanted = self.cfg.get("lines", {}).get(dev.id) if dev else None
-        return next((l for l in lines if l["id"] == wanted), lines[0] if lines else None)
+        return next((line for line in lines if line["id"] == wanted), lines[0] if lines else None)
 
     def choose_line(self, dev, line_id):
         self.cfg.setdefault("lines", {})[dev.id] = line_id

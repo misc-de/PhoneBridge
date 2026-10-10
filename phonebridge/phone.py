@@ -151,10 +151,10 @@ class PhonePage(Gtk.Box):
             d.add_css_class("title-2")
             inner.append(d)
             if letters:
-                l = Gtk.Label(label=letters)
-                l.add_css_class("caption")
-                l.add_css_class("dim-label")
-                inner.append(l)
+                small = Gtk.Label(label=letters)
+                small.add_css_class("caption")
+                small.add_css_class("dim-label")
+                inner.append(small)
             b.set_child(inner)
             b.connect("clicked", lambda btn, k=digit: self._press(k))
             grid.attach(b, n % 3, n // 3, 1, 1)
@@ -410,8 +410,8 @@ class PhonePage(Gtk.Box):
         lines = self.app.lines.get(dev.id, []) if dev else []
         chosen = self.app.chosen_line(dev)
         self._picking_line = True
-        self._line_ids = [l["id"] for l in lines]
-        self.line_picker.set_model(Gtk.StringList.new([self.app.line_label(l) for l in lines]))
+        self._line_ids = [line["id"] for line in lines]
+        self.line_picker.set_model(Gtk.StringList.new([self.app.line_label(line) for line in lines]))
         if chosen is not None:
             self.line_picker.set_selected(self._line_ids.index(chosen["id"]))
         self._picking_line = False

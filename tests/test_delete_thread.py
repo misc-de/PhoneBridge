@@ -7,7 +7,6 @@ import os
 import sqlite3
 import subprocess
 import textwrap
-import time
 import unittest
 from unittest import mock
 

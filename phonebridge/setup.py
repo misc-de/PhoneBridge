@@ -7,7 +7,7 @@ the keyring. Shown at the first start, and for "Add phone".
 
 The phone is added only once a connection worked."""
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gtk
 
 from . import config, secrets, sshkeys, text
 from .connection import Device

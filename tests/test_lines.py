@@ -69,7 +69,7 @@ class Lines(unittest.TestCase):
     def test_two_sims_and_sip(self):
         self.use({"/ril_0": "8949001", "/ril_1": "8949002"})
         lines = agent.cmd_lines(self.agent, {})
-        self.assertEqual([(l["id"], l.get("slot")) for l in lines],
+        self.assertEqual([(line["id"], line.get("slot")) for line in lines],
                          [("sim:8949001", 1), ("sim:8949002", 2),
                           ("sip:work-account", None), ("sip:sip-01", None)])
         self.assertEqual(lines[1]["number"], "+4915550000099")
@@ -78,7 +78,7 @@ class Lines(unittest.TestCase):
 
     def test_empty_slot_is_no_line(self):
         self.use({"/ril_0": "8949001", "/ril_1": None})
-        self.assertEqual([l["id"] for l in agent.sim_lines(self.agent)], ["sim:8949001"])
+        self.assertEqual([line["id"] for line in agent.sim_lines(self.agent)], ["sim:8949001"])
 
     def test_dial_on_the_card_wherever_it_is(self):
         fake = self.use({"/ril_0": "8949002", "/ril_1": "8949001"})   # cards swapped

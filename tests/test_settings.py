@@ -17,7 +17,6 @@ from gi.repository import Gtk  # noqa: E402
 from phonebridge import agent  # noqa: E402
 from phonebridge.settings_spec import SECTIONS, keys_of  # noqa: E402
 
-from .support import Home, run_loop_until  # noqa: E402
 
 HAVE_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 

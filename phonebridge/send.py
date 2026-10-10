@@ -46,8 +46,8 @@ def send(app, items, dev=None):
     for p in missing:
         app.tell(_("Not found: %s") % p)
     for link in links:
-        dev.request("open.uri", {"uri": link}, lambda r, e, l=link: app.tell(
-            _("Opened on %(phone)s: %(what)s") % {"phone": dev.name, "what": l} if e is None
+        dev.request("open.uri", {"uri": link}, lambda r, e, link=link: app.tell(
+            _("Opened on %(phone)s: %(what)s") % {"phone": dev.name, "what": link} if e is None
             else _("Not sent: %s") % text.error(e)))
     if paths:
         dev.request("files.places", {}, lambda r, e: _upload(app, dev, paths, r, e))

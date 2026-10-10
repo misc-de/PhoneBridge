@@ -469,7 +469,7 @@ class EventEditor(Adw.Dialog):
         when.add(self.start_row)
         when.add(self.end_row)
         self.alarm = Adw.ComboRow(title=_("Reminder"))
-        labels = [_(l) for _v, l in ALARMS]
+        labels = [_(label) for _v, label in ALARMS]
         values = [v for v, _l in ALARMS]
         current = ev["alarm"] if ev else 15
         if current not in values:
