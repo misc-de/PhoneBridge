@@ -1,0 +1,10 @@
+PhoneBridge
+Copyright (c) 2026 misc-de - MIT License (see LICENSE)
+
+The Flatpak build (flatpak/io.github.miscde.PhoneBridge.yml) bundles:
+
+FreeRDP 3 - https://www.freerdp.com
+Copyright the FreeRDP contributors.
+Licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+Source: https://github.com/FreeRDP/FreeRDP

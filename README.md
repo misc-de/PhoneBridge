@@ -261,6 +261,13 @@ GNOME Calls, PipeWire and evolution-data-server, on a private D-Bus - your setti
 Texts are written in English in the code and translated in `phonebridge/lang_de.py`;
 `tests/test_i18n.py` checks that every text has its German.
 
+## Credits
+
+PhoneBridge builds on GTK, libadwaita, PyGObject, OpenSSH, GStreamer, PipeWire and FreeRDP
+on the PC, and on the phone's own stack - ofono, ModemManager, Chatty, GNOME Calls,
+evolution-data-server and more. The full list with links and licenses is in
+[CREDITS.md](CREDITS.md); what the Flatpak bundles is in [NOTICE](NOTICE).
+
 ## License
 
 [MIT](LICENSE) © 2026 misc-de
