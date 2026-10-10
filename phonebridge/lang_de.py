@@ -1071,8 +1071,6 @@ TRANSLATIONS = {
         'Musik',
     'Videos':
         'Videos',
-    'File system':
-        'Dateisystem',
     'Downloading':
         'Herunterladen',
     'Uploading':
@@ -1165,6 +1163,8 @@ TRANSLATIONS = {
         '%(what)s fehlgeschlagen: %(error)s',
     'Could not open %(name)s: %(error)s':
         '%(name)s konnte nicht geöffnet werden: %(error)s',
+    'Could not play %(name)s: %(error)s':
+        '%(name)s konnte nicht abgespielt werden: %(error)s',
     'Permission denied':
         'Keine Berechtigung',
     'No such file or directory':

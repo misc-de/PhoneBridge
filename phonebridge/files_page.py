@@ -23,8 +23,7 @@ PLACES = (("home", N_("Home folder"), "user-home-symbolic"),
           ("downloads", N_("Downloads"), "folder-download-symbolic"),
           ("pictures", N_("Pictures"), "folder-pictures-symbolic"),
           ("music", N_("Music"), "folder-music-symbolic"),
-          ("videos", N_("Videos"), "folder-videos-symbolic"),
-          ("root", N_("File system"), "drive-harddisk-symbolic"))
+          ("videos", N_("Videos"), "folder-videos-symbolic"))
 THUMB_DELAY = 120           # ms: rows scrolled past in that time ask for nothing
 ZOOM = (16, 24, 32, 48, 64, 96, 128)    # icon and thumbnail sizes of the list
 ZOOM_DEFAULT = 2
@@ -47,6 +46,11 @@ class FileItem(GObject.Object):
     @property
     def wants_thumb(self):
         return not self.is_dir and self.content_type.split("/")[0] in ("image", "video")
+
+    @property
+    def playable(self):
+        """Music: played here, in the page's player."""
+        return not self.is_dir and self.content_type.startswith("audio/")
 
 
 def _name_sort(a, b, _data=None):
@@ -112,6 +116,7 @@ class FilesPage(Gtk.Box):
         self._watching = {}         # local copy -> (monitor, device, remote, mtime)
         self._name_boxes = []       # every name cell made: their icons follow the zoom
         self._reveal = None         # a name to show once its folder is there (search)
+        self._target = None         # the folder last asked for, until it is there
         self._scrolled = 0.0
         z = app.cfg.get("files_zoom", ZOOM_DEFAULT)
         self.zoom = z if isinstance(z, int) and 0 <= z < len(ZOOM) else ZOOM_DEFAULT
@@ -136,6 +141,8 @@ class FilesPage(Gtk.Box):
         self.group = Gio.SimpleActionGroup()
         self.acts = {}
         for name, cb in (("open", lambda *a: self.open_selected()),
+                         ("play", lambda *a: self.play_selected()),
+                         ("stop", lambda *a: self.stop_playing()),
                          ("download", lambda *a: self.download_selected()),
                          ("download-to", lambda *a: self.download_selected(ask=True)),
                          ("rename", lambda *a: self.ask_rename()),
@@ -157,6 +164,7 @@ class FilesPage(Gtk.Box):
         hidden.connect("change-state", self._on_hidden)
         self.group.add_action(hidden)
         self.acts["hidden"] = hidden
+        self.acts["stop"].set_enabled(False)
         self.insert_action_group("files", self.group)
 
     def _shortcuts(self):
@@ -183,7 +191,7 @@ class FilesPage(Gtk.Box):
             box.append(Gtk.Image(icon_name=icon))
             box.append(Gtk.Label(label=_(label), xalign=0))
             row.set_child(box)
-            row.set_visible(pid in ("home", "root"))
+            row.set_visible(pid == "home")
             self.place_list.append(row)
             self.place_rows[pid] = row
         self.place_list.connect("row-activated", self._on_place)
@@ -271,7 +279,8 @@ class FilesPage(Gtk.Box):
         self.selection.connect("selection-changed", lambda *a: self._update_actions())
         self.view.set_model(self.selection)
         self.view.sort_by_column(name_col, Gtk.SortType.ASCENDING)
-        self.view.connect("activate", lambda v, pos: self.open_item(self.sorted.get_item(pos)))
+        self.view.connect("activate",
+                          lambda v, pos: self.activate_item(self.sorted.get_item(pos)))
 
         self.status = Adw.StatusPage(icon_name="folder-symbolic")
         self.stack = Gtk.Stack()
@@ -288,6 +297,22 @@ class FilesPage(Gtk.Box):
         drop.connect("drop", self._on_drop)
         self.stack.add_controller(drop)
 
+        # the music file playing: fetched like one opened, played here
+        self.player_name = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE,
+                                     max_width_chars=32)
+        self.player_controls = Gtk.MediaControls(hexpand=True)
+        stop = Gtk.Button(icon_name="window-close-symbolic", tooltip_text=_("Stop"),
+                          valign=Gtk.Align.CENTER, action_name="files.stop")
+        stop.add_css_class("flat")
+        player = Gtk.Box(spacing=8, margin_top=3, margin_bottom=3, margin_start=12,
+                         margin_end=6)
+        player.append(Gtk.Image(icon_name="audio-x-generic-symbolic"))
+        player.append(self.player_name)
+        player.append(self.player_controls)
+        player.append(stop)
+        self.player = Gtk.Revealer(child=player, reveal_child=False)
+        self._play_want = None      # the copy being fetched to play
+
         self.transfers = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.transfers.add_css_class("boxed-list")
         self.transfer_revealer = Gtk.Revealer(child=Gtk.Box(
@@ -299,15 +324,19 @@ class FilesPage(Gtk.Box):
         self.selected_label = Gtk.Label()
         self.action_bar.pack_start(self.selected_label)
         for label, action in ((_("Delete"), "delete"), (_("Rename"), "rename"),
-                              (_("Download"), "download"), (_("Open"), "open")):
+                              (_("Download"), "download"), (_("Open"), "open"),
+                              (_("Play"), "play")):
             b = Gtk.Button(label=label, action_name="files." + action)
             if action == "delete":
                 b.add_css_class("destructive-action")
+            elif action == "play":
+                self.play_button = b
             self.action_bar.pack_end(b)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.append(bar)
         box.append(self.stack)
+        box.append(self.player)
         box.append(self.transfer_revealer)
         box.append(self.action_bar)
         return box
@@ -403,10 +432,12 @@ class FilesPage(Gtk.Box):
     # -- the phone ---------------------------------------------------------------------
     def set_device(self, dev):
         if dev is not self.dev:
+            if self.dev is not None:
+                self.stop_playing()        # the other phone's music
             self.dev = dev
             self._serial += 1
             self._loaded_for = None
-            self.path = self.home = None
+            self.path = self.home = self._target = None
             self._history = []
             self._thumbs.clear()
             self._shown.clear()
@@ -427,33 +458,51 @@ class FilesPage(Gtk.Box):
         if self._loaded_for is dev and not force:
             return
         self._loaded_for = dev
-        serial = self._serial
-
-        def got_places(result, error):
-            if serial != self._serial or error is not None:
-                return
-            self.home = result["home"]
-            self.places = {"home": result["home"], "root": "/"}
-            self.places.update({p["id"]: p["path"] for p in result["places"]})
-            for pid, row in self.place_rows.items():
-                row.set_visible(pid in self.places)
-            if self.path is None:
-                self.navigate(self.home, push=False)
-
         if self.path is None:
             self._status(_("Loading …"))
-            dev.request("files.places", {}, got_places)
-        else:
-            self.navigate(self.path, push=False)
+        self.navigate(self.path or self._target, push=False)
+
+    def _set_places(self, result):
+        self.home = result["home"]
+        self.places = {"home": result["home"]}
+        self.places.update({p["id"]: p["path"] for p in result["places"]
+                            if self._in_home(p["path"])})
+        for pid, row in self.place_rows.items():
+            row.set_visible(pid in self.places)
 
     def refresh(self):
         if self.path is not None:
             self.navigate(self.path, push=False)
 
+    def _in_home(self, path):
+        """Only the home folder and what is below it is shown."""
+        home = (self.home or "").rstrip("/")
+        return bool(home) and (path == self.home or path.rstrip("/") == home
+                               or path.startswith(home + "/"))
+
     def navigate(self, path, push=True):
+        """path None or outside the home folder: the home folder."""
         dev = self.dev
         if dev is None or not dev.online:
             return
+        self._target = path
+        if self.home is None:       # first where the home folder is
+            self._serial += 1
+            serial = self._serial
+
+            def got_places(result, error):
+                if serial != self._serial:
+                    return
+                if error is not None:
+                    self._status(text.error(error))
+                    return
+                self._set_places(result)
+                self.navigate(path, push=False)
+
+            dev.request("files.places", {}, got_places)
+            return
+        if not path or not self._in_home(path):
+            path = self.home
         self._serial += 1
         serial = self._serial
 
@@ -464,6 +513,9 @@ class FilesPage(Gtk.Box):
                 self.app.toast("%s: %s" % (path, text.error(error)))
                 if self.path is None:
                     self._status(text.error(error))
+                return
+            if not self._in_home(result["path"]):
+                self.navigate(self.home, push=push)
                 return
             if push and self.path is not None and self.path != result["path"]:
                 self._history.append(self.path)
@@ -524,14 +576,9 @@ class FilesPage(Gtk.Box):
         while (child := self.crumbs.get_first_child()) is not None:
             self.crumbs.remove(child)
         path = self.path
-        if self.home and (path == self.home or path.startswith(self.home.rstrip("/") + "/")):
-            first = Gtk.Button(icon_name="user-home-symbolic", tooltip_text=_("Home folder"))
-            rest = path[len(self.home):].strip("/")
-            base = self.home
-        else:
-            first = Gtk.Button(icon_name="drive-harddisk-symbolic", tooltip_text=_("File system"))
-            rest = path.strip("/")
-            base = "/"
+        first = Gtk.Button(icon_name="user-home-symbolic", tooltip_text=_("Home folder"))
+        rest = path[len(self.home.rstrip("/")):].strip("/")
+        base = self.home
         parts = [(first, base)]
         for name in [p for p in rest.split("/") if p]:
             base = posixpath.join(base, name)
@@ -575,7 +622,7 @@ class FilesPage(Gtk.Box):
         self.navigate(posixpath.dirname(path))
 
     def go_up(self):
-        if self.path and self.path != "/":
+        if self.path and self._in_home(self.path) and self.path.rstrip("/") != self.home.rstrip("/"):
             self.navigate(posixpath.dirname(self.path))
 
     def go_back(self):
@@ -648,6 +695,8 @@ class FilesPage(Gtk.Box):
         writable = online and self.writable
         one = len(sel) == 1
         self.acts["open"].set_enabled(one)
+        self.acts["play"].set_enabled(one and sel[0].playable)
+        self.play_button.set_visible(one and sel[0].playable)
         self.acts["download"].set_enabled(bool(sel))
         self.acts["download-to"].set_enabled(bool(sel))
         self.acts["rename"].set_enabled(one and writable)
@@ -656,7 +705,8 @@ class FilesPage(Gtk.Box):
         self.acts["upload"].set_enabled(writable)
         self.acts["upload-folder"].set_enabled(writable)
         self.acts["refresh"].set_enabled(online)
-        self.acts["up"].set_enabled(online and self.path != "/")
+        self.acts["up"].set_enabled(online and bool(self.path) and bool(self.home)
+                                   and self.path.rstrip("/") != self.home.rstrip("/"))
         self.acts["back"].set_enabled(online and bool(self._history))
         self.action_bar.set_revealed(bool(sel))
         if sel:
@@ -687,6 +737,9 @@ class FilesPage(Gtk.Box):
             self.selection.select_item(pos, True)
         menu = Gio.Menu()
         first = Gio.Menu()
+        item = self.sorted.get_item(pos)
+        if item.playable and len(self.selected()) == 1:
+            first.append(_("Play"), "files.play")
         first.append(_("Open"), "files.open")
         first.append(_("Download"), "files.download")
         first.append(_("Download to …"), "files.download-to")
@@ -710,6 +763,14 @@ class FilesPage(Gtk.Box):
         if len(sel) == 1:
             self.open_item(sel[0])
 
+    def activate_item(self, item):
+        """A double click, Enter: into a folder, music played here, any
+        other file opened on the PC."""
+        if item is not None and item.playable:
+            self.play_item(item)
+        else:
+            self.open_item(item)
+
     def open_item(self, item):
         if item is None:
             return
@@ -717,17 +778,65 @@ class FilesPage(Gtk.Box):
             self.navigate(item.path)
             return
         dev = self.dev
-        local = files.open_path(dev.id, item.path)
+
+        def fetched(local):
+            self._launch(local)
+            self._watch(local, dev, item.path)
+
+        self._fetch(item, fetched)
+
+    def _fetch(self, item, then):
+        """The file into the cache of opened ones; then(local) once it is there."""
+        local = files.open_path(self.dev.id, item.path)
         os.makedirs(files.cache_dir(), mode=0o700, exist_ok=True)
         os.makedirs(os.path.dirname(local), mode=0o700, exist_ok=True)
-        t = files.Transfer(dev, "download", item.path, local, size=item.size)
+        t = files.Transfer(self.dev, "download", item.path, local, size=item.size)
+        self.run_transfer(t, lambda error: error is None and then(local))
+        return local
 
-        def done(error):
-            if error is None:
-                self._launch(local)
-                self._watch(local, dev, item.path)
+    # -- music --------------------------------------------------------------------------
+    def play_selected(self):
+        sel = self.selected()
+        if len(sel) == 1 and sel[0].playable:
+            self.play_item(sel[0])
 
-        self.run_transfer(t, done)
+    def play_item(self, item):
+        """Fetched like a file opened, then played in the bar below the list -
+        on this PC, while the folders change."""
+        def fetched(local):
+            if self._play_want == local:
+                self._play(local, item.name)
+
+        self._play_want = self._fetch(item, fetched)
+
+    def _play(self, local, name):
+        old = self.player_controls.get_media_stream()
+        if old is not None:
+            old.pause()
+        media = Gtk.MediaFile.new_for_filename(local)
+        media.connect("notify::error", self._on_play_error, name)
+        self.player_controls.set_media_stream(media)
+        self.player_name.set_label(name)
+        self.player_name.set_tooltip_text(name)
+        self.player.set_reveal_child(True)
+        self.acts["stop"].set_enabled(True)
+        media.play()
+
+    def _on_play_error(self, media, _pspec, name):
+        if media is not self.player_controls.get_media_stream() or media.get_error() is None:
+            return
+        self.app.toast(_("Could not play %(name)s: %(error)s") % {
+            "name": name, "error": media.get_error().message})
+        self.stop_playing()
+
+    def stop_playing(self):
+        self._play_want = None
+        media = self.player_controls.get_media_stream()
+        if media is not None:
+            media.pause()
+            self.player_controls.set_media_stream(None)
+        self.player.set_reveal_child(False)
+        self.acts["stop"].set_enabled(False)
 
     def _launch(self, local):
         launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(local))

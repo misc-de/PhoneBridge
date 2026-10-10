@@ -384,6 +384,14 @@ class Page(unittest.TestCase):
         self.go(os.path.join(self.phone, "Documents"))
         self.page.go_up()
         self.assertTrue(run_loop_until(lambda: self.page.path == self.phone, 10))
+        # only the home folder: no way up from it, nothing outside it
+        self.assertFalse(self.page.acts["up"].get_enabled())
+        self.assertNotIn("root", self.page.place_rows)
+        self.assertEqual(self.page.crumbs.get_first_child().get_icon_name(),
+                         "user-home-symbolic")
+        self.go(os.path.join(self.phone, "Documents"))
+        self.page.navigate(os.path.dirname(self.phone))
+        self.assertTrue(run_loop_until(lambda: self.page.path == self.phone, 10))
 
     def test_3_new_folder_rename_delete(self):
         self.go(self.phone)
@@ -470,6 +478,54 @@ class Page(unittest.TestCase):
         self.assertEqual(size(), 16)
         self.assertFalse(page.acts["zoom-out"].get_enabled())
         page.set_zoom(files_page.ZOOM_DEFAULT)
+
+    def test_6_music_played_here(self):
+        """A double click on music: fetched and played in the bar below the
+        list (never aloud here: play and pause only noted)."""
+        import wave
+        page = self.page
+        folder = os.path.join(self.phone, "Documents")
+        with wave.open(os.path.join(folder, "song.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(b"\0\0" * 800)
+        calls = []
+        with mock.patch.object(Gtk.MediaStream, "play", lambda m: calls.append(("play", m))), \
+                mock.patch.object(Gtk.MediaStream, "pause",
+                                  lambda m: calls.append(("pause", m))):
+            self.go(folder)
+            page.selection.unselect_all()
+            letter = self.select("letter.txt")
+            self.assertFalse(page.acts["play"].get_enabled())
+            self.assertFalse(page.play_button.get_visible())
+            page.selection.unselect_all()
+            song = self.select("song.wav")
+            self.assertTrue(song.playable)
+            self.assertTrue(page.play_button.get_visible())
+            self.assertFalse(page.player.get_reveal_child())
+
+            page.activate_item(song)
+            self.assertTrue(run_loop_until(lambda: calls, 10))
+            media = page.player_controls.get_media_stream()
+            self.assertEqual(calls, [("play", media)])
+            self.assertEqual(media.get_file().get_path(), files.open_path("test", song.path))
+            self.assertTrue(page.player.get_reveal_child())
+            self.assertEqual(page.player_name.get_label(), "song.wav")
+            self.assertTrue(page.acts["stop"].get_enabled())
+
+            self.go(self.phone)                     # it plays on in other folders
+            self.assertIs(page.player_controls.get_media_stream(), media)
+            page.group.activate_action("stop", None)
+            self.assertEqual(calls[-1], ("pause", media))
+            self.assertIsNone(page.player_controls.get_media_stream())
+            self.assertFalse(page.player.get_reveal_child())
+            self.assertFalse(page.acts["stop"].get_enabled())
+
+            # other files still open on the PC
+            with mock.patch.object(page, "open_item") as open_item:
+                page.activate_item(letter)
+            open_item.assert_called_once_with(letter)
 
 
 def GLib_true():

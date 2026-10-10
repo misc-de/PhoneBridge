@@ -53,7 +53,8 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
 - **Appointments** - all calendars of the phone as month and agenda: add, change and delete
   appointments with reminders; recurring ones as a series or a single day.
 - **Files** - the phone's folders with thumbnails: open a file on the PC (a changed copy can
-  go back with one click), download, upload (also by dragging files onto the window), new
+  go back with one click), play music right there (a double click; it plays on while the
+  folders change), download, upload (also by dragging files onto the window), new
   folder, rename, delete. Transfers show their progress and can be cancelled.
 - **Settings** - quick switches (mobile data, Wi-Fi, volume, ring and power profile, find the
   phone), and the phone's own settings section by section: appearance, screen and power,

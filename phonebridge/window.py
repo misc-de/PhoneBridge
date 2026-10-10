@@ -31,6 +31,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.contacts = ContactsPage(app)
         self.calendar = CalendarPage(app)
         self.files = FilesPage(app)
+        # closed (only hidden): no music without the bar to stop it
+        self.connect("hide", lambda w: self.files.stop_playing())
         self.screen = ScreenPage(app)
         self.settings = PhoneSettingsPage(app)
         self.pages = (self.overview, self.phone, self.messages, self.contacts,
