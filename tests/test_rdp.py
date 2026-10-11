@@ -112,8 +112,9 @@ class Pieces(unittest.TestCase):
                                           "__EGL_VENDOR_LIBRARY_FILENAMES": "hybris.json",
                                           "WAYLAND_DISPLAY": "wayland-0", "HOME": "/home/x"}):
             env = ns["desktop_env"](d, "unix:path=/tmp/bus")
-        for name in ("LD_PRELOAD", "__EGL_VENDOR_LIBRARY_FILENAMES", "WAYLAND_DISPLAY"):
+        for name in ("LD_PRELOAD", "WAYLAND_DISPLAY"):
             self.assertNotIn(name, env)
+        self.assertNotEqual(env.get("__EGL_VENDOR_LIBRARY_FILENAMES"), "hybris.json")
         self.assertEqual(env["HOME"], "/home/x")             # the user's files, as always
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/tmp/bus")
         self.assertEqual(open(env["DCONF_PROFILE"]).read(), "user-db:phonebridge_desktop\n")

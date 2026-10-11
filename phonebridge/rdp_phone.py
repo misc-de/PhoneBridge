@@ -66,6 +66,9 @@ PHOSH_ONLY = ("__EGL_VENDOR_LIBRARY_FILENAMES", "LD_PRELOAD", "EGL_PLATFORM",
               "PLYMOUTH_FORCE_SCALE", "XDG_MENU_PREFIX", "DISPLAY", "WAYLAND_DISPLAY",
               "DBUS_SESSION_BUS_ADDRESS", "LC_ALL")
 GRD = "/usr/libexec/gnome-remote-desktop-daemon"
+# libhybris' EGL and Vulkan end an app on any display but Phosh's
+# ("android_wlegl"): the desktop's apps draw with Mesa, in software
+MESA_EGL = "/usr/share/glvnd/egl_vendor.d/50_mesa.json"
 
 # One RDP connection: stdin/stdout of its ssh to the port, here.
 RELAY = r"""
@@ -190,6 +193,8 @@ def desktop_env(folder, bus=None):
     env.update(DCONF_PROFILE=profile, GSETTINGS_BACKEND="dconf",
                XDG_SESSION_TYPE="wayland", XDG_CURRENT_DESKTOP="GNOME",
                XDG_SESSION_DESKTOP="gnome")
+    if os.path.exists(MESA_EGL):
+        env.update(__EGL_VENDOR_LIBRARY_FILENAMES=MESA_EGL, GSK_RENDERER="gl")
     if bus:
         env["DBUS_SESSION_BUS_ADDRESS"] = bus
     return env
