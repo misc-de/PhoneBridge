@@ -265,6 +265,7 @@ class Bridge(unittest.TestCase):
                             GLib.Variant("(s)", ("nobody",)))
         self.assertIn("ContactNotFound", missing.message)     # EDS's errors as they are
         self.assertTrue(self.has(EDS + "UserPrompter0"))       # started on Phosh's bus
+        self.assertTrue(self.has("org.gnome.OnlineAccounts"))   # the accounts of the books
 
     def test_signals_and_backends(self):
         heard = []
@@ -437,11 +438,6 @@ class InTheApp(unittest.TestCase):
             self.assertEqual(overview.rdp_warning.get_visible(), bool(session.open))
         self.assertTrue(run_loop_until(lambda: "test" not in app.rdp_sessions, 30))
         self.assertTrue(overview.rdp.get_visible())
-        self.assertFalse(overview.rdp_info.get_visible())
-        overview.rdp.emit("clicked")                            # and ended from the box
-        self.assertTrue(overview.rdp_info.get_visible())
-        overview.rdp_end.emit("clicked")
-        self.assertNotIn("test", app.rdp_sessions)
         self.assertFalse(overview.rdp_info.get_visible())
         app.set_devices([])
         self.assertEqual(app.cfg["rdp_works"], {})

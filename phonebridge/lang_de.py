@@ -1261,8 +1261,8 @@ TRANSLATIONS = {
         'Phone: spart Strom bis zur nächsten Eingabe',
     'Phone: cores as the system sets them (no sudo)':
         'Phone: Kerne wie vom System gesetzt (kein sudo)',
-    'Closing its window ends it, too':
-        'Auch das Schließen des Fensters beendet sie',
+    'Closing its window ends it':
+        'Schließen des Fensters beendet sie',
     "A GNOME desktop of the phone's own, in a window here":
         'Ein eigener GNOME-Desktop des Phones, hier in einem Fenster',
     'Hide this app here':

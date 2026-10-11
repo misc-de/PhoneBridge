@@ -238,7 +238,7 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.load()
 
     def _rdp_box(self):
-        """While a desktop session runs: how it is doing, and its end."""
+        """While a desktop session runs: how it is doing."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=12,
                       margin_bottom=12, margin_start=14, margin_end=14)
         head = Gtk.Box(spacing=8)
@@ -257,12 +257,8 @@ class OverviewPage(Gtk.ScrolledWindow):
             "Port reachable in the network (no firewall rule)"))
         self.rdp_warning.add_css_class("warning")
         box.append(self.rdp_warning)
-        self.rdp_end = Gtk.Button(label=_("End"), halign=Gtk.Align.START, margin_top=6)
-        self.rdp_end.add_css_class("destructive-action")
-        self.rdp_end.connect("clicked", lambda *a: self.app.set_rdp(self.dev, False))
-        box.append(self.rdp_end)
         self.rdp_info = Gtk.Frame(child=box, valign=Gtk.Align.START, visible=False,
-                                  tooltip_text=_("Closing its window ends it, too"))
+                                  tooltip_text=_("Closing its window ends it"))
         self.rdp_info.add_css_class("card")
         return self.rdp_info
 
