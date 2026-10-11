@@ -7,7 +7,10 @@ It ends, and clears up behind itself, when stdin closes.
 
 Phosh goes on as it is. The desktop runs on a D-Bus of its own, on which
 only what it needs and the apps may start (no second address book,
-calendar, online accounts, keyring or Chatty on the same data), with a dconf database of its own
+calendar, online accounts, keyring or Chatty on the same data). The
+phone's own address books and calendars reach it all the same: BRIDGE
+hands evolution-data-server's names on Phosh's bus over to it. Its
+settings are in a dconf database of its own
 (~/.config/dconf/phonebridge_desktop - Phosh's settings stay untouched;
 the desktop's own stay from one session to the next). Files, apps and
 their data are the user's as always.
@@ -31,7 +34,8 @@ PARAMS comes before this code: password (for this session only); "open";
 in the tests "fake" (an echo server stands for GNOME) and "firewall"
 (False: no rule).
 
-On stderr: "desktop: starting", "desktop: ready PORT FINGERPRINT",
+On stderr: "desktop: starting", "desktop: no address book" (BRIDGE did
+not start), "desktop: ready PORT FINGERPRINT",
 "desktop: open" (no firewall rule), "desktop: cores on|off|none" (all at
 work / as batman left them / no sudo), "desktop: error ..."."""
 
@@ -54,7 +58,9 @@ SERVICES = ("ca.desrt.dconf", "org.a11y.Bus", "org.gnome.Shell.Notifications",
             "org.gnome.Shell.Screencast", "org.gnome.Shell.Extensions",
             "org.freedesktop.portal.Desktop", "org.freedesktop.impl.portal.desktop.gtk",
             "org.freedesktop.impl.portal.desktop.gnome",
-            "org.freedesktop.impl.portal.PermissionStore")
+            "org.freedesktop.impl.portal.PermissionStore",
+            # the shell's calendar, with the appointments BRIDGE brings
+            "org.gnome.Shell.CalendarServer")
 # Apps the shell starts over D-Bus (DBusActivatable) may start too - but not
 # a second Chatty: the phone's own already handles its messages
 NOT_APPS = ("sm.puri.Chatty",)
@@ -101,6 +107,153 @@ s.shutdown(socket.SHUT_WR)
 threading.Event().wait(5)
 """
 
+
+# evolution-data-server on the desktop's bus: its names there, each on a
+# connection of its own, and what comes in goes on to the EDS on Phosh's
+# bus (argv: Phosh's bus, the desktop's) - calls, their replies and EDS's
+# signals. So the desktop's apps see the phone's address books and
+# calendars, with the one EDS that has them. The names of the backends EDS
+# starts later (Subprocess.Backend...) come along as they appear. "ready"
+# on stdout once the names are there.
+BRIDGE = r"""
+import sys
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+EDS = "org.gnome.evolution.dataserver"
+ALWAYS = tuple(EDS + "." + n for n in ("Sources5", "AddressBook10", "Calendar8", "UserPrompter0"))
+FLAGS = (Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+         | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION)
+NONE = Gio.DBusSendMessageFlags.NONE
+phosh, desktop = sys.argv[1], sys.argv[2]
+mirrors = {}
+
+
+def connect(address):
+    return Gio.DBusConnection.new_for_address_sync(address, FLAGS, None, None)
+
+
+def bus(conn, method, args, reply=None):
+    return conn.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                          "org.freedesktop.DBus", method, args,
+                          GLib.VariantType(reply) if reply else None,
+                          Gio.DBusCallFlags.NONE, -1, None)
+
+
+def names(value):
+    if isinstance(value, str):
+        if value.startswith(EDS + "."):
+            yield value
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from names(v)
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from names(v)
+
+
+class Mirror:
+    # The filters only queue what comes in (they run in GDBus' own thread)
+    # and keep it from GDBus - the connections make no calls of their own
+    # any more. What goes out passes.
+    def __init__(self, name):
+        self.name = name
+        self.closed = False
+        self.ears = connect(phosh)                  # EDS's signals
+        bus(self.ears, "AddMatch", GLib.Variant("(s)", ("type='signal',sender='%s'" % name,)))
+        self.ears.add_filter(self.heard)
+        self.down = connect(desktop)                # the name, for the apps
+        bus(self.down, "RequestName", GLib.Variant("(su)", (name, 4)), "(u)")
+        self.down.add_filter(self.asked)
+
+    def close(self):
+        self.closed = True
+        for conn in (self.ears, self.down):
+            try:
+                conn.close_sync(None)
+            except GLib.Error:
+                pass
+
+    def heard(self, conn, msg, incoming):
+        if incoming and msg.get_message_type() == Gio.DBusMessageType.SIGNAL \
+                and msg.get_sender() != "org.freedesktop.DBus":
+            GLib.idle_add(self.signal, msg)
+        return None if incoming else msg
+
+    def asked(self, conn, msg, incoming):
+        if incoming and msg.get_message_type() == Gio.DBusMessageType.METHOD_CALL:
+            GLib.idle_add(self.call, msg)
+        return None if incoming else msg
+
+    def signal(self, msg):
+        if not self.closed:
+            out = msg.copy()
+            out.set_destination(None)
+            out.set_sender(None)
+            self.down.send_message(out, NONE)
+        return False
+
+    def call(self, msg):
+        if self.closed:
+            return False
+        out = msg.copy()
+        out.set_destination(self.name)
+        out.set_sender(None)
+        if msg.get_flags() & Gio.DBusMessageFlags.NO_REPLY_EXPECTED:
+            up.send_message(out, NONE)
+        else:
+            up.send_message_with_reply(out, NONE, GLib.MAXINT, None, self.answered, msg)
+        return False
+
+    def answered(self, conn, res, msg):
+        try:
+            reply = conn.send_message_with_reply_finish(res)
+        except GLib.Error as e:
+            reply = Gio.DBusMessage.new_method_error_literal(
+                msg, "org.freedesktop.DBus.Error.NoReply", e.message)
+        else:
+            body = reply.get_body()
+            for name in names(body.unpack() if body is not None else None):
+                mirror(name)                        # a backend: there before the reply
+            reply = reply.copy()
+            reply.set_reply_serial(msg.get_serial())
+            reply.set_destination(msg.get_sender())
+            reply.set_sender(None)
+        if not self.closed:
+            self.down.send_message(reply, NONE)
+
+
+def mirror(name):
+    if name not in mirrors:
+        try:
+            mirrors[name] = Mirror(name)
+        except GLib.Error as e:
+            sys.stderr.write("bridge: %s: %s\n" % (name, e.message))
+
+
+def owner_changed(conn, sender, path, iface, signal, params):
+    name, old, new = params.unpack()
+    if new:
+        mirror(name)
+    elif name in mirrors and name not in ALWAYS:
+        mirrors.pop(name).close()
+
+
+up = connect(phosh)                                 # the calls, as one client of EDS
+up.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                    "/org/freedesktop/DBus", EDS, Gio.DBusSignalFlags.MATCH_ARG0_NAMESPACE,
+                    owner_changed)
+for name in ALWAYS + tuple(bus(up, "ListNames", None, "(as)").unpack()[0]):
+    if name.startswith(EDS + "."):
+        mirror(name)
+loop = GLib.MainLoop()
+watch = connect(desktop)                            # either bus gone: the end
+for conn in (up, watch):
+    conn.connect("closed", lambda *a: loop.quit())
+print("ready", flush=True)
+loop.run()
+"""
 
 def say(line):
     sys.stderr.write("desktop: %s\n" % line)
@@ -393,6 +546,7 @@ class Session:
         if not bus:
             raise RuntimeError("no D-Bus for the desktop")
         self.env = desktop_env(self.folder, bus)
+        self._bridge(bus, log)
         cert, key, fingerprint = certificate(self.folder)
         # FuriOS' GTK 3 lays its windows out for the phone while this is set
         # (system default); in the desktop's own database only
@@ -417,6 +571,17 @@ class Session:
                 raise RuntimeError("%s: %s" % (" ".join(argv[:4]), err.strip()[-200:]))
         self.run([GRD, "--headless"], stdout=log, stderr=log)
         return fingerprint
+
+    def _bridge(self, bus, log, phosh=None):
+        """BRIDGE, before anything on the desktop asks for EDS. Without it
+        the desktop starts all the same - only without the phone's data."""
+        phosh = phosh or os.environ.get("DBUS_SESSION_BUS_ADDRESS") or \
+            "unix:path=/run/user/%d/bus" % os.getuid()
+        p = self.run([sys.executable, "-c", BRIDGE, phosh, bus], stdout=subprocess.PIPE,
+                     stderr=log)
+        if p.stdout.readline().strip() != b"ready":
+            say("no address book")
+        return p
 
     def _wait_name(self, name, timeout):
         end = time.monotonic() + timeout

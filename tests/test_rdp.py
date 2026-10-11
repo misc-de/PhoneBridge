@@ -8,6 +8,7 @@ No firewall rule is set (sudo fails here on purpose)."""
 import os
 import runpy
 import shutil
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -18,10 +19,11 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from phonebridge import agent, config, rdp  # noqa: E402
 
+from .fake_eds import EDS, FakeEDS  # noqa: E402
 from .support import Home, run_loop_until  # noqa: E402
 
 HAVE_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
@@ -203,6 +205,85 @@ class Pieces(unittest.TestCase):
         self.assertFalse(found["gnome_shell"])
         self.assertEqual(found["remote_desktop"], bool(shutil.which("grdctl")))
         self.assertFalse(found["firewall"])                 # sudo fails here
+
+
+@unittest.skipUnless(shutil.which("dbus-daemon"), "no dbus-daemon")
+class Bridge(unittest.TestCase):
+    """The phone's EDS (here on the private test bus) on the desktop's bus."""
+
+    def setUp(self):
+        self.ns = phone_side()
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        conf = self.ns["bus_config"](d, os.path.join(d, "none"), ())
+        daemon = subprocess.Popen(["dbus-daemon", "--config-file", conf, "--nofork",
+                                   "--print-address"], stdout=subprocess.PIPE)
+        self.addCleanup(daemon.wait)
+        self.addCleanup(daemon.terminate)
+        address = daemon.stdout.readline().decode().strip()
+        self.eds = FakeEDS()
+        self.addCleanup(self.eds.close)
+        self.eds.contacts["a"] = "BEGIN:VCARD\r\nUID:a\r\nFN:Anna\r\nEND:VCARD\r\n"
+        session = self.ns["Session"]({})
+        session.env = dict(os.environ)
+        self.addCleanup(session.stop)
+        log = open(os.devnull, "wb")
+        self.addCleanup(log.close)
+        self.bridge = session._bridge(address, log, os.environ["DBUS_SESSION_BUS_ADDRESS"])
+        self.app = Gio.DBusConnection.new_for_address_sync(
+            address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+        self.addCleanup(self.app.close_sync, None)
+
+    def call(self, name, path, iface, method, args=None):
+        got = []
+        self.app.call(name, path, iface, method, args, None, Gio.DBusCallFlags.NONE, 5000,
+                      None, lambda c, res: got.append(self._finish(c, res)))
+        self.assertTrue(run_loop_until(lambda: got))
+        return got[0]
+
+    def _finish(self, conn, res):
+        try:
+            return conn.call_finish(res).unpack()
+        except GLib.Error as e:
+            return e
+
+    def has(self, name):
+        return self.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                         "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", (name,)))[0]
+
+    def test_address_book(self):
+        self.assertIsNone(self.bridge.poll())
+        path, name = self.call(EDS + "AddressBook10",
+                               "/org/gnome/evolution/dataserver/AddressBookFactory",
+                               EDS + "AddressBookFactory", "OpenAddressBook",
+                               GLib.Variant("(s)", ("book-contacts",)))
+        cards = self.call(name, path, EDS + "AddressBook", "GetContactList",
+                          GLib.Variant("(s)", ("",)))[0]
+        self.assertIn("FN:Anna", cards[0])
+        missing = self.call(name, path, EDS + "AddressBook", "GetContact",
+                            GLib.Variant("(s)", ("nobody",)))
+        self.assertIn("ContactNotFound", missing.message)     # EDS's errors as they are
+        self.assertTrue(self.has(EDS + "UserPrompter0"))       # started on Phosh's bus
+
+    def test_signals_and_backends(self):
+        heard = []
+        self.app.signal_subscribe(None, EDS + "AddressBook", "Changed", "/book/1", None,
+                                  Gio.DBusSignalFlags.NONE, lambda *a: heard.append(a[5]))
+        self.eds.conn.emit_signal(None, "/book/1", EDS + "AddressBook", "Changed",
+                                  GLib.Variant("(s)", ("a",)))
+        self.assertTrue(run_loop_until(lambda: heard))
+        self.assertEqual(heard[0].unpack(), ("a",))
+        backend = EDS + "Subprocess.Backend.AddressBookx1x2"   # as EDS starts one
+        own = Gio.bus_own_name_on_connection(self.eds.conn, backend,
+                                             Gio.BusNameOwnerFlags.NONE, None, None)
+        self.assertTrue(run_loop_until(lambda: self.has(backend)))
+        cards = self.call(backend, "/book/1", EDS + "AddressBook", "GetContactList",
+                          GLib.Variant("(s)", ("",)))[0]
+        self.assertEqual(len(cards), 1)
+        Gio.bus_unown_name(own)
+        self.assertTrue(run_loop_until(lambda: not self.has(backend)))
+        self.assertTrue(self.has(EDS + "AddressBook10"))      # the factories stay
 
 
 class Session(unittest.TestCase):
