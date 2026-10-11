@@ -123,7 +123,19 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.conn = tile("phone-symbolic", _("Connection"))
         for t in (self.battery, self.mobile, self.wifi, self.conn):
             self.tiles.append(t)
-        column.append(self.tiles)
+        # on the right: the phone's desktop, once a session has worked with it
+        first = Gtk.Box(spacing=12)
+        self.tiles.set_hexpand(True)
+        first.append(self.tiles)
+        self.rdp = Gtk.Button(label=_("Open RDP desktop"), valign=Gtk.Align.START,
+                              visible=False, tooltip_text=_(
+                                  "A GNOME desktop of the phone's own, in a window here"))
+        self.rdp.add_css_class("suggested-action")
+        self.rdp.add_css_class("pill")
+        self.rdp.connect("clicked", lambda *a: self.app.open_rdp(self.dev))
+        first.append(self.rdp)
+        column.append(first)
+        app.rdp_listeners.append(lambda dev: dev is self.dev and self.show_rdp())
         column.append(self._media_bar())
 
         # what happened and what comes: three cards, three or two columns
@@ -224,6 +236,9 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.show_events()
         self.load()
 
+    def show_rdp(self):
+        self.rdp.set_visible(self.app.rdp_possible(self.dev))
+
     def device_changed(self):
         self.update()
         self.show_media()
@@ -236,6 +251,7 @@ class OverviewPage(Gtk.ScrolledWindow):
 
     def update(self):
         dev = self.dev
+        self.show_rdp()
         status = dev.status if dev is not None and dev.online else None
         s = status or {}
         bat = s.get("battery")

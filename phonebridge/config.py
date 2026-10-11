@@ -17,6 +17,8 @@
             come here (their names, as they notify)
   clipboard_sync  the clipboard shared with the phone by itself (off: by hand)
   updates   look on GitHub for a newer PhoneBridge (installed ones only)
+  rdp_works  per phone: a desktop session has come up (the overview offers
+            it), "open" when it went without the phone's firewall rule
   call_audio_*  the call's sound on the PC: gain for the caller, echo
             cancellation, take every call to the PC by itself
 """
@@ -51,6 +53,7 @@ DEFAULTS = {
     "phone_notifications_hidden": [],       # ... but never of these apps
     "clipboard_sync": False,        # the clipboard (text) shared with the phone, both ways
     "music_on_pc": [],          # devices whose music plays on this PC (music.py)
+    "rdp_works": {},            # phones a desktop session has worked with (app.open_rdp)
     "files_zoom": 2,            # size of the icons in the file list (files_page.ZOOM)
     # the call's sound on the PC (callaudio.py)
     "call_audio_gain": 2.0,

@@ -257,3 +257,17 @@ class InTheApp(unittest.TestCase):
         self.assertTrue(run_loop_until(lambda: "test" not in app.rdp_sessions, 30))
         self.assertEqual(open(os.path.join(d, "echo"), "rb").read(), b"ping")
         self.assertEqual(panel.button.get_label(), "Start")
+        # it worked: the overview offers it from now on, as it went (without the rule)
+        self.assertEqual(config.load()["rdp_works"], {"test": {"open": True}})
+        from phonebridge.overview import OverviewPage
+        overview = OverviewPage(app)
+        overview.set_device(dev)
+        self.assertTrue(overview.rdp.get_visible())
+        overview.rdp.emit("clicked")
+        self.assertIn("test", app.rdp_sessions)
+        self.assertTrue(app.rdp_sessions["test"].params["open"])
+        self.assertFalse(overview.rdp.get_visible())             # one runs: not again
+        self.assertTrue(run_loop_until(lambda: "test" not in app.rdp_sessions, 30))
+        self.assertTrue(overview.rdp.get_visible())
+        app.set_devices([])
+        self.assertEqual(app.cfg["rdp_works"], {})

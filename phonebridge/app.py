@@ -307,6 +307,8 @@ class PhoneBridgeApp(Adw.Application):
         except OSError:
             pass
         self.cfg["seen"] = {k: v for k, v in self.cfg["seen"].items() if k in ids}
+        self.cfg["rdp_works"] = {k: v for k, v in self.cfg.get("rdp_works", {}).items()
+                                 if k in ids}
         if self.cfg["active"] not in ids:
             self.cfg["active"] = devices[0]["id"] if devices else None
         config.save(self.cfg)
@@ -726,9 +728,28 @@ class PhoneBridgeApp(Adw.Application):
         from .rdp_ui import state_text
         if state == "open":
             session.open = True
+        if state == "client":
+            # it works with this phone: the overview offers it from now on
+            works = self.cfg.setdefault("rdp_works", {})
+            done = {"open": bool(session.params.get("open"))}
+            if works.get(dev.id) != done:
+                works[dev.id] = done
+                config.save(self.cfg)
         session.state_text = state_text(state)
         for listener in list(self.rdp_listeners):
             listener(dev)
+
+    def rdp_possible(self, dev):
+        """Whether a desktop session can start at once: it has worked with
+        this phone before, the phone is there and none runs now."""
+        return (dev is not None and dev.online and dev.id not in self.rdp_sessions
+                and dev.id in self.cfg.get("rdp_works", {}))
+
+    def open_rdp(self, dev):
+        """A desktop session as the last one that worked - without a firewall
+        rule only when that one went without it, too."""
+        if self.rdp_possible(dev):
+            self.set_rdp(dev, True, allow_open=self.cfg["rdp_works"][dev.id].get("open", False))
 
     def _rdp_stopped(self, session, reason, dev):
         if self.rdp_sessions.get(dev.id) is session:
