@@ -1245,8 +1245,6 @@ TRANSLATIONS = {
         'Benachrichtigungen des Phones zeigen',
     "… also of apps open on this PC":
         '… auch von Apps, die am PC offen sind',
-    'Open RDP desktop':
-        'RDP-Desktop öffnen',
     'RDP desktop':
         'RDP-Desktop',
     'Running':
@@ -1263,8 +1261,6 @@ TRANSLATIONS = {
         'Phone: Kerne wie vom System gesetzt (kein sudo)',
     'Closing its window ends it':
         'Schließen des Fensters beendet sie',
-    "A GNOME desktop of the phone's own, in a window here":
-        'Ein eigener GNOME-Desktop des Phones, hier in einem Fenster',
     'Hide this app here':
         'Diese App hier ausblenden',
     'Notifications of %s now stay on the phone':

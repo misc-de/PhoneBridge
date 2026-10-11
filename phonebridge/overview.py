@@ -123,17 +123,10 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.conn = tile("phone-symbolic", _("Connection"))
         for t in (self.battery, self.mobile, self.wifi, self.conn):
             self.tiles.append(t)
-        # on the right: the phone's desktop, once a session has worked with it
+        # on the right: the phone's desktop, while a session runs
         first = Gtk.Box(spacing=12)
         self.tiles.set_hexpand(True)
         first.append(self.tiles)
-        self.rdp = Gtk.Button(label=_("Open RDP desktop"), valign=Gtk.Align.START,
-                              visible=False, tooltip_text=_(
-                                  "A GNOME desktop of the phone's own, in a window here"))
-        self.rdp.add_css_class("suggested-action")
-        self.rdp.add_css_class("pill")
-        self.rdp.connect("clicked", lambda *a: self.app.open_rdp(self.dev))
-        first.append(self.rdp)
         first.append(self._rdp_box())
         column.append(first)
         app.rdp_listeners.append(lambda dev: dev is self.dev and self.show_rdp())
@@ -263,7 +256,6 @@ class OverviewPage(Gtk.ScrolledWindow):
         return self.rdp_info
 
     def show_rdp(self):
-        self.rdp.set_visible(self.app.rdp_possible(self.dev))
         session = self.app.rdp_sessions.get(self.dev.id) if self.dev is not None else None
         self.rdp_info.set_visible(session is not None)
         if session is None:
