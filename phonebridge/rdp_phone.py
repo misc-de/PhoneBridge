@@ -22,6 +22,11 @@ password needed; "open" in PARAMS: without the rule, after the user has
 agreed). The PC comes in through ssh: the phone's sshd forwards no ports,
 so every RDP connection is an ssh of its own that runs RELAY here.
 
+While the desktop is used, all of the phone's cores work (batman, FuriOS'
+battery manager, takes them offline with the screen off; sudo without a
+password needed): after a minute without input there, they are back as
+they were - unless batman has changed them since.
+
 PARAMS comes before this code: password (for this session only); "open";
 in the tests "fake" (an echo server stands for GNOME) and "firewall"
 (False: no rule).
@@ -30,6 +35,7 @@ On stderr: "desktop: starting", "desktop: ready PORT FINGERPRINT",
 "desktop: open" (no firewall rule), "desktop: error ..."."""
 
 import os
+import re
 import shutil
 import signal
 import socket
@@ -66,6 +72,8 @@ PHOSH_ONLY = ("__EGL_VENDOR_LIBRARY_FILENAMES", "LD_PRELOAD", "EGL_PLATFORM",
               "PLYMOUTH_FORCE_SCALE", "XDG_MENU_PREFIX", "DISPLAY", "WAYLAND_DISPLAY",
               "DBUS_SESSION_BUS_ADDRESS", "LC_ALL")
 GRD = "/usr/libexec/gnome-remote-desktop-daemon"
+CPU = "/sys/devices/system/cpu"
+IDLE = 60            # s without input on the desktop: the cores are batman's again
 # libhybris' EGL and Vulkan end an app on any display but Phosh's
 # ("android_wlegl"): the desktop's apps draw with Mesa, in software
 MESA_EGL = "/usr/share/glvnd/egl_vendor.d/50_mesa.json"
@@ -216,9 +224,91 @@ def firewall_argv(port, add, tool="iptables"):
             "--dport", str(port), "-j", "DROP"]
 
 
+class Cores:
+    """The phone's cores: all of them at work (boost), and back to the state
+    found (release). As root: through sudo, or written right away
+    (sudo=False, the tests)."""
+
+    def __init__(self, root=CPU, sudo=True):
+        self.root = root
+        self.sudo = sudo
+        self.saved = None           # the state before boost
+        self.boosted = None         # the state boost made
+        self.failed = False         # no sudo: not asked again and again
+        self.lock = threading.Lock()
+
+    def state(self):
+        """({"cpu3": "0", ...} of the cores that can go offline,
+        {"policy0": "powersave", ...})."""
+        online, governors = {}, {}
+        for name in os.listdir(self.root):
+            path = os.path.join(self.root, name, "online")
+            if re.fullmatch(r"cpu\d+", name) and os.path.exists(path):
+                online[name] = self._read(path)
+        policies = os.path.join(self.root, "cpufreq")
+        for name in os.listdir(policies) if os.path.isdir(policies) else ():
+            path = os.path.join(policies, name, "scaling_governor")
+            if re.fullmatch(r"policy\d+", name) and os.path.exists(path):
+                governors[name] = self._read(path)
+        return online, governors
+
+    def _read(self, path):
+        try:
+            with open(path, encoding="ascii") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+    def _write(self, pairs):
+        if not pairs:
+            return True
+        if not self.sudo:
+            for path, value in pairs:
+                with open(path, "w", encoding="ascii") as f:
+                    f.write(value)
+            return True
+        script = "".join("echo %s > %s\n" % (value, path) for path, value in pairs)
+        return quiet(["sudo", "-n", "sh", "-c", script], timeout=20)[0] == 0
+
+    def boost(self):
+        with self.lock:
+            if self.saved is not None or self.failed:
+                return
+            before = self.state()
+            if not self._write([(os.path.join(self.root, cpu, "online"), "1")
+                                for cpu, on in sorted(before[0].items()) if on != "1"]):
+                self.failed = True
+                return
+            pairs = []                              # the policies of the cores now online too
+            for policy, governor in sorted(self.state()[1].items()):
+                folder = os.path.join(self.root, "cpufreq", policy)
+                available = self._read(os.path.join(folder, "scaling_available_governors"))
+                if governor == "powersave" and "schedutil" in available.split():
+                    pairs.append((os.path.join(folder, "scaling_governor"), "schedutil"))
+            self._write(pairs)
+            self.saved, self.boosted = before, self.state()
+
+    def release(self):
+        with self.lock:
+            if self.saved is None:
+                return
+            (online, governors), boosted = self.saved, self.boosted
+            self.saved = self.boosted = None
+            if self.state() != boosted:
+                return                              # batman's since: that stands
+            pairs = [(os.path.join(self.root, "cpufreq", policy, "scaling_governor"), governor)
+                     for policy, governor in sorted(governors.items())
+                     if boosted[1].get(policy, governor) != governor]
+            pairs += [(os.path.join(self.root, cpu, "online"), "0")
+                      for cpu, on in sorted(online.items()) if on == "0"]
+            self._write(pairs)
+
+
 class Session:
     def __init__(self, params):
         self.params = params
+        self.cores = Cores()
+        self.ended = threading.Event()
         self.procs = []
         self.rules = []
         self.folder = None
@@ -253,9 +343,36 @@ class Session:
         if not listening(port, 60):
             raise RuntimeError("GNOME Remote Desktop does not answer")
         say("ready %d %s" % (port, fingerprint))
+        if not self.params.get("fake"):
+            threading.Thread(target=self._watch, daemon=True).start()
+
+    def _watch(self):
+        """The cores at work while the desktop is used."""
+        while not self.ended.wait(2):
+            idle = self._idle()
+            if idle is None or self.ended.is_set():
+                continue
+            if idle < IDLE * 1000:
+                self.cores.boost()
+            else:
+                self.cores.release()
+
+    def _idle(self):
+        """ms since the last input on the desktop, or None."""
+        try:
+            out = subprocess.run(["gdbus", "call", "--session", "-d", "org.gnome.Mutter.IdleMonitor",
+                                  "-o", "/org/gnome/Mutter/IdleMonitor/Core", "-m",
+                                  "org.gnome.Mutter.IdleMonitor.GetIdletime"],
+                                 env=self.env, stdin=subprocess.DEVNULL, capture_output=True,
+                                 text=True, timeout=10).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        found = re.search(r"\d+", out.replace("uint64", ""))
+        return int(found.group()) if found else None
 
     def _gnome(self, port):
         log = open(os.path.join(self.folder, "log"), "ab")
+        self.cores.boost()                          # starting is work too
         display = "wayland-phonebridge-%d" % os.getpid()
         # what the bus starts - apps too - comes up on this desktop, not Phosh's
         self.env = dict(desktop_env(self.folder), WAYLAND_DISPLAY=display)
@@ -269,6 +386,9 @@ class Session:
         # FuriOS' GTK 3 lays its windows out for the phone while this is set
         # (system default); in the desktop's own database only
         quiet(["gsettings", "set", "org.gtk.Settings.Purism", "is-phone", "false"], self.env)
+        # every frame is drawn in software and sent over RDP: no animations
+        quiet(["gsettings", "set", "org.gnome.desktop.interface", "enable-animations", "false"],
+              self.env)
         self.run(["gnome-shell", "--headless", "--wayland-display", display],
                  stdout=log, stderr=log)
         if not self._wait_name("org.gnome.Mutter.RemoteDesktop", 60):
@@ -332,6 +452,8 @@ class Session:
         """Everything this started ends; the rule, the session's password
         and its folder go. The password and the switch first - they need
         the desktop's bus still."""
+        self.ended.set()
+        self.cores.release()
         if self.env and "DBUS_SESSION_BUS_ADDRESS" in self.env:
             quiet(["grdctl", "--headless", "rdp", "clear-credentials"], self.env)
             quiet(["gsettings", "set", "org.gnome.desktop.remote-desktop.rdp.headless",

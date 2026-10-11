@@ -123,6 +123,66 @@ class Pieces(unittest.TestCase):
         self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", env)
         self.assertEqual(env["XDG_CURRENT_DESKTOP"], "GNOME")
 
+    def fake_cpus(self, d):
+        """FLX1s with the screen off: only cpu7 online, in powersave."""
+        for n in range(8):
+            os.makedirs(os.path.join(d, "cpu%d" % n))
+            with open(os.path.join(d, "cpu%d" % n, "online"), "w") as f:
+                f.write("1\n" if n == 7 else "0\n")
+        for policy, governor in (("policy0", "schedutil"), ("policy6", "powersave")):
+            os.makedirs(os.path.join(d, "cpufreq", policy))
+            with open(os.path.join(d, "cpufreq", policy, "scaling_governor"), "w") as f:
+                f.write(governor + "\n")
+            with open(os.path.join(d, "cpufreq", policy, "scaling_available_governors"), "w") as f:
+                f.write("ondemand userspace powersave performance schedutil \n")
+        os.makedirs(os.path.join(d, "cpufreq", "x"))       # not a policy
+
+    def test_cores(self):
+        ns = phone_side()
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        self.fake_cpus(d)
+        cores = ns["Cores"](d, sudo=False)
+        found = cores.state()
+        cores.boost()
+        online, governors = cores.state()
+        self.assertEqual(set(online.values()), {"1"})
+        self.assertEqual(governors, {"policy0": "schedutil", "policy6": "schedutil"})
+        cores.boost()                                       # once is enough
+        cores.release()
+        self.assertEqual(cores.state(), found)              # as it was
+        cores.release()                                     # nothing to give back
+        self.assertEqual(cores.state(), found)
+
+    def test_cores_batman_wins(self):
+        ns = phone_side()
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        self.fake_cpus(d)
+        cores = ns["Cores"](d, sudo=False)
+        cores.boost()
+        with open(os.path.join(d, "cpu3", "online"), "w") as f:
+            f.write("0\n")                                  # batman, meanwhile
+        cores.release()
+        self.assertEqual(cores.state()[0]["cpu0"], "1")     # left as batman made it
+        self.assertEqual(cores.state()[0]["cpu3"], "0")
+
+    def test_cores_without_sudo(self):
+        ns = phone_side()
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        self.fake_cpus(d)
+        cores = ns["Cores"](d)
+        calls = []
+        with mock.patch.dict(cores.boost.__globals__,
+                             quiet=lambda argv, *a, **k: calls.append(argv) or (1, "")):
+            cores.boost()
+            cores.boost()
+        self.assertEqual(len(calls), 1)                     # asked once only
+        self.assertEqual(calls[0][:4], ["sudo", "-n", "sh", "-c"])
+        self.assertIn("echo 1 > %s/cpu0/online" % d, calls[0][4])
+        self.assertIsNone(cores.saved)
+
     @unittest.skipUnless(shutil.which("openssl"), "no openssl")
     def test_certificate(self):
         ns = phone_side()
