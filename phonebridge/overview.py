@@ -134,6 +134,7 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.rdp.add_css_class("pill")
         self.rdp.connect("clicked", lambda *a: self.app.open_rdp(self.dev))
         first.append(self.rdp)
+        first.append(self._rdp_box())
         column.append(first)
         app.rdp_listeners.append(lambda dev: dev is self.dev and self.show_rdp())
         column.append(self._media_bar())
@@ -236,8 +237,53 @@ class OverviewPage(Gtk.ScrolledWindow):
         self.show_events()
         self.load()
 
+    def _rdp_box(self):
+        """While a desktop session runs: how it is doing, and its end."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=12,
+                      margin_bottom=12, margin_start=14, margin_end=14)
+        head = Gtk.Box(spacing=8)
+        head.append(Gtk.Image(icon_name="computer-symbolic"))
+        title = Gtk.Label(label=_("RDP desktop"), xalign=0)
+        title.add_css_class("dim-label")
+        title.add_css_class("caption")
+        head.append(title)
+        box.append(head)
+        self.rdp_state = Gtk.Label(xalign=0)
+        self.rdp_state.add_css_class("heading")
+        box.append(self.rdp_state)
+        self.rdp_lines = Gtk.Label(xalign=0, wrap=True, max_width_chars=30)
+        box.append(self.rdp_lines)
+        self.rdp_warning = Gtk.Label(xalign=0, wrap=True, max_width_chars=30, label=_(
+            "Port reachable in the network (no firewall rule)"))
+        self.rdp_warning.add_css_class("warning")
+        box.append(self.rdp_warning)
+        self.rdp_end = Gtk.Button(label=_("End"), halign=Gtk.Align.START, margin_top=6)
+        self.rdp_end.add_css_class("destructive-action")
+        self.rdp_end.connect("clicked", lambda *a: self.app.set_rdp(self.dev, False))
+        box.append(self.rdp_end)
+        self.rdp_info = Gtk.Frame(child=box, valign=Gtk.Align.START, visible=False,
+                                  tooltip_text=_("Closing its window ends it, too"))
+        self.rdp_info.add_css_class("card")
+        return self.rdp_info
+
     def show_rdp(self):
         self.rdp.set_visible(self.app.rdp_possible(self.dev))
+        session = self.app.rdp_sessions.get(self.dev.id) if self.dev is not None else None
+        self.rdp_info.set_visible(session is not None)
+        if session is None:
+            return
+        self.rdp_state.set_label(_("Running") if session.since else _("Starting …"))
+        lines = ["%d × %d" % session.size]
+        if session.since:
+            lines[0] += " · " + _("since %s") % time.strftime(
+                "%H:%M", time.localtime(session.since))
+        cores = {"on": _("Phone: all cores at work"),
+                 "off": _("Phone: saving power until the next input"),
+                 "none": _("Phone: cores as the system sets them (no sudo)")}.get(session.cores)
+        if cores:
+            lines.append(cores)
+        self.rdp_lines.set_label("\n".join(lines))
+        self.rdp_warning.set_visible(bool(session.open))
 
     def device_changed(self):
         self.update()

@@ -735,7 +735,8 @@ class PhoneBridgeApp(Adw.Application):
             if works.get(dev.id) != done:
                 works[dev.id] = done
                 config.save(self.cfg)
-        session.state_text = state_text(state)
+        if state != "cores":                # only news for the overview's box
+            session.state_text = state_text(state)
         for listener in list(self.rdp_listeners):
             listener(dev)
 

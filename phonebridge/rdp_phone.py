@@ -32,7 +32,8 @@ in the tests "fake" (an echo server stands for GNOME) and "firewall"
 (False: no rule).
 
 On stderr: "desktop: starting", "desktop: ready PORT FINGERPRINT",
-"desktop: open" (no firewall rule), "desktop: error ..."."""
+"desktop: open" (no firewall rule), "desktop: cores on|off|none" (all at
+work / as batman left them / no sudo), "desktop: error ..."."""
 
 import os
 import re
@@ -308,6 +309,7 @@ class Session:
     def __init__(self, params):
         self.params = params
         self.cores = Cores()
+        self.cores_said = None
         self.ended = threading.Event()
         self.procs = []
         self.rules = []
@@ -356,6 +358,14 @@ class Session:
                 self.cores.boost()
             else:
                 self.cores.release()
+            self._tell_cores()
+
+    def _tell_cores(self):
+        state = ("none" if self.cores.failed else
+                 "on" if self.cores.saved is not None else "off")
+        if state != self.cores_said:
+            self.cores_said = state
+            say("cores " + state)
 
     def _idle(self):
         """ms since the last input on the desktop, or None."""
@@ -373,6 +383,7 @@ class Session:
     def _gnome(self, port):
         log = open(os.path.join(self.folder, "log"), "ab")
         self.cores.boost()                          # starting is work too
+        self._tell_cores()
         display = "wayland-phonebridge-%d" % os.getpid()
         # what the bus starts - apps too - comes up on this desktop, not Phosh's
         self.env = dict(desktop_env(self.folder), WAYLAND_DISPLAY=display)

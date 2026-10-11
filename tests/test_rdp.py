@@ -341,7 +341,26 @@ class InTheApp(unittest.TestCase):
         self.assertIn("test", app.rdp_sessions)
         self.assertTrue(app.rdp_sessions["test"].params["open"])
         self.assertFalse(overview.rdp.get_visible())             # one runs: not again
+        # in its place: how it is doing
+        session = app.rdp_sessions["test"]
+        self.assertTrue(overview.rdp_info.get_visible())
+        self.assertEqual(overview.rdp_state.get_label(), "Starting …")
+        session._said(session.ssh, "cores on")
+        self.assertIn("all cores at work", overview.rdp_lines.get_label())
+        self.assertTrue(session.state_text.startswith("Starting"))  # not the cores' news
+        self.assertTrue(run_loop_until(lambda: session.since or "test" not in app.rdp_sessions,
+                                       30))
+        if "test" in app.rdp_sessions:
+            self.assertEqual(overview.rdp_state.get_label(), "Running")
+            self.assertIn("since ", overview.rdp_lines.get_label())
+            self.assertEqual(overview.rdp_warning.get_visible(), bool(session.open))
         self.assertTrue(run_loop_until(lambda: "test" not in app.rdp_sessions, 30))
         self.assertTrue(overview.rdp.get_visible())
+        self.assertFalse(overview.rdp_info.get_visible())
+        overview.rdp.emit("clicked")                            # and ended from the box
+        self.assertTrue(overview.rdp_info.get_visible())
+        overview.rdp_end.emit("clicked")
+        self.assertNotIn("test", app.rdp_sessions)
+        self.assertFalse(overview.rdp_info.get_visible())
         app.set_devices([])
         self.assertEqual(app.cfg["rdp_works"], {})

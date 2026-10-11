@@ -22,7 +22,8 @@ files, screen, settings); DEMO_WIDTH and DEMO_HEIGHT the window's size;
 DEMO_CONTACT a contact to open on the contacts page (with its calls,
 messages and appointments); DEMO_LINES=1 opens the choice of the line on
 the telephone page (two SIM cards and a SIP account, made up);
-DEMO_THREAD a conversation (its number) to open on the messages page.
+DEMO_THREAD a conversation (its number) to open on the messages page;
+DEMO_RDP=1 a desktop session as if it ran (the overview's box).
 The files are a made-up home, never this PC's; the screen page shows the
 desktop session (sharing the screen would record this PC's here)."""
 
@@ -284,6 +285,13 @@ def ready():
         Adw.ColorScheme.FORCE_DARK if os.environ.get("DEMO_DARK") else Adw.ColorScheme.FORCE_LIGHT)
     if page == "overview":
         app.window.overview.load(force=True)
+    if os.environ.get("DEMO_RDP"):
+        import types
+        app.rdp_sessions["flx1s"] = types.SimpleNamespace(
+            size=(1280, 800), since=time.time() - 1500, cores="on", open=False,
+            state_text="", stop=lambda *a: None)
+        for listener in list(app.rdp_listeners):
+            listener(app.devices["flx1s"])
     if os.environ.get("DEMO_CONTACT"):
         GLib.timeout_add(300, open_contact)
     if os.environ.get("DEMO_THREAD"):

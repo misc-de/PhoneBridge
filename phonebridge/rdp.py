@@ -18,6 +18,7 @@ import socket
 import string
 import subprocess
 import threading
+import time
 
 from gi.repository import GLib, GObject
 
@@ -60,7 +61,7 @@ def client_args(port, secret, fingerprint, size, title):
 class Desktop(GObject.Object):
     """One desktop session. start() once; "state" tells "starting", "open"
     (no firewall rule on the phone), "ready" and "client" (the RDP window is
-    up); "stopped" carries why it ended (None when stop() was asked for or
+    up) and "cores" (the phone's cores changed: .cores); "stopped" carries why it ended (None when stop() was asked for or
     the RDP window was closed)."""
 
     __gsignals__ = {"state": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
@@ -84,6 +85,8 @@ class Desktop(GObject.Object):
         self.relays = []
         self.running = False
         self._error = None
+        self.since = None                       # when the window opened
+        self.cores = None                       # the phone's: "on", "off", "none"
 
     def _env(self):
         if self.password is None:
@@ -127,6 +130,9 @@ class Desktop(GObject.Object):
             self._open_client()
         elif what.startswith("error "):
             self._error = what[6:]
+        elif what.startswith("cores "):
+            self.cores = what[6:]
+            self.emit("state", "cores")
         else:
             self.emit("state", what)
         return False
@@ -154,6 +160,7 @@ class Desktop(GObject.Object):
         except OSError as e:
             self.stop(str(e))
             return
+        self.since = time.time()
         self.emit("state", "client")
         threading.Thread(target=self._client_ended, args=(self.client,), daemon=True).start()
 

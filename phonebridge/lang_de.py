@@ -1247,6 +1247,22 @@ TRANSLATIONS = {
         '… auch von Apps, die am PC offen sind',
     'Open RDP desktop':
         'RDP-Desktop öffnen',
+    'RDP desktop':
+        'RDP-Desktop',
+    'Running':
+        'Läuft',
+    'Starting …':
+        'Startet …',
+    'since %s':
+        'seit %s',
+    'Phone: all cores at work':
+        'Phone: alle Kerne aktiv',
+    'Phone: saving power until the next input':
+        'Phone: spart Strom bis zur nächsten Eingabe',
+    'Phone: cores as the system sets them (no sudo)':
+        'Phone: Kerne wie vom System gesetzt (kein sudo)',
+    'Closing its window ends it, too':
+        'Auch das Schließen des Fensters beendet sie',
     "A GNOME desktop of the phone's own, in a window here":
         'Ein eigener GNOME-Desktop des Phones, hier in einem Fenster',
     'Hide this app here':
