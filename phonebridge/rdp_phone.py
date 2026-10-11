@@ -6,8 +6,8 @@ a screen (--headless) and GNOME Remote Desktop, which shows it over RDP.
 It ends, and clears up behind itself, when stdin closes.
 
 Phosh goes on as it is. The desktop runs on a D-Bus of its own, on which
-only what it needs may start (no second address book, calendar, online
-accounts or keyring on the same data), with a dconf database of its own
+only what it needs and the apps may start (no second address book,
+calendar, online accounts, keyring or Chatty on the same data), with a dconf database of its own
 (~/.config/dconf/phonebridge_desktop - Phosh's settings stay untouched;
 the desktop's own stay from one session to the next). Files, apps and
 their data are the user's as always.
@@ -48,6 +48,15 @@ SERVICES = ("ca.desrt.dconf", "org.a11y.Bus", "org.gnome.Shell.Notifications",
             "org.freedesktop.portal.Desktop", "org.freedesktop.impl.portal.desktop.gtk",
             "org.freedesktop.impl.portal.desktop.gnome",
             "org.freedesktop.impl.portal.PermissionStore")
+# Apps the shell starts over D-Bus (DBusActivatable) may start too - but not
+# a second Chatty: the phone's own already handles its messages
+NOT_APPS = ("sm.puri.Chatty",)
+# (applications, D-Bus services) of the system and of Flatpak
+APP_DIRS = (("/usr/share/applications", "/usr/share/dbus-1/services"),
+            ("/var/lib/flatpak/exports/share/applications",
+             "/var/lib/flatpak/exports/share/dbus-1/services"),
+            ("~/.local/share/flatpak/exports/share/applications",
+             "~/.local/share/flatpak/exports/share/dbus-1/services"))
 # Phosh's session environment that would make gnome-shell look for the GPU
 PHOSH_ONLY = ("__EGL_VENDOR_LIBRARY_FILENAMES", "LD_PRELOAD", "EGL_PLATFORM",
               "COGL_DISABLE_MAPBUFFERRANGE", "GDK_GL", "GSK_RENDERER", "GST_GL_API",
@@ -123,15 +132,38 @@ def certificate(folder):
     return cert, key, out.strip().split("=", 1)[1].lower()
 
 
-def bus_config(folder, sources="/usr/share/dbus-1/services"):
-    """The desktop's own bus: only SERVICES may start on it, and each as a
-    plain process (not as a unit of the user's systemd, which belongs to
-    Phosh's session)."""
+def activatable(folder):
+    """The apps in FOLDER that are started over D-Bus: their names."""
+    try:
+        files = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    names = []
+    for name in files:
+        if not name.endswith(".desktop") or name[:-8] in NOT_APPS:
+            continue
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as f:
+                if any(ln.strip() == "DBusActivatable=true" for ln in f):
+                    names.append(name[:-8])
+        except (OSError, UnicodeDecodeError):
+            continue
+    return names
+
+
+def bus_config(folder, sources="/usr/share/dbus-1/services", app_dirs=APP_DIRS):
+    """The desktop's own bus: only SERVICES and the apps may start on it,
+    and each as a plain process (not as a unit of the user's systemd,
+    which belongs to Phosh's session)."""
     services = os.path.join(folder, "services")
     os.makedirs(services, exist_ok=True)
-    for name in SERVICES:
+    wanted = [(name, sources) for name in SERVICES]
+    for apps, where in app_dirs:
+        wanted += [(name, os.path.expanduser(where))
+                   for name in activatable(os.path.expanduser(apps))]
+    for name, where in wanted:
         try:
-            with open(os.path.join(sources, name + ".service"), encoding="utf-8") as f:
+            with open(os.path.join(where, name + ".service"), encoding="utf-8") as f:
                 lines = [ln for ln in f if not ln.startswith("SystemdService=")]
         except OSError:
             continue
@@ -149,14 +181,17 @@ def bus_config(folder, sources="/usr/share/dbus-1/services"):
     return path
 
 
-def desktop_env(folder, bus):
+def desktop_env(folder, bus=None):
+    """Without BUS: for the bus itself, which hands it on to what it starts."""
     env = {k: v for k, v in os.environ.items() if k not in PHOSH_ONLY}
     profile = os.path.join(folder, "dconf-profile")
     with open(profile, "w", encoding="utf-8") as f:
         f.write("user-db:%s\n" % DCONF_DB)
-    env.update(DBUS_SESSION_BUS_ADDRESS=bus, DCONF_PROFILE=profile, GSETTINGS_BACKEND="dconf",
+    env.update(DCONF_PROFILE=profile, GSETTINGS_BACKEND="dconf",
                XDG_SESSION_TYPE="wayland", XDG_CURRENT_DESKTOP="GNOME",
                XDG_SESSION_DESKTOP="gnome")
+    if bus:
+        env["DBUS_SESSION_BUS_ADDRESS"] = bus
     return env
 
 
@@ -216,6 +251,9 @@ class Session:
 
     def _gnome(self, port):
         log = open(os.path.join(self.folder, "log"), "ab")
+        display = "wayland-phonebridge-%d" % os.getpid()
+        # what the bus starts - apps too - comes up on this desktop, not Phosh's
+        self.env = dict(desktop_env(self.folder), WAYLAND_DISPLAY=display)
         daemon = self.run(["dbus-daemon", "--config-file", bus_config(self.folder), "--nofork",
                            "--print-address"], stdout=subprocess.PIPE, stderr=log)
         bus = daemon.stdout.readline().decode().strip()
@@ -223,8 +261,11 @@ class Session:
             raise RuntimeError("no D-Bus for the desktop")
         self.env = desktop_env(self.folder, bus)
         cert, key, fingerprint = certificate(self.folder)
-        self.run(["gnome-shell", "--headless", "--wayland-display",
-                  "wayland-phonebridge-%d" % os.getpid()], stdout=log, stderr=log)
+        # FuriOS' GTK 3 lays its windows out for the phone while this is set
+        # (system default); in the desktop's own database only
+        quiet(["gsettings", "set", "org.gtk.Settings.Purism", "is-phone", "false"], self.env)
+        self.run(["gnome-shell", "--headless", "--wayland-display", display],
+                 stdout=log, stderr=log)
         if not self._wait_name("org.gnome.Mutter.RemoteDesktop", 60):
             raise RuntimeError("gnome-shell did not start")
         schema = "org.gnome.desktop.remote-desktop.rdp.headless"
@@ -286,7 +327,7 @@ class Session:
         """Everything this started ends; the rule, the session's password
         and its folder go. The password and the switch first - they need
         the desktop's bus still."""
-        if self.env is not None:
+        if self.env and "DBUS_SESSION_BUS_ADDRESS" in self.env:
             quiet(["grdctl", "--headless", "rdp", "clear-credentials"], self.env)
             quiet(["gsettings", "set", "org.gnome.desktop.remote-desktop.rdp.headless",
                    "enable", "false"], self.env)

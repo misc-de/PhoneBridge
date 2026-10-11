@@ -85,10 +85,19 @@ class Pieces(unittest.TestCase):
             with open(os.path.join(sources, name + ".service"), "w") as f:
                 f.write("[D-BUS Service]\nName=%s\nExec=/bin/true\nSystemdService=x.service\n"
                         % name)
-        conf = ns["bus_config"](d, sources)
+        apps = os.path.join(d, "apps")
+        os.makedirs(apps)
+        for name, activated in (("org.gnome.Settings", True), ("sm.puri.Chatty", True),
+                                ("org.gnome.Calculator", False)):
+            with open(os.path.join(sources, name + ".service"), "w") as f:
+                f.write("[D-BUS Service]\nName=%s\nExec=/bin/true\n" % name)
+            with open(os.path.join(apps, name + ".desktop"), "w") as f:
+                f.write("[Desktop Entry]\nName=x\n%s" % ("DBusActivatable=true\n" * activated))
+        conf = ns["bus_config"](d, sources, ((apps, sources), ("/nonexistent", "/nonexistent")))
         self.assertIn("<servicedir>%s/services</servicedir>" % d, open(conf).read())
-        made = os.listdir(os.path.join(d, "services"))
-        self.assertEqual(made, ["ca.desrt.dconf.service"])  # no address book on this bus
+        made = sorted(os.listdir(os.path.join(d, "services")))
+        # no address book on this bus, and no second Chatty - but the apps
+        self.assertEqual(made, ["ca.desrt.dconf.service", "org.gnome.Settings.service"])
         self.assertNotIn("SystemdService", open(os.path.join(d, "services", made[0])).read())
         self.assertEqual(ns["firewall_argv"](3390, True),
                          ["sudo", "-n", "iptables", "-I", "INPUT", "!", "-i", "lo", "-p", "tcp",
@@ -108,6 +117,10 @@ class Pieces(unittest.TestCase):
         self.assertEqual(env["HOME"], "/home/x")             # the user's files, as always
         self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/tmp/bus")
         self.assertEqual(open(env["DCONF_PROFILE"]).read(), "user-db:phonebridge_desktop\n")
+        with mock.patch.dict(os.environ, {"DBUS_SESSION_BUS_ADDRESS": "unix:path=/phosh"}):
+            env = ns["desktop_env"](d)                      # for the bus: never Phosh's
+        self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", env)
+        self.assertEqual(env["XDG_CURRENT_DESKTOP"], "GNOME")
 
     @unittest.skipUnless(shutil.which("openssl"), "no openssl")
     def test_certificate(self):
