@@ -136,7 +136,8 @@ SECTIONS = (
      )},
     {"id": "notifications", "title": N_("Notifications"), "icon": "preferences-system-notifications-symbolic",
      "groups": (
-         (None, None, (
+         (None, N_("These settings apply on the phone. Which notifications this PC "
+                   "shows as well: the main menu, and “Hide this app here” on each one."), (
              ("switch", "org.gnome.desktop.notifications", "show-banners",
               N_("Notification banners"), None, {}),
              ("switch", "mobi.phosh.shell.cell-broadcast", "enabled",

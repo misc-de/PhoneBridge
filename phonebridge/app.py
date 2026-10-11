@@ -29,7 +29,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, VERSION, config, i18n, icon, phone, text  # noqa: E402
+from . import APP_ID, VERSION, config, i18n, icon, localapps, phone, text  # noqa: E402
 from .avatars import Avatars  # noqa: E402
 from .connection import Device  # noqa: E402
 from .i18n import _, n_  # noqa: E402
@@ -230,6 +230,10 @@ class PhoneBridgeApp(Adw.Application):
         add("phone-notifications-twice", self._on_phone_notifications_twice_toggle, None,
             GLib.Variant("b", bool(self.cfg.get("phone_notifications_twice", False))))
         add("phone-dismiss", self._on_phone_dismiss, "(su)")
+        add("phone-hide-app", self._on_phone_hide_app, "(ssu)")
+        add("phone-show-app", self._on_phone_show_app, "s")
+        self.hidden_apps_menu = Gio.Menu()
+        self._hidden_apps_changed()
         add("clipboard-sync", self._on_clipboard_sync_toggle, None,
             GLib.Variant("b", bool(self.cfg.get("clipboard_sync", False))))
         add("clipboard-to-phone", lambda *a: self.clipboard_to_phone())
@@ -499,6 +503,8 @@ class PhoneBridgeApp(Adw.Application):
         if not self.cfg.get("phone_notifications", True):
             return
         app_name = n.get("app") or ""
+        if self.app_hidden(app_name or n.get("desktop") or ""):
+            return
         if not self.cfg.get("phone_notifications_twice", False) and \
                 self.local_apps.running(app_name, n.get("desktop") or ""):
             return          # the app here tells it itself
@@ -511,6 +517,9 @@ class PhoneBridgeApp(Adw.Application):
         note.set_icon(phone_note_icon(n))
         note.add_button_with_target(_("Close on the phone"), "app.phone-dismiss",
                                     GLib.Variant("(su)", (dev.id, int(n["id"]))))
+        note.add_button_with_target(_("Hide this app here"), "app.phone-hide-app",
+                                    GLib.Variant("(ssu)", (app_name or n.get("desktop") or "",
+                                                           dev.id, int(n["id"]))))
         self._send_briefly(phone_note_id(dev.id, n["id"]), note)
 
     def _on_phone_notifications_twice_toggle(self, action, value):
@@ -524,6 +533,44 @@ class PhoneBridgeApp(Adw.Application):
         dev = self.devices.get(dev_id)
         if dev is not None and dev.online:
             dev.request("notification.close", {"id": nid})
+
+    def app_hidden(self, name):
+        k = localapps.key(name)
+        return bool(k) and any(localapps.key(h) == k
+                               for h in self.cfg.get("phone_notifications_hidden", []))
+
+    def _on_phone_hide_app(self, action, param):
+        """An app of the phone whose notifications stay on the phone from now
+        on - shown again from the menu (hidden_apps_menu)."""
+        name, dev_id, nid = param.unpack()
+        self.withdraw_notification(phone_note_id(dev_id, nid))
+        if not name or self.app_hidden(name):
+            return
+        self.cfg.setdefault("phone_notifications_hidden", []).append(name)
+        config.save(self.cfg)
+        self._hidden_apps_changed()
+        self.tell(_("Notifications of %s now stay on the phone") % name)
+
+    def _on_phone_show_app(self, action, param):
+        k = localapps.key(param.get_string())
+        self.cfg["phone_notifications_hidden"] = [
+            h for h in self.cfg.get("phone_notifications_hidden", []) if localapps.key(h) != k]
+        config.save(self.cfg)
+        self._hidden_apps_changed()
+
+    def _hidden_apps_changed(self):
+        """The menu's section of the hidden apps: empty (so not there) while
+        none is hidden, else a submenu that shows each one again."""
+        self.hidden_apps_menu.remove_all()
+        hidden = self.cfg.get("phone_notifications_hidden", [])
+        if not hidden:
+            return
+        sub = Gio.Menu()
+        for name in sorted(hidden, key=str.casefold):
+            item = Gio.MenuItem.new(_("Show %s again") % name, None)
+            item.set_action_and_target_value("app.phone-show-app", GLib.Variant("s", name))
+            sub.append_item(item)
+        self.hidden_apps_menu.append_submenu(_("Phone apps hidden here"), sub)
 
     def _on_phone_notifications_toggle(self, action, value):
         action.set_state(value)

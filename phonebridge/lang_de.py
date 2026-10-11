@@ -1245,6 +1245,16 @@ TRANSLATIONS = {
         'Benachrichtigungen des Phones zeigen',
     "… also of apps open on this PC":
         '… auch von Apps, die am PC offen sind',
+    'Hide this app here':
+        'Diese App hier ausblenden',
+    'Notifications of %s now stay on the phone':
+        'Benachrichtigungen von %s bleiben jetzt auf dem Phone',
+    'Show %s again':
+        '%s wieder zeigen',
+    'Phone apps hidden here':
+        'Hier ausgeblendete Phone-Apps',
+    'These settings apply on the phone. Which notifications this PC shows as well: the main menu, and “Hide this app here” on each one.':
+        'Diese Einstellungen gelten auf dem Phone. Welche Benachrichtigungen auch dieser PC zeigt: im Hauptmenü und mit „Diese App hier ausblenden“ an jeder Benachrichtigung.',
     'The clipboard holds no text':
         'In der Zwischenablage ist kein Text',
     'Clipboard sent to %s':

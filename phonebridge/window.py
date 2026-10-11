@@ -126,6 +126,7 @@ class MainWindow(Adw.ApplicationWindow):
         prefs.append(_("Notify about new messages"), "app.notify")
         prefs.append(_("Show the phone's notifications"), "app.phone-notifications")
         prefs.append(_("… also of apps open on this PC"), "app.phone-notifications-twice")
+        prefs.append_section(None, self.app.hidden_apps_menu)
         prefs.append(_("Share the clipboard with the phone"), "app.clipboard-sync")
         prefs.append(_("Start at login"), "app.autostart")
         prefs.append(_("Look for updates"), "app.updates")

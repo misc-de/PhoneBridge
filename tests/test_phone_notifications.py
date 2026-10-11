@@ -91,6 +91,26 @@ class OnThePC(unittest.TestCase):
                 self.assertTrue(run_loop_until(lambda: "Element: Carl" in titles, 10))
             app.activate_action("phone-notifications-twice", None)
             shown[2:] = []
+            # an app hidden here with the button: its notifications stay on the phone
+            app.activate_action("phone-hide-app", GLib.Variant("(ssu)", ("Delta Chat", "test", 7)))
+            self.assertIn("phone-test-7", withdrawn)
+            self.assertEqual(app.cfg["phone_notifications_hidden"], ["Delta Chat"])
+            self.assertEqual(config.load()["phone_notifications_hidden"], ["Delta Chat"])
+            self.assertEqual(app.hidden_apps_menu.get_n_items(), 1)
+            with mock.patch.object(app.local_apps, "running", lambda *a: False):
+                daemon.notify("DeltaChat", "Dora", "hidden")
+                daemon.notify("Calendar", "Later", "")
+                self.assertTrue(run_loop_until(lambda: len(shown) == 3, 10))
+                run_loop_until(lambda: False, 0.3)
+            self.assertNotIn("DeltaChat: Dora", titles)
+            # ... and shown again from the menu
+            app.activate_action("phone-show-app", GLib.Variant("s", "Delta Chat"))
+            self.assertEqual(app.cfg["phone_notifications_hidden"], [])
+            self.assertEqual(app.hidden_apps_menu.get_n_items(), 0)
+            with mock.patch.object(app.local_apps, "running", lambda *a: False):
+                daemon.notify("DeltaChat", "Dora", "back")
+                self.assertTrue(run_loop_until(lambda: "DeltaChat: Dora" in titles, 10))
+            shown[2:] = []
 
         # closed here with the button: closed on the phone, gone here
         app.activate_action("phone-dismiss", GLib.Variant("(su)", ("test", nid)))
