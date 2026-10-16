@@ -1449,8 +1449,8 @@ TRANSLATIONS = {
         'Nicht eingerichtet: %s',
     '“%s” is there now':
         '„%s“ ist jetzt da',
-    'The phone cannot be a webcam of this PC.':
-        'Das Phone kann keine Webcam dieses PCs sein.',
+    "The phone's screen cannot be shown here, and the phone cannot be a webcam of this PC.":
+        'Der Bildschirm des Phones kann hier nicht gezeigt werden, und das Phone kann keine Webcam dieses PCs sein.',
     'GStreamer is missing on this PC':
         'Auf diesem PC fehlt GStreamer',
     'The live picture, as programs get it':
@@ -1508,6 +1508,45 @@ TRANSLATIONS = {
         'Das Bild ist abgebrochen',
     'Try again':
         'Erneut versuchen',
+    # what screen sharing needs
+    'Something is missing on the phone':
+        'Am Phone fehlt etwas',
+    'Screen sharing needs these on the phone and on this PC. The picture comes once the first two are there; the others are for taps and turning.':
+        'Das braucht die Bildschirmübertragung am Phone und auf diesem PC. Das Bild kommt, sobald die ersten beiden da sind; die anderen sind fürs Tippen und Drehen.',
+    'wf-recorder on the phone':
+        'wf-recorder auf dem Phone',
+    'GStreamer with H.264 on this PC':
+        'GStreamer mit H.264 auf diesem PC',
+    'Taps and keys: python3-evdev on the phone':
+        'Tippen und Tasten: python3-evdev auf dem Phone',
+    'Turning: wlr-randr on the phone':
+        'Drehen: wlr-randr auf dem Phone',
+    'Optional - without it only the picture comes':
+        'Optional – ohne kommt nur das Bild',
+    'Optional - without it the phone is not turned from here':
+        'Optional – ohne lässt sich das Phone von hier nicht drehen',
+    'Install wf-recorder':
+        'wf-recorder installieren',
+    "It records the phone's screen for the PC.":
+        'Es nimmt den Bildschirm des Phones für den PC auf.',
+    'Install wlr-randr':
+        'wlr-randr installieren',
+    "It turns the phone's screen between portrait and landscape.":
+        'Es dreht den Bildschirm des Phones zwischen Hoch- und Querformat.',
+    'Install python3-evdev':
+        'python3-evdev installieren',
+    'Taps, swipes and keys from the PC reach the phone through it - without it only the picture comes.':
+        'Darüber kommen Tippen, Wischen und Tasten vom PC am Phone an – ohne kommt nur das Bild.',
+    'Allow taps from the PC':
+        'Tippen vom PC erlauben',
+    "Taps and keys from the PC come in through /dev/uinput, which the phone's user may not write. This allows it - it takes effect once the phone has started anew.":
+        'Tippen und Tasten vom PC kommen über /dev/uinput, das der Benutzer des Phones nicht beschreiben darf. Das hier erlaubt es – es wirkt, sobald das Phone neu gestartet ist.',
+    'Install GStreamer':
+        'GStreamer installieren',
+    'The picture comes as H.264 and is shown with GStreamer and its plugins. On this PC:':
+        'Das Bild kommt als H.264 und wird mit GStreamer und seinen Plugins angezeigt. Auf diesem PC:',
+    "The picture comes as H.264 and is shown with GStreamer - install its base, good, bad and libav plugins with your distribution's package manager.":
+        'Das Bild kommt als H.264 und wird mit GStreamer angezeigt – installiere dessen Plugins base, good, bad und libav mit dem Paketmanager deiner Distribution.',
     'Portrait or landscape':
         'Hochformat oder Querformat',
     'Full screen (Esc goes back)':

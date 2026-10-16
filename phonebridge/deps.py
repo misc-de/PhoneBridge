@@ -35,9 +35,12 @@ OPTIONAL = (
      N_("No echo cancellation for calls at the PC.")),
     ("ssh-keygen", ("program", "ssh-keygen"), "openssh", "openssh-client",
      N_("No SSH key can be made when setting up a phone.")),
-    ("GStreamer", ("gi", "Gst", "1.0"), "gst-plugins-bad gst-libav gst-plugin-pipewire",
-     "gir1.2-gstreamer-1.0 gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire",
-     N_("The phone cannot be a webcam of this PC.")),
+    ("GStreamer", ("gi", "Gst", "1.0"),
+     "gst-plugins-good gst-plugins-bad gst-libav gst-plugin-pipewire",
+     "gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad "
+     "gstreamer1.0-libav gstreamer1.0-pipewire",
+     N_("The phone's screen cannot be shown here, and the phone cannot be a webcam of "
+        "this PC.")),
 )
 
 
@@ -70,9 +73,10 @@ OTHER = {
     "pw-record / pw-play": ("pipewire-utils", "pipewire-tools"),
     "pactl": ("pulseaudio-utils", "pulseaudio-utils"),
     "ssh-keygen": ("openssh", "openssh-clients"),
-    "GStreamer": ("gstreamer1-plugins-bad-free gstreamer1-plugin-libav pipewire-gstreamer",
-                  "typelib-1_0-Gst-1_0 gstreamer-plugins-bad gstreamer-plugins-libav "
-                  "pipewire-gstreamer"),
+    "GStreamer": ("gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav "
+                  "pipewire-gstreamer",
+                  "typelib-1_0-Gst-1_0 gstreamer-plugins-good gstreamer-plugins-bad "
+                  "gstreamer-plugins-libav pipewire-gstreamer"),
 }
 COMMANDS = {"arch": "sudo pacman -S ", "debian": "sudo apt install ",
             "fedora": "sudo dnf install ", "suse": "sudo zypper install "}

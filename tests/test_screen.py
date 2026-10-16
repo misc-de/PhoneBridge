@@ -7,6 +7,7 @@ what would go to uinput is written to a file."""
 import os
 import runpy
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -216,7 +217,9 @@ class InTheApp(unittest.TestCase):
         home = Home()
         self.addCleanup(home.cleanup)
         log = os.path.join(home.dir, "input")
-        for p in (mock.patch.dict(os.environ, home.env()),
+        # the "phone" has wf-recorder (the test picture stands for it)
+        for p in (mock.patch.dict(os.environ, dict(home.env(),
+                                                   PHONEBRIDGE_WF_RECORDER=sys.executable)),
                   mock.patch.object(config, "CONFIG_DIR", home.config)):
             p.start()
             self.addCleanup(p.stop)
@@ -237,6 +240,8 @@ class InTheApp(unittest.TestCase):
         mapped = [False]
         page.get_mapped = lambda: mapped[0]
         page.set_device(dev)
+        self.assertTrue(run_loop_until(lambda: page.check is not None, 20))
+        self.assertTrue(page.check["wf_recorder"])
         self.assertIsNone(page.mirror)                   # not shown: no picture
         mapped[0] = True
         page.load()
@@ -276,3 +281,70 @@ class InTheApp(unittest.TestCase):
         self.assertTrue(run_loop_until(
             lambda: os.path.exists(log) and "key 30 0" in open(log).read(), 10))
         self.assertIn("key 116 1", open(log).read())
+
+    def test_what_it_needs(self):
+        from phonebridge import agent
+        from phonebridge.screen_page import ScreenPage, gstreamer_hint, pc_missing
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        uinput = os.path.join(d, "uinput")
+        open(uinput, "w").close()
+        with mock.patch.dict(os.environ, {"PHONEBRIDGE_WF_RECORDER": "/nonexistent",
+                                          "PHONEBRIDGE_WLR_RANDR": sys.executable,
+                                          "PHONEBRIDGE_EVDEV": "", "PHONEBRIDGE_UINPUT": uinput}):
+            found = agent.screen_check()
+        self.assertEqual({k: found[k] for k in ("wf_recorder", "evdev", "uinput", "wlr_randr")},
+                         {"wf_recorder": False, "evdev": False, "uinput": True,
+                          "wlr_randr": True})
+        self.assertTrue(found["uinput_group"])
+        with mock.patch.dict(os.environ, {"PHONEBRIDGE_UINPUT": "/nonexistent"}):
+            self.assertFalse(agent.screen_check()["uinput"])
+
+        self.assertNotIn("flvdemux", pc_missing())          # HAVE_GST
+        with mock.patch.object(Gst.ElementFactory, "find", return_value=None):
+            self.assertEqual(pc_missing(), ["fdsrc", "flvdemux", "h264parse", "videoconvert",
+                                            "appsink", "avdec_h264"])
+        release = os.path.join(d, "os-release")
+        with open(release, "w") as f:
+            f.write("ID=manjaro\nID_LIKE=arch\n")
+        self.assertIn("gst-libav", gstreamer_hint(release))
+        with open(release, "w") as f:
+            f.write("ID=gentoo\n")
+        self.assertIsNone(gstreamer_hint(release))
+
+        app = mock.Mock(cfg={"screen": {"mode": "mirror"}})
+        page = ScreenPage(app)
+        page.get_mapped = lambda: True
+        page.dev = mock.Mock(online=True, info={"user": "me", "host": "phone"})
+        with mock.patch("phonebridge.screen_page.pc_missing", return_value=[]):
+            # the recorder missing: no picture, the list instead
+            page.check = dict(found, wf_recorder=False)
+            page.update_needs()
+            page.load()
+            self.assertIsNone(page.mirror)
+            self.assertEqual(page.view.get_visible_child_name(), "needs")
+            self.assertFalse(page.missing_button.get_visible())
+            heading, body, command = page.instructions("recorder")
+            self.assertEqual(command, "sudo apt install wf-recorder")
+            self.assertIn("ssh me@phone", body)
+            # only taps and turning: the picture comes, the bar says what is missing
+            page.check = dict(found, wf_recorder=True, evdev=True, uinput=False,
+                              uinput_group="system", wlr_randr=False)
+            page.update_needs()
+            self.assertTrue(page.ready())
+            self.assertTrue(page.missing_button.get_visible())
+            self.assertFalse(page.rotate_button.get_sensitive())
+            self.assertEqual(page.instructions("touch")[2], "sudo usermod -aG system me")
+            page.check["uinput_group"] = "root"
+            self.assertIn("/etc/udev/rules.d/", page.instructions("touch")[2])
+            page.check["evdev"] = False
+            self.assertEqual(page.instructions("touch")[2], "sudo apt install python3-evdev")
+            self.assertEqual(page.instructions("turn")[2], "sudo apt install wlr-randr")
+            # an agent too old to tell: tried as before
+            page.check = None
+            page.update_needs()
+            self.assertTrue(page.ready())
+            self.assertFalse(page.missing_button.get_visible())
+        with mock.patch("phonebridge.screen_page.pc_missing", return_value=["avdec_h264"]):
+            self.assertFalse(page.ready())
+            self.assertEqual(page.instructions("decoder")[0], "Install GStreamer")

@@ -7,6 +7,11 @@ picture runs only while the page is shown. Full screen shows nothing but
 the picture (Esc goes back); a button turns the phone between portrait
 and landscape.
 
+What it needs on the phone and on this PC is checked: without the
+recorder or the decoder the page lists it, with the commands that set it
+up; without what is only for taps or turning the picture comes, and a
+button in the bar lists it.
+
 The other way, chosen at the top: a GNOME desktop of the phone's own in
 an RDP window (rdp_ui.py)."""
 
@@ -14,6 +19,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk
 
 from . import config, text
 from .i18n import N_, _
+from .needs import NeedsGroup, explain, on_the_phone
 
 QUALITY_NAMES = (("fast", N_("Fast")), ("normal", N_("Normal")), ("sharp", N_("Sharp")))
 KEY_POWER, KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_LEFTMETA = 116, 114, 115, 125
@@ -24,6 +30,30 @@ WHEEL_GATHER = 80               # ms the wheel's notches are gathered into one s
 
 def settings(app):
     return app.cfg.setdefault("screen", {"quality": "normal"})
+
+
+def pc_missing():
+    """What this PC lacks for the picture: GStreamer elements - or
+    ["GStreamer"] without GStreamer at all."""
+    try:
+        from .screen import missing
+    except (ImportError, ValueError):
+        return ["GStreamer"]
+    return missing()
+
+
+def gstreamer_hint(release="/etc/os-release"):
+    """The command that installs what the picture needs here, or None (the
+    Flatpak has it all)."""
+    from . import deps
+    return {"arch": "sudo pacman -S gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav",
+            "debian": "sudo apt install gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base "
+                      "gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav",
+            "fedora": "sudo dnf install gstreamer1-plugins-base gstreamer1-plugins-good "
+                      "gstreamer1-plugins-bad-free gstreamer1-plugin-libav",
+            "suse": "sudo zypper install typelib-1_0-Gst-1_0 gstreamer-plugins-base "
+                    "gstreamer-plugins-good gstreamer-plugins-bad gstreamer-plugins-libav",
+            }.get(deps.distro(release))
 
 
 class ScreenPage(Gtk.Box):
@@ -75,6 +105,15 @@ class ScreenPage(Gtk.Box):
                                     tooltip_text=_("Picture quality"))
         self.quality.connect("notify::selected", self._on_quality)
         bar.append(self.quality)
+        # only taps or turning missing: the picture comes, this says what
+        self.missing_list = self._needs_group()
+        self.missing_list.set_size_request(420, -1)
+        self.missing_button = Gtk.MenuButton(
+            icon_name="dialog-warning-symbolic", visible=False,
+            tooltip_text=_("Something is missing on the phone"),
+            popover=Gtk.Popover(child=self.missing_list))
+        self.missing_button.add_css_class("flat")
+        bar.append(self.missing_button)
         self.bar = bar
         self.mirror_box.append(bar)
 
@@ -109,6 +148,13 @@ class ScreenPage(Gtk.Box):
         self.view = Gtk.Stack(vexpand=True)
         self.view.add_named(self.picture, "picture")
         self.view.add_named(self.status, "status")
+        # the recorder or the decoder missing: no picture, but what to do
+        self.needs = self._needs_group(description=_(
+            "Screen sharing needs these on the phone and on this PC. The picture comes once "
+            "the first two are there; the others are for taps and turning."))
+        needs_page = Adw.PreferencesPage()
+        needs_page.add(self.needs)
+        self.view.add_named(needs_page, "needs")
         self.mirror_box.append(self.view)
         self.hint = _("Click to tap, drag to swipe, hold for a long press. Keys typed here go "
                       "to the phone.")
@@ -220,6 +266,7 @@ class ScreenPage(Gtk.Box):
         if dev is not self.dev:
             self.stop()
             self.dev = dev
+            self.check = None
             self.picture.set_paintable(None)
             self._online = None
         self.desktop.set_device(dev)
@@ -241,6 +288,7 @@ class ScreenPage(Gtk.Box):
         if online != self._online:
             self._online = online
             self.desktop.refresh()          # what the phone has: asked when it comes
+            self.refresh_check()
 
         if self.dev is None or not self.dev.online:
             self.stop()
@@ -273,14 +321,14 @@ class ScreenPage(Gtk.Box):
             if dev is None or not dev.online:
                 self._show_status(_("Not connected"), dev and text.device_state(dev))
             return
+        if not self.ready():
+            self.stop()
+            self.view.set_visible_child_name("needs")
+            return
         if self.mirror is not None and not force:
             return
         self.stop()
-        try:
-            from .screen import Mirror
-        except (ImportError, ValueError):           # no GStreamer on this PC
-            self._show_status(_("GStreamer is missing on this PC"), None)
-            return
+        from .screen import Mirror
         self.mirror = Mirror(dev, settings(self.app).get("quality", "normal"), picture=self._show,
                              **self.app._screen_extra)
         self.mirror.connect("state", self._on_state)
@@ -289,6 +337,98 @@ class ScreenPage(Gtk.Box):
         self._show_status(_("Connecting …"), None, spinner=True)
         if self.mirror.start():
             self.picture.grab_focus()
+
+    # -- what it needs ---------------------------------------------------------------
+    check = None                        # the phone's answer to screen.check
+
+    def _needs_group(self, **kwargs):
+        return NeedsGroup((("recorder", _("wf-recorder on the phone")),
+                           ("decoder", _("GStreamer with H.264 on this PC")),
+                           ("touch", _("Taps and keys: python3-evdev on the phone")),
+                           ("turn", _("Turning: wlr-randr on the phone"))),
+                          self.explain, self.refresh_check, **kwargs)
+
+    def refresh_check(self):
+        """Asks the phone what is there (once it is online), and looks here."""
+        dev = self.dev
+        self.update_needs()
+        if dev is None or not dev.online:
+            return
+
+        def got(result, error):
+            if dev is not self.dev:
+                return
+            # an agent too old to know the question: tried as before
+            self.check = result if error is None else None
+            self.update_needs()
+            if not self.ready() or self.view.get_visible_child_name() == "needs":
+                self.load()
+
+        dev.request("screen.check", {}, got)
+
+    def met(self):
+        """{need: True/False/None (not known yet)}."""
+        c = self.check
+        known = c is not None
+        return {"recorder": c.get("wf_recorder") if known else None,
+                "decoder": not pc_missing(),
+                "touch": bool(c.get("evdev") and c.get("uinput")) if known else None,
+                "turn": c.get("wlr_randr") if known else None}
+
+    def ready(self):
+        """The picture can come: not known to miss the recorder or the decoder."""
+        m = self.met()
+        return m["recorder"] is not False and m["decoder"]
+
+    def update_needs(self):
+        m = self.met()
+        subtitles = {"touch": ("", _("Optional - without it only the picture comes")),
+                     "turn": ("", _("Optional - without it the phone is not turned from here"))}
+        for group in (self.needs, self.missing_list):
+            group.update(m, subtitles)
+        self.missing_button.set_visible(self.ready() and False in m.values())
+        self.rotate_button.set_sensitive(m["turn"] is not False)
+
+    def instructions(self, key):
+        """(heading, body, command or None) for what is missing."""
+        dev = self.dev
+        where = on_the_phone(dev)
+        c = self.check or {}
+        if key == "recorder":
+            return (_("Install wf-recorder"), _("It records the phone's screen for the PC.")
+                    + "\n\n" + where, "sudo apt install wf-recorder")
+        if key == "turn":
+            return (_("Install wlr-randr"), _("It turns the phone's screen between portrait and "
+                                              "landscape.") + "\n\n" + where,
+                    "sudo apt install wlr-randr")
+        if key == "touch" and not c.get("evdev"):
+            return (_("Install python3-evdev"), _(
+                "Taps, swipes and keys from the PC reach the phone through it - without it "
+                "only the picture comes.") + "\n\n" + where, "sudo apt install python3-evdev")
+        if key == "touch":
+            user = dev.info["user"] if dev is not None else "furios"
+            group = c.get("uinput_group")
+            if group in (None, "root"):
+                # no group of its own: one that may write it, from the next start on
+                command = ("echo 'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"' | sudo tee "
+                           "/etc/udev/rules.d/60-phonebridge-uinput.rules && "
+                           "sudo usermod -aG input %s" % user)
+            else:
+                command = "sudo usermod -aG %s %s" % (group, user)
+            return (_("Allow taps from the PC"), _(
+                "Taps and keys from the PC come in through /dev/uinput, which the phone's user "
+                "may not write. This allows it - it takes effect once the phone has started "
+                "anew.") + "\n\n" + where, command)
+        hint = gstreamer_hint()
+        return (_("Install GStreamer"), _(
+            "The picture comes as H.264 and is shown with GStreamer and its plugins. On this "
+            "PC:") if hint else _(
+            "The picture comes as H.264 and is shown with GStreamer - install its base, good, "
+            "bad and libav plugins with your distribution's package manager."), hint)
+
+    def explain(self, key):
+        self.missing_button.popdown()
+        return explain(self.get_root(), self.app, *self.instructions(key), self.refresh_check)
 
     def stop(self):
         if self._wheel_timer:

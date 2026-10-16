@@ -8,6 +8,7 @@ from gi.repository import Adw, Gdk, Gtk
 
 from . import config, text
 from .i18n import _
+from .needs import NeedsGroup, explain, on_the_phone
 
 DEFAULT_SIZE = (1280, 800)
 SLOW = 1920 * 1200          # more pixels than this: told it gets slow
@@ -42,25 +43,12 @@ class DesktopPanel(Adw.PreferencesPage):
         group.add(self.state_row)
         self.add(group)
 
-        self.needs = Adw.PreferencesGroup(title=_("What it needs"))
-        again = Gtk.Button(label=_("Check again"), valign=Gtk.Align.CENTER)
-        again.add_css_class("flat")
-        again.connect("clicked", lambda *a: self.refresh())
-        self.needs.set_header_suffix(again)
-        self.rows = {}
-        for key, title in (("gnome_shell", _("GNOME Shell on the phone")),
-                           ("remote_desktop", _("GNOME Remote Desktop on the phone")),
-                           ("tools", _("OpenSSL and D-Bus on the phone")),
-                           ("firewall", _("Firewall rule without a password")),
-                           ("client", _("RDP client on this PC"))):
-            row = Adw.ActionRow(title=title)
-            icon = Gtk.Image()
-            how = Gtk.Button(label=_("How to …"), valign=Gtk.Align.CENTER)
-            how.connect("clicked", lambda _b, k: self.explain(k), key)
-            row.add_suffix(how)
-            row.add_suffix(icon)
-            self.rows[key] = (row, icon, how)
-            self.needs.add(row)
+        self.needs = NeedsGroup((("gnome_shell", _("GNOME Shell on the phone")),
+                                 ("remote_desktop", _("GNOME Remote Desktop on the phone")),
+                                 ("tools", _("OpenSSL and D-Bus on the phone")),
+                                 ("firewall", _("Firewall rule without a password")),
+                                 ("client", _("RDP client on this PC"))),
+                                self.explain, self.refresh)
         self.add(self.needs)
         app.rdp_listeners.append(lambda dev: dev is self.dev and self.update())
 
@@ -102,19 +90,10 @@ class DesktopPanel(Adw.PreferencesPage):
 
     def update(self):
         dev = self.dev
-        m = self.met()
-        for key, (row, icon, how) in self.rows.items():
-            ok = m[key]
-            icon.set_from_icon_name("emblem-ok-symbolic" if ok else
-                                    "dialog-warning-symbolic" if ok is False else
-                                    "content-loading-symbolic")
-            icon.set_tooltip_text(_("There") if ok else _("Missing") if ok is False else None)
-            how.set_visible(ok is False)
-            if key == "firewall":
-                row.set_subtitle(_("Only the phone itself reaches the desktop's port") if ok else
-                                 _("Optional - without it the port can be reached in the "
-                                   "network, guarded by a password for this session only")
-                                 if ok is False else "")
+        self.needs.update(self.met(), {"firewall": (
+            _("Only the phone itself reaches the desktop's port"),
+            _("Optional - without it the port can be reached in the network, guarded by a "
+              "password for this session only"))})
         self._filling = True
         try:
             size = tuple(settings(self.app).get("desktop_size", DEFAULT_SIZE))
@@ -177,8 +156,7 @@ class DesktopPanel(Adw.PreferencesPage):
     def instructions(self, key):
         """(heading, body, command or None) for what is missing."""
         dev = self.dev
-        where = (_("On the phone - in its terminal, or from here with “ssh %s@%s”:")
-                 % (dev.info["user"], dev.info["host"]) if dev is not None else "")
+        where = on_the_phone(dev)
         if key == "gnome_shell":
             return (_("Install GNOME Shell"), _("The desktop is GNOME's own shell, started without a "
                                         "screen.") + "\n\n" + where,
@@ -211,27 +189,7 @@ class DesktopPanel(Adw.PreferencesPage):
                   "with your distribution's package manager."), hint)
 
     def explain(self, key):
-        heading, body, command = self.instructions(key)
-        dialog = Adw.AlertDialog(heading=heading, body=body)
-        if command:
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            label = Gtk.Label(label=command, selectable=True, wrap=True,
-                              wrap_mode=2, xalign=0)      # Pango.WrapMode.WORD_CHAR
-            label.add_css_class("monospace")
-            label.add_css_class("card")
-            copy = Gtk.Button(label=_("Copy"), halign=Gtk.Align.END)
-            copy.connect("clicked", lambda *a: (
-                Gdk.Display.get_default().get_clipboard().set(command),
-                self.app.toast(_("Copied"))))
-            box.append(label)
-            box.append(copy)
-            dialog.set_extra_child(box)
-        dialog.add_response("check", _("Check again"))
-        dialog.add_response("ok", _("OK"))
-        dialog.set_default_response("ok")
-        dialog.connect("response", lambda d, r: r == "check" and self.refresh())
-        dialog.present(self.get_root())
-        return dialog
+        return explain(self.get_root(), self.app, *self.instructions(key), self.refresh)
 
 
 def screen_size():

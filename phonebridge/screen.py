@@ -22,6 +22,16 @@ from .webcam import decoder  # noqa: E402
 PHONE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screen_phone.py")
 QUALITIES = {"fast": 360, "normal": 540, "sharp": 720}     # width of the picture sent
 RANGE = 10000                   # the phone's coordinates: 0..RANGE over the screen
+# what the picture goes through here - and a decoder, one of decoder()'s
+ELEMENTS = ("fdsrc", "flvdemux", "h264parse", "videoconvert", "appsink")
+
+
+def missing():
+    """The GStreamer elements the picture needs and this PC has not."""
+    gone = [e for e in ELEMENTS if not Gst.ElementFactory.find(e)]
+    if not any(Gst.ElementFactory.find(e) for e in ("avdec_h264", "openh264dec")):
+        gone.append("avdec_h264")
+    return gone
 
 
 class Mirror(GObject.Object):

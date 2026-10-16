@@ -174,6 +174,12 @@ the command for the distribution it runs on.
 **On the phone** - an SSH server, Python 3 with PyGObject, and the usual mobile stack (ofono,
 ModemManager, chatty, GNOME Calls, evolution-data-server), as FuriOS brings them.
 
+**The phone's screen** needs `wf-recorder` on the phone for the picture, `python3-evdev`
+for taps and keys from the PC and `wlr-randr` for turning it
+(`sudo apt install wf-recorder python3-evdev wlr-randr`). The *Screen* page checks
+them, and the *Desktop session* its own needs, and shows what is missing with the command
+that sets it up.
+
 **Calls at the PC** need PipeWire running on the phone with the call audio nodes
 `droid-call-sink` / `droid-call-source` (a patched spa-droid plugin on the FLX1);
 without them the option is not offered.

@@ -23,7 +23,9 @@ and GSettings (GNOME settings)."""
 import base64
 import binascii
 import glob
+import grp
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -3675,16 +3677,42 @@ def cmd_screenshot(agent, args):
     return {"png": base64.b64encode(screenshot(agent.session)).decode("ascii")}
 
 
+def have(name, env):
+    """A program on the phone - or, set for the tests, the path in env."""
+    path = os.environ.get(env)
+    return bool(path and os.path.exists(path)) if path is not None else bool(shutil.which(name))
+
+
+# --- the phone's screen on the PC (screen_phone.py) ------------------------------
+
+def screen_check():
+    """What sharing the screen needs on the phone: wf-recorder for the
+    picture; python3-evdev and a /dev/uinput the user may write for taps
+    and keys; wlr-randr for turning. The paths can be set for the tests."""
+    uinput = os.environ.get("PHONEBRIDGE_UINPUT", "/dev/uinput")
+    try:
+        group = grp.getgrgid(os.stat(uinput).st_gid).gr_name
+    except (OSError, KeyError):
+        group = None
+    evdev = os.environ.get("PHONEBRIDGE_EVDEV")
+    return {"wf_recorder": have("wf-recorder", "PHONEBRIDGE_WF_RECORDER"),
+            "evdev": bool(evdev) if evdev is not None
+            else importlib.util.find_spec("evdev") is not None,
+            "uinput": os.access(uinput, os.W_OK), "uinput_group": group,
+            "wlr_randr": have("wlr-randr", "PHONEBRIDGE_WLR_RANDR")}
+
+
+@command("screen.check", threaded=True)
+def cmd_screen_check(agent, args):
+    return screen_check()
+
+
 # --- a desktop of its own, for the PC (rdp_phone.py) --------------------------------
 
 def desktop_check():
     """What a GNOME desktop for the PC needs on the phone - and whether a
     firewall rule can be set without a password. The paths can be set for
     the tests."""
-    def have(name, env):
-        path = os.environ.get(env)
-        return bool(path and os.path.exists(path)) if path is not None else bool(
-            shutil.which(name))
     grd = os.environ.get("PHONEBRIDGE_GRD", "/usr/libexec/gnome-remote-desktop-daemon")
     iptables = shutil.which("iptables") or "/usr/sbin/iptables"
     try:        # may iptables run without a password (all of sudo, or just it)?
