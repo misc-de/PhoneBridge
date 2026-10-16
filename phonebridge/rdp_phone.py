@@ -9,7 +9,8 @@ Phosh goes on as it is. The desktop runs on a D-Bus of its own, on which
 only what it needs and the apps may start (no second address book,
 calendar, online accounts, keyring or Chatty on the same data). The
 phone's own address books and calendars reach it all the same: BRIDGE
-hands evolution-data-server's names on Phosh's bus over to it. Its
+hands evolution-data-server's and Online Accounts' names on Phosh's bus
+over to it. Its
 settings are in a dconf database of its own
 (~/.config/dconf/phonebridge_desktop - Phosh's settings stay untouched;
 the desktop's own stay from one session to the next). Files, apps and
@@ -112,7 +113,9 @@ threading.Event().wait(5)
 # connection of its own, and what comes in goes on to the EDS on Phosh's
 # bus (argv: Phosh's bus, the desktop's) - calls, their replies and EDS's
 # signals. So the desktop's apps see the phone's address books and
-# calendars, with the one EDS that has them. The names of the backends EDS
+# calendars, with the one EDS that has them. GNOME Online Accounts comes
+# along the same way: the books and calendars of an account are its (and
+# Contacts ends without it). The names of the backends EDS
 # starts later (Subprocess.Backend...) come along as they appear. "ready"
 # on stdout once the names are there.
 BRIDGE = r"""
@@ -122,7 +125,9 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 
 EDS = "org.gnome.evolution.dataserver"
-ALWAYS = tuple(EDS + "." + n for n in ("Sources5", "AddressBook10", "Calendar8", "UserPrompter0"))
+ALWAYS = tuple(EDS + "." + n for n in ("Sources5", "AddressBook10", "Calendar8",
+                                        "UserPrompter0")) \
+    + ("org.gnome.OnlineAccounts", "org.gnome.Identity")
 FLAGS = (Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
          | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION)
 NONE = Gio.DBusSendMessageFlags.NONE
@@ -244,7 +249,9 @@ up = connect(phosh)                                 # the calls, as one client o
 up.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
                     "/org/freedesktop/DBus", EDS, Gio.DBusSignalFlags.MATCH_ARG0_NAMESPACE,
                     owner_changed)
-for name in ALWAYS + tuple(bus(up, "ListNames", None, "(as)").unpack()[0]):
+for name in ALWAYS:
+    mirror(name)
+for name in bus(up, "ListNames", None, "(as)").unpack()[0]:
     if name.startswith(EDS + "."):
         mirror(name)
 loop = GLib.MainLoop()
