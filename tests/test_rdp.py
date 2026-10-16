@@ -387,10 +387,11 @@ class InTheApp(unittest.TestCase):
         if not panel.check["gnome_shell"]:
             self.assertFalse(panel.button.get_sensitive())
             heading, body, command = panel.instructions("gnome_shell")
-            self.assertEqual(command, "sudo apt install gnome-shell")
-            self.assertIn("ssh me@phone", body)
+            self.assertEqual(command, "ssh -t me@phone 'sudo apt install gnome-shell'")
+            self.assertIn("“Testphone”, not on this PC", body)
         heading, body, command = panel.instructions("firewall")
         self.assertIn("NOPASSWD: ", command)
+        self.assertTrue(command.startswith('ssh -t me@phone "echo '))
         self.assertIn("/etc/sudoers.d/phonebridge-desktop", command)
         with mock.patch.object(Adw.AlertDialog, "present", lambda d, p=None: None):
             self.assertIsNotNone(panel.explain("remote_desktop"))

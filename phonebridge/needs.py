@@ -5,17 +5,37 @@ there, missing (with "How to …") or not known yet - and a dialog with the
 command that sets it up. The desktop session (rdp_ui.py) and the screen
 sharing (screen_page.py) show it."""
 
+import shlex
+
 from gi.repository import Adw, Gdk, Gtk
 
 from .i18n import _
 
 
-def on_the_phone(dev):
-    """The line before a command for the phone."""
+def ssh_command(info, command):
+    """The command, run on the phone from a terminal of this PC."""
+    port = info.get("port") or 22
+    if "'" not in command:
+        quoted = "'%s'" % command
+    elif not set(command) & set('"$`\\!'):
+        quoted = '"%s"' % command
+    else:
+        quoted = shlex.quote(command)
+    return "ssh -t %s%s@%s %s" % ("" if port == 22 else "-p %d " % port, info["user"],
+                                  info["host"], quoted)
+
+
+def on_the_phone(dev, heading, body, command):
+    """(heading, body, command) for what goes on the phone - said plainly,
+    and the command through ssh: run in a terminal here, it lands on the
+    phone and never on this PC."""
     if dev is None:
-        return ""
-    return (_("On the phone - in its terminal, or from here with “ssh %s@%s”:")
-            % (dev.info["user"], dev.info["host"]))
+        return heading, body, command
+    name = dev.info.get("name") or dev.info["host"]
+    return (heading, body + "\n\n" + _(
+        "This goes on the phone “%s”, not on this PC. Run in a terminal here, the command "
+        "below does it there - sudo asks for the phone's password.") % name,
+        ssh_command(dev.info, command))
 
 
 class NeedsGroup(Adw.PreferencesGroup):

@@ -1525,20 +1525,20 @@ TRANSLATIONS = {
         'Optional – ohne kommt nur das Bild',
     'Optional - without it the phone is not turned from here':
         'Optional – ohne lässt sich das Phone von hier nicht drehen',
-    'Install wf-recorder':
-        'wf-recorder installieren',
+    'Install wf-recorder on the phone':
+        'wf-recorder auf dem Phone installieren',
     "It records the phone's screen for the PC.":
         'Es nimmt den Bildschirm des Phones für den PC auf.',
-    'Install wlr-randr':
-        'wlr-randr installieren',
+    'Install wlr-randr on the phone':
+        'wlr-randr auf dem Phone installieren',
     "It turns the phone's screen between portrait and landscape.":
         'Es dreht den Bildschirm des Phones zwischen Hoch- und Querformat.',
-    'Install python3-evdev':
-        'python3-evdev installieren',
+    'Install python3-evdev on the phone':
+        'python3-evdev auf dem Phone installieren',
     'Taps, swipes and keys from the PC reach the phone through it - without it only the picture comes.':
         'Darüber kommen Tippen, Wischen und Tasten vom PC am Phone an – ohne kommt nur das Bild.',
-    'Allow taps from the PC':
-        'Tippen vom PC erlauben',
+    'Allow taps from the PC on the phone':
+        'Tippen vom PC auf dem Phone erlauben',
     "Taps and keys from the PC come in through /dev/uinput, which the phone's user may not write. This allows it - it takes effect once the phone has started anew.":
         'Tippen und Tasten vom PC kommen über /dev/uinput, das der Benutzer des Phones nicht beschreiben darf. Das hier erlaubt es – es wirkt, sobald das Phone neu gestartet ist.',
     'Install GStreamer':
@@ -1547,6 +1547,8 @@ TRANSLATIONS = {
         'Das Bild kommt als H.264 und wird mit GStreamer und seinen Plugins angezeigt. Auf diesem PC:',
     "The picture comes as H.264 and is shown with GStreamer - install its base, good, bad and libav plugins with your distribution's package manager.":
         'Das Bild kommt als H.264 und wird mit GStreamer angezeigt – installiere dessen Plugins base, good, bad und libav mit dem Paketmanager deiner Distribution.',
+    'python3-evdev is missing on the phone (not on this PC)':
+        'python3-evdev fehlt auf dem Phone (nicht auf diesem PC)',
     'Portrait or landscape':
         'Hochformat oder Querformat',
     'Full screen (Esc goes back)':
@@ -1583,8 +1585,8 @@ TRANSLATIONS = {
         'Fehlt',
     'Not running':
         'Läuft nicht',
-    'On the phone - in its terminal, or from here with “ssh %s@%s”:':
-        'Am Phone – in seinem Terminal oder von hier aus mit „ssh %s@%s“:',
+    "This goes on the phone “%s”, not on this PC. Run in a terminal here, the command below does it there - sudo asks for the phone's password.":
+        'Das gehört auf das Phone „%s“, nicht auf diesen PC. In einem Terminal hier ausgeführt, erledigt der Befehl unten es dort – sudo fragt nach dem Passwort des Phones.',
     "Only the phone itself reaches the desktop's port":
         'Nur das Phone selbst erreicht den Port des Desktops',
     'OpenSSL and D-Bus on the phone':
@@ -1621,18 +1623,18 @@ TRANSLATIONS = {
         'Vorhanden',
     'What it needs':
         'Voraussetzungen',
-    "While the desktop runs, PhoneBridge closes its port to everything but the phone itself (the PC comes in through SSH). For that the phone's user may run iptables without a password - this allows exactly that, nothing else:":
-        'Solange der Desktop läuft, sperrt PhoneBridge seinen Port für alles außer dem Phone selbst (der PC kommt über SSH herein). Dafür darf der Benutzer des Phones iptables ohne Passwort ausführen – das hier erlaubt genau das, sonst nichts:',
+    "While the desktop runs, PhoneBridge closes its port to everything but the phone itself (the PC comes in through SSH). For that the phone's user may run iptables without a password - this allows exactly that, nothing else.":
+        'Solange der Desktop läuft, sperrt PhoneBridge seinen Port für alles außer dem Phone selbst (der PC kommt über SSH herein). Dafür darf der Benutzer des Phones iptables ohne Passwort ausführen – das hier erlaubt genau das, sonst nichts.',
     'Without a firewall rule':
         'Ohne Firewall-Regel',
-    'Install GNOME Shell':
-        'GNOME Shell installieren',
-    'Install GNOME Remote Desktop':
-        'GNOME Remote Desktop installieren',
-    'Install OpenSSL and D-Bus':
-        'OpenSSL und D-Bus installieren',
-    'Set up the firewall rule':
-        'Firewall-Regel einrichten',
+    'Install GNOME Shell on the phone':
+        'GNOME Shell auf dem Phone installieren',
+    'Install GNOME Remote Desktop on the phone':
+        'GNOME Remote Desktop auf dem Phone installieren',
+    'Install OpenSSL and D-Bus on the phone':
+        'OpenSSL und D-Bus auf dem Phone installieren',
+    'Set up the firewall rule on the phone':
+        'Firewall-Regel auf dem Phone einrichten',
     'Install an RDP client':
         'RDP-Client installieren',
     'Resolution':

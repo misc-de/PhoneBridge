@@ -282,6 +282,18 @@ class InTheApp(unittest.TestCase):
             lambda: os.path.exists(log) and "key 30 0" in open(log).read(), 10))
         self.assertIn("key 116 1", open(log).read())
 
+    def test_commands_for_the_phone(self):
+        import shlex
+        from phonebridge.needs import ssh_command
+        info = {"user": "me", "host": "phone"}
+        self.assertEqual(ssh_command(dict(info, port=2222), "sudo apt install x"),
+                         "ssh -t -p 2222 me@phone 'sudo apt install x'")
+        rule = "echo 'KERNEL==\"uinput\", MODE=\"0660\"' | sudo tee /etc/udev/rules.d/x"
+        # what the phone's shell gets is the command, word for word
+        self.assertEqual(shlex.split(ssh_command(info, rule))[-1], rule)
+        self.assertEqual(shlex.split(ssh_command(info, "echo 'a b' | sudo tee f"))[-1],
+                         "echo 'a b' | sudo tee f")
+
     def test_what_it_needs(self):
         from phonebridge import agent
         from phonebridge.screen_page import ScreenPage, gstreamer_hint, pc_missing
@@ -325,8 +337,10 @@ class InTheApp(unittest.TestCase):
             self.assertEqual(page.view.get_visible_child_name(), "needs")
             self.assertFalse(page.missing_button.get_visible())
             heading, body, command = page.instructions("recorder")
-            self.assertEqual(command, "sudo apt install wf-recorder")
-            self.assertIn("ssh me@phone", body)
+            # run here, it lands on the phone - never on this PC
+            self.assertEqual(command, "ssh -t me@phone 'sudo apt install wf-recorder'")
+            self.assertIn("“phone”, not on this PC", body)
+            self.assertIn("on the phone", heading)
             # only taps and turning: the picture comes, the bar says what is missing
             page.check = dict(found, wf_recorder=True, evdev=True, uinput=False,
                               uinput_group="system", wlr_randr=False)
@@ -334,17 +348,21 @@ class InTheApp(unittest.TestCase):
             self.assertTrue(page.ready())
             self.assertTrue(page.missing_button.get_visible())
             self.assertFalse(page.rotate_button.get_sensitive())
-            self.assertEqual(page.instructions("touch")[2], "sudo usermod -aG system me")
+            self.assertEqual(page.instructions("touch")[2],
+                             "ssh -t me@phone 'sudo usermod -aG system me'")
             page.check["uinput_group"] = "root"
             self.assertIn("/etc/udev/rules.d/", page.instructions("touch")[2])
             page.check["evdev"] = False
-            self.assertEqual(page.instructions("touch")[2], "sudo apt install python3-evdev")
-            self.assertEqual(page.instructions("turn")[2], "sudo apt install wlr-randr")
+            self.assertEqual(page.instructions("touch")[2],
+                             "ssh -t me@phone 'sudo apt install python3-evdev'")
+            self.assertEqual(page.instructions("turn")[2],
+                             "ssh -t me@phone 'sudo apt install wlr-randr'")
             # an agent too old to tell: tried as before
             page.check = None
             page.update_needs()
             self.assertTrue(page.ready())
             self.assertFalse(page.missing_button.get_visible())
         with mock.patch("phonebridge.screen_page.pc_missing", return_value=["avdec_h264"]):
+            self.assertIn("this PC", page.instructions("decoder")[1])
             self.assertFalse(page.ready())
             self.assertEqual(page.instructions("decoder")[0], "Install GStreamer")

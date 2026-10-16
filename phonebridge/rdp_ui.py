@@ -156,29 +156,28 @@ class DesktopPanel(Adw.PreferencesPage):
     def instructions(self, key):
         """(heading, body, command or None) for what is missing."""
         dev = self.dev
-        where = on_the_phone(dev)
         if key == "gnome_shell":
-            return (_("Install GNOME Shell"), _("The desktop is GNOME's own shell, started without a "
-                                        "screen.") + "\n\n" + where,
-                    "sudo apt install gnome-shell")
+            return on_the_phone(dev, _("Install GNOME Shell on the phone"), _(
+                "The desktop is GNOME's own shell, started without a screen."),
+                "sudo apt install gnome-shell")
         if key == "remote_desktop":
-            return (_("Install GNOME Remote Desktop"), _(
+            return on_the_phone(dev, _("Install GNOME Remote Desktop on the phone"), _(
                 "It shows the desktop over RDP. Installed, it does nothing by itself - "
-                "PhoneBridge starts it only for a desktop session.") + "\n\n" + where,
+                "PhoneBridge starts it only for a desktop session."),
                 "sudo apt install gnome-remote-desktop")
         if key == "tools":
-            return (_("Install OpenSSL and D-Bus"), _("For the session's certificate and its own "
-                                              "D-Bus.") + "\n\n" + where,
-                    "sudo apt install openssl dbus-daemon")
+            return on_the_phone(dev, _("Install OpenSSL and D-Bus on the phone"), _(
+                "For the session's certificate and its own D-Bus."),
+                "sudo apt install openssl dbus-daemon")
         if key == "firewall":
             user = dev.info["user"] if dev is not None else "furios"
             iptables = (self.check or {}).get("iptables") or "/usr/sbin/iptables"
             ip6tables = iptables.replace("iptables", "ip6tables")
-            return (_("Set up the firewall rule"), _(
+            return on_the_phone(dev, _("Set up the firewall rule on the phone"), _(
                 "While the desktop runs, PhoneBridge closes its port to everything but the "
                 "phone itself (the PC comes in through SSH). For that the phone's user may "
                 "run iptables without a password - this allows exactly that, nothing "
-                "else:") + "\n\n" + where,
+                "else."),
                 "echo '%s ALL=(root) NOPASSWD: %s, %s' | sudo tee "
                 "/etc/sudoers.d/phonebridge-desktop" % (user, iptables, ip6tables))
         from .rdp import install_hint

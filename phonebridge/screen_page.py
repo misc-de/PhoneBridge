@@ -392,19 +392,18 @@ class ScreenPage(Gtk.Box):
     def instructions(self, key):
         """(heading, body, command or None) for what is missing."""
         dev = self.dev
-        where = on_the_phone(dev)
         c = self.check or {}
         if key == "recorder":
-            return (_("Install wf-recorder"), _("It records the phone's screen for the PC.")
-                    + "\n\n" + where, "sudo apt install wf-recorder")
+            return on_the_phone(dev, _("Install wf-recorder on the phone"), _(
+                "It records the phone's screen for the PC."), "sudo apt install wf-recorder")
         if key == "turn":
-            return (_("Install wlr-randr"), _("It turns the phone's screen between portrait and "
-                                              "landscape.") + "\n\n" + where,
-                    "sudo apt install wlr-randr")
+            return on_the_phone(dev, _("Install wlr-randr on the phone"), _(
+                "It turns the phone's screen between portrait and landscape."),
+                "sudo apt install wlr-randr")
         if key == "touch" and not c.get("evdev"):
-            return (_("Install python3-evdev"), _(
+            return on_the_phone(dev, _("Install python3-evdev on the phone"), _(
                 "Taps, swipes and keys from the PC reach the phone through it - without it "
-                "only the picture comes.") + "\n\n" + where, "sudo apt install python3-evdev")
+                "only the picture comes."), "sudo apt install python3-evdev")
         if key == "touch":
             user = dev.info["user"] if dev is not None else "furios"
             group = c.get("uinput_group")
@@ -415,10 +414,10 @@ class ScreenPage(Gtk.Box):
                            "sudo usermod -aG input %s" % user)
             else:
                 command = "sudo usermod -aG %s %s" % (group, user)
-            return (_("Allow taps from the PC"), _(
+            return on_the_phone(dev, _("Allow taps from the PC on the phone"), _(
                 "Taps and keys from the PC come in through /dev/uinput, which the phone's user "
                 "may not write. This allows it - it takes effect once the phone has started "
-                "anew.") + "\n\n" + where, command)
+                "anew."), command)
         hint = gstreamer_hint()
         return (_("Install GStreamer"), _(
             "The picture comes as H.264 and is shown with GStreamer and its plugins. On this "
@@ -465,8 +464,11 @@ class ScreenPage(Gtk.Box):
             if self.picture.get_paintable() is None:
                 self._show_status(_("Waiting for the first picture …"), None, spinner=True)
         elif state.startswith("error no touch"):
-            self.state.set_label(_("Only the picture - the phone takes no taps: %s")
-                                 % state[len("error no touch: "):])
+            reason = state[len("error no touch: "):]
+            if "evdev" in reason:           # "No module named 'evdev'" - but where?
+                reason = _("python3-evdev is missing on the phone (not on this PC)")
+            self.state.set_label(_("Only the picture - the phone takes no taps: %s") % reason)
+            self.refresh_check()            # the bar's button says what to do
         elif state.startswith("error "):
             self.state.set_label(text.error(state[6:]))
 
