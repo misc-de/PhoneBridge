@@ -671,6 +671,8 @@ TRANSLATIONS = {
         'Auf dem Phone läuft PipeWire nicht',
     'PipeWire is not running on the phone.':
         'Auf dem Phone läuft PipeWire nicht.',
+    'PipeWire is not running on this PC.':
+        'Auf diesem PC läuft PipeWire nicht.',
     'Place':
         'Ort',
     'Place: %s':
@@ -1474,8 +1476,6 @@ TRANSLATIONS = {
         'Auf dem Phone abspielen',
     'Play on this PC':
         'Auf diesem PC abspielen',
-    'pw-play is missing on this PC':
-        'pw-play fehlt auf diesem PC',
     'The music on the PC stopped: %s':
         'Die Musik am PC wurde beendet: %s',
     'Loudspeaker':

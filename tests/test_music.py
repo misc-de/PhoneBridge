@@ -185,7 +185,8 @@ class TheSwitch(unittest.TestCase):
         for p in (mock.patch.dict(os.environ, dict(home.env(), FAKE_AUDIO_DIR=audio)),
                   mock.patch.object(config, "CONFIG_DIR", home.config),
                   mock.patch.object(PhoneBridgeApp, "_music_extra",
-                                    {"play": ["sh", "-c", "cat > /dev/null"]})):
+                                    {"play": ["sh", "-c", "cat > /dev/null"]}),
+                  mock.patch("phonebridge.callaudio.pipewire_running", return_value=True)):
             p.start()
             self.addCleanup(p.stop)
         config.save(dict(config.DEFAULTS, language="en", devices=[
@@ -222,3 +223,45 @@ class TheSwitch(unittest.TestCase):
         app._on_media(dev, [playing])
         # once the last stream has handed the player back on the phone
         self.assertTrue(run_loop_until(lambda: "test" in app.music_pc, 10))
+
+        # PipeWire gone on the phone: back there, the switch says why, no
+        # menu entry - and the choice is kept for when PipeWire is back
+        dev.status = dict(dev.status or {}, pipewire=False)
+        dev.emit("changed")
+        self.assertNotIn("test", app.music_pc)
+        self.assertTrue(win.overview.on_phone.get_active())
+        self.assertFalse(win.overview.on_pc.get_sensitive())
+        self.assertIn("PipeWire is not running on the phone",
+                      win.overview.on_pc.get_tooltip_text())
+        self.assertNotIn("music-output", [i.get("id") for i in app.menu_items()])
+        self.assertEqual(config.load()["music_on_pc"], ["test"])
+        self.assertTrue(run_loop_until(lambda: not music.ending(), 10))
+        dev.status = dict(dev.status, pipewire=True)
+        dev.emit("changed")
+        self.assertTrue(run_loop_until(lambda: "test" in app.music_pc, 10))
+        self.assertTrue(win.overview.on_pc.get_active())
+        self.assertTrue(win.overview.on_pc.get_sensitive())
+
+    def test_problem(self):
+        from phonebridge import callaudio
+        from phonebridge.app import PhoneBridgeApp
+        app = PhoneBridgeApp.__new__(PhoneBridgeApp)
+        dev = mock.Mock(online=True, status={"pipewire": True}, hello={})
+        problem = PhoneBridgeApp.music_problem
+        with mock.patch.object(callaudio, "available", return_value=True), \
+                mock.patch.object(callaudio, "pipewire_running", return_value=True) as pc:
+            self.assertIsNone(problem(app, dev))
+            dev.status = {"pipewire": True, "call_audio": False}       # no patch needed
+            self.assertIsNone(problem(app, dev))
+            dev.status = {"pipewire": False}
+            self.assertIn("on the phone", problem(app, dev))
+            dev.status, dev.hello = None, {"has": {"pipewire": False}}
+            self.assertIn("on the phone", problem(app, dev))
+            dev.hello = {}                                              # an older agent
+            self.assertIsNone(problem(app, dev))
+            pc.return_value = False
+            self.assertIn("this PC", problem(app, dev))
+        with mock.patch.object(callaudio, "available", return_value=False):
+            self.assertIn("missing on this PC", problem(app, dev))
+        dev.online = False
+        self.assertIsNone(problem(app, dev))

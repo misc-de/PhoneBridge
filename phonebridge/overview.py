@@ -206,8 +206,15 @@ class OverviewPage(Gtk.ScrolledWindow):
         play.set_sensitive(p["can_pause"] if playing else p["can_play"])
         self.media_buttons["Previous"].set_sensitive(p["can_prev"])
         self.media_buttons["Next"].set_sensitive(p["can_next"])
+        # without PipeWire on both sides it plays on the phone, and says why;
+        # the choice is kept for when PipeWire is back
+        problem = self.app.music_problem(self.dev)
+        self.on_pc.set_sensitive(problem is None)
+        self.on_pc.set_tooltip_text(_("Play on this PC") if problem is None
+                                    else _("Not possible right now: %s") % problem)
         self._showing_where = True
-        (self.on_pc if self.app.music_on_pc(self.dev) else self.on_phone).set_active(True)
+        (self.on_pc if problem is None and self.app.music_on_pc(self.dev)
+         else self.on_phone).set_active(True)
         self._showing_where = False
 
     _showing_where = False

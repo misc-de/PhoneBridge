@@ -484,8 +484,8 @@ class PhoneBridgeApp(Adw.Application):
             self.set_rdp(dev, False)
         if not online and self.media.get(dev.id):
             self._on_media(dev, [])
-        if not online:
-            self.sync_music(dev)
+        # also on every status: PipeWire on the phone may come or go
+        self.sync_music(dev)
         if not online:
             self.ringing.pop(dev.id, None)
             self._pc_wanted.pop(dev.id, None)
@@ -776,6 +776,21 @@ class PhoneBridgeApp(Adw.Application):
         """Whether the phone's music is to play here - what the user chose."""
         return dev is not None and dev.id in (self.cfg.get("music_on_pc") or [])
 
+    def music_problem(self, dev):
+        """Why the phone's music cannot play here right now, or None -
+        PipeWire is needed on both sides (not the phone's call audio nodes)."""
+        if dev is None or not dev.online:
+            return None
+        problem = self._pc_audio_problem()
+        if problem is not None:
+            return problem
+        status = dev.status or {}
+        # an agent too old to tell: tried as before
+        running = status.get("pipewire", (dev.hello or {}).get("has", {}).get("pipewire"))
+        if running is False:
+            return _("PipeWire is not running on the phone.")
+        return None
+
     def set_music_on_pc(self, dev, on):
         if dev is None or self.music_on_pc(dev) == bool(on):
             return
@@ -794,13 +809,9 @@ class PhoneBridgeApp(Adw.Application):
         """The stream there while the phone is online, has a player, and its
         music is to play here; else gone."""
         want = (self.music_on_pc(dev) and dev.online and bool(self.media.get(dev.id))
-                and dev.id not in self._music_retry)
+                and dev.id not in self._music_retry and self.music_problem(dev) is None)
         stream = self.music_pc.get(dev.id)
         if want and stream is None:
-            from .callaudio import available
-            if not available():
-                self.tell(_("pw-play is missing on this PC"))
-                return
             from .music import MusicOnPC, ending
             if ending():
                 # the last stream still hands the players back on the phone
@@ -1074,9 +1085,18 @@ class PhoneBridgeApp(Adw.Application):
                                 c.get("avatar"), c["number"])
 
     # -- the call's sound on the PC ---------------------------------------------
-    def call_audio_possible(self, dev):
+    @staticmethod
+    def _pc_audio_problem():
+        """Why this PC cannot play or record the phone's sound, or None."""
         from . import callaudio
-        if dev is None or not dev.online or not callaudio.available():
+        if not callaudio.available():
+            return _("pw-record and pw-play are missing on this PC.")
+        if not callaudio.pipewire_running():
+            return _("PipeWire is not running on this PC.")
+        return None
+
+    def call_audio_possible(self, dev):
+        if dev is None or not dev.online or self._pc_audio_problem() is not None:
             return False
         # live from the status (asked every 30 s): PipeWire must run on the
         # phone with its call audio nodes - it can stop or crash any time
@@ -1087,11 +1107,11 @@ class PhoneBridgeApp(Adw.Application):
 
     def call_audio_problem(self, dev):
         """Why calls at the PC are not possible right now, or None."""
-        from . import callaudio
         if dev is None or not dev.online:
             return None
-        if not callaudio.available():
-            return _("pw-record and pw-play are missing on this PC.")
+        problem = self._pc_audio_problem()
+        if problem is not None:
+            return problem
         status = dev.status or {}
         if status.get("pipewire") is False:
             return _("PipeWire is not running on the phone.")
@@ -1417,9 +1437,11 @@ class PhoneBridgeApp(Adw.Application):
                           "enabled": p["can_pause"] if playing else p["can_play"]})
             if p["can_next"]:
                 items.append({"id": "media:Next", "label": _("Next track")})
-            items.append({"id": "music-output",
-                          "label": _("Play on the phone") if self.music_on_pc(dev)
-                          else _("Play on this PC")})
+            # without PipeWire on both sides the overview says why
+            if self.music_problem(dev) is None:
+                items.append({"id": "music-output",
+                              "label": _("Play on the phone") if self.music_on_pc(dev)
+                              else _("Play on this PC")})
         if len(self.devices) > 1:
             items.append({"type": "separator"})
             for d in self.devices.values():

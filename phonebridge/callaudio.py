@@ -23,8 +23,10 @@ The test mode uses the phone's ordinary speaker and microphone (droid-sink,
 droid-source) instead - to try the way without a call."""
 
 import array
+import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -235,3 +237,24 @@ class CallAudio(GObject.Object):
 def available():
     """pw-record and pw-play on the PC."""
     return all(shutil.which(prog) for prog in ("pw-record", "pw-play"))
+
+
+def pipewire_running():
+    """A PipeWire server on this PC - pw-play and pw-record are of no use
+    without one (a PulseAudio desktop may have the programs, not the server).
+    Its socket answers, or systemd starts it on the first connection."""
+    remote = os.environ.get("PIPEWIRE_REMOTE") or "pipewire-0"
+    if not os.path.isabs(remote):
+        base = os.environ.get("PIPEWIRE_RUNTIME_DIR") or os.environ.get("XDG_RUNTIME_DIR")
+        if not base:
+            return False
+        remote = os.path.join(base, remote)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    try:
+        sock.connect(remote)
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()

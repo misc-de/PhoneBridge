@@ -213,15 +213,37 @@ class PipeWire(unittest.TestCase):
         from phonebridge.app import PhoneBridgeApp
         app = PhoneBridgeApp.__new__(PhoneBridgeApp)
         dev = mock.Mock(online=True, hello={"has": {"call_audio": True}})
-        with mock.patch.object(callaudio, "available", return_value=True):
+        with mock.patch.object(callaudio, "available", return_value=True), \
+                mock.patch.object(callaudio, "pipewire_running", return_value=True) as pc:
             dev.status = {"pipewire": True, "call_audio": True}
             self.assertTrue(PhoneBridgeApp.call_audio_possible(app, dev))
             self.assertIsNone(PhoneBridgeApp.call_audio_problem(app, dev))
+            pc.return_value = False                                     # not on this PC
+            self.assertFalse(PhoneBridgeApp.call_audio_possible(app, dev))
+            self.assertIn("this PC", PhoneBridgeApp.call_audio_problem(app, dev))
+            pc.return_value = True
             dev.status = {"pipewire": False, "call_audio": False}     # PipeWire stopped
             self.assertFalse(PhoneBridgeApp.call_audio_possible(app, dev))
             self.assertIn("PipeWire", PhoneBridgeApp.call_audio_problem(app, dev))
             dev.status = {"pipewire": True, "call_audio": False}
             self.assertIn("droid-call", PhoneBridgeApp.call_audio_problem(app, dev))
+
+    def test_pipewire_on_this_pc(self):
+        import socket
+        run = tempfile.mkdtemp(prefix="phonebridge-pw-")
+        self.addCleanup(shutil.rmtree, run, True)
+        env = {"XDG_RUNTIME_DIR": run, "PIPEWIRE_RUNTIME_DIR": "", "PIPEWIRE_REMOTE": ""}
+        with mock.patch.dict(os.environ, env):
+            self.assertFalse(callaudio.pipewire_running())              # no socket
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.addCleanup(server.close)
+            server.bind(os.path.join(run, "pipewire-0"))
+            server.listen(1)
+            self.assertTrue(callaudio.pipewire_running())
+            server.close()
+            self.assertFalse(callaudio.pipewire_running())              # left behind
+            del os.environ["XDG_RUNTIME_DIR"]
+            self.assertFalse(callaudio.pipewire_running())
 
 
 if __name__ == "__main__":
