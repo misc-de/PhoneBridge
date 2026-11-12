@@ -145,6 +145,27 @@ def normalize(number, country="49"):
     return n
 
 
+SIP_WITHHELD = ("anonymous", "unknown", "unavailable", "restricted", "private")
+
+
+def call_number(address):
+    """The number of a call's remote side as GNOME Calls names it: SIP calls
+    carry an address - 'sip:+4917112345@sip.example.org;user=phone' ->
+    '+4917112345', so it is shown and found in the address book like a
+    call over the SIM. A SIP address of a name ('sip:alice@example.org')
+    stays as it is; an anonymous caller is '' (withheld)."""
+    a = (address or "").strip()
+    m = re.fullmatch(r"(?:sips?|tel):([^@;]*)(?:@.*|;.*)?", a, re.IGNORECASE)
+    if not m:
+        return a
+    user = unquote(m.group(1)).strip()
+    if user.lower() in SIP_WITHHELD:
+        return ""
+    if re.fullmatch(r"\+?\d+", re.sub(r"[\s\-/().]", "", user)):
+        return user
+    return a
+
+
 # --- SMS store (chatty, read only) + our log of what we sent ---------------
 
 def open_store(path=None):
@@ -604,6 +625,50 @@ def set_prop(conn, name, path, iface, prop, value):
          GLib.Variant("(ssv)", (iface, prop, value)))
 
 
+# --- GNOME Calls' own calls: the SIP ones never pass ofono ---------------------
+# Calls exports every call it has at /org/gnome/Calls/Call/<n>, the cellular
+# ones too ("tel") - those come from ofono already, so only the others count.
+
+CALLS_BUS = "org.gnome.Calls"
+CALLS_PATH = "/org/gnome/Calls"
+CALLS_CALL = "org.gnome.Calls.Call"
+# Calls' states, as ofono names them (Alerting and Waiting are deprecated)
+CALLS_STATES = {1: "active", 2: "held", 3: "dialing", 4: "alerting", 5: "incoming",
+                6: "waiting"}
+
+
+def sip_calls(conn):
+    """[(path, state, number, name)] - the calls GNOME Calls has that are
+    not cellular. Asked only while Calls runs: a call would start it."""
+    try:
+        if not call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus", "NameHasOwner",
+                    GLib.Variant("(s)", (CALLS_BUS,)), "(b)")[0]:
+            return []
+        objects = call(conn, CALLS_BUS, CALLS_PATH, "org.freedesktop.DBus.ObjectManager",
+                       "GetManagedObjects", None, "(a{oa{sa{sv}}})")[0]
+    except RuntimeError:
+        return []
+    out = []
+    for path in sorted(objects):
+        props = objects[path].get(CALLS_CALL)
+        if props is None or props.get("Protocol") == "tel":
+            continue
+        state = CALLS_STATES.get(props.get("State"))
+        if state is None:
+            continue                    # unknown or disconnected: not a call (any more)
+        address = props.get("Id", "")
+        number = call_number(address) or "withheld"
+        name = props.get("DisplayName", "")
+        # Calls names a SIP caller by its address' user part - the number
+        # or 'anonymous', not a name
+        user = re.split(r"[:@;]", address)[1] if ":" in address else address
+        if name in (address, user, unquote(user)) or call_number(name) == number:
+            name = ""
+        out.append((path, state, number, name))
+    return out
+
+
 # --- the agent -------------------------------------------------------------
 
 BATTERY_STATES = {1: "charging", 2: "discharging", 3: "empty", 4: "full",
@@ -787,6 +852,18 @@ class Agent:
                 CALLAUDIO, "org.freedesktop.DBus.Properties", "PropertiesChanged",
                 CALLAUDIO_PATH, None, Gio.DBusSignalFlags.NONE,
                 lambda *a: self.schedule_calls())
+            # GNOME Calls' calls: the SIP ones come only from there
+            for iface, member in (("org.freedesktop.DBus.ObjectManager", "InterfacesAdded"),
+                                  ("org.freedesktop.DBus.ObjectManager", "InterfacesRemoved"),
+                                  ("org.freedesktop.DBus.Properties", "PropertiesChanged")):
+                self.session.signal_subscribe(
+                    CALLS_BUS, iface, member, CALLS_PATH if "Object" in iface else None,
+                    None, Gio.DBusSignalFlags.NONE, lambda *a: self.schedule_calls())
+            # Calls ended (or crashed) with a call: it is gone
+            self.session.signal_subscribe(
+                "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                "/org/freedesktop/DBus", CALLS_BUS, Gio.DBusSignalFlags.NONE,
+                lambda *a: self.schedule_calls())
         store = Gio.File.new_for_path(CHATTY_DB)
         try:
             self._monitor = store.monitor_file(Gio.FileMonitorFlags.NONE, None)
@@ -850,15 +927,17 @@ class Agent:
         return False
 
     def active_calls(self):
-        if not self.modem:
-            return []
-        try:
-            calls = call(self.system, "org.ofono", self.modem, "org.ofono.VoiceCallManager",
-                         "GetCalls", None, "(a(oa{sv}))")[0]
-        except RuntimeError:
-            return []
+        calls = []
+        if self.modem:
+            try:
+                calls = call(self.system, "org.ofono", self.modem,
+                             "org.ofono.VoiceCallManager", "GetCalls", None,
+                             "(a(oa{sv}))")[0]
+            except RuntimeError:
+                calls = []
+        sip = sip_calls(self.session)
         out = []
-        speaker = speaker_state(self) if calls else None
+        speaker = speaker_state(self) if calls or sip else None
         for path, props in calls:
             number = props.get("LineIdentification", "")
             contact = BOOK.lookup(number) if number and number != "withheld" else None
@@ -866,6 +945,12 @@ class Agent:
                         "name": (contact[0] if contact else "") or props.get("Name", ""),
                         "avatar": avatar_key(contact[1]) if contact else None,
                         "speaker": speaker})
+        for path, state, number, name in sip:
+            contact = BOOK.lookup(number) if number and number != "withheld" else None
+            out.append({"path": path, "state": state, "number": number,
+                        "name": (contact[0] if contact else "") or name,
+                        "avatar": avatar_key(contact[1]) if contact else None,
+                        "speaker": speaker, "line": "sip"})
         return out
 
     def _watchdog(self):
@@ -2082,7 +2167,7 @@ def call_history(limit=200, path=None, book=BOOK, country="49", numbers=None):
         rows = db.execute("SELECT id, target, inbound, start, answered, end FROM calls"
                           " ORDER BY id DESC" + ("" if wanted else " LIMIT %d" % int(limit)))
         for rid, target, inbound, start, answered, end in rows:
-            number = (target or "").strip()
+            number = call_number(target)
             if wanted is not None:
                 if normalize(number, country) not in wanted:
                     continue
@@ -2299,8 +2384,15 @@ def cmd_calls_active(agent, args):
     return agent.active_calls()
 
 
+def is_sip_call(path):
+    return (path or "").startswith(CALLS_PATH + "/")
+
+
 @command("call.answer")
 def cmd_answer(agent, args):
+    if is_sip_call(args["path"]):
+        call(agent.session, CALLS_BUS, args["path"], CALLS_CALL, "Accept", timeout=15000)
+        return True
     call(agent.system, "org.ofono", args["path"], "org.ofono.VoiceCall", "Answer",
          timeout=15000)
     return True
@@ -2332,6 +2424,9 @@ def cmd_speaker(agent, args):
 
 @command("call.hangup")
 def cmd_hangup(agent, args):
+    if is_sip_call(args["path"]):
+        call(agent.session, CALLS_BUS, args["path"], CALLS_CALL, "Hangup", timeout=15000)
+        return True
     try:
         call(agent.system, "org.ofono", args["path"], "org.ofono.VoiceCall", "Hangup",
              timeout=15000)

@@ -532,7 +532,8 @@ class CallBar(Gtk.Revealer):
             state += " · " + duration(int(time.time() - call["since"]))
         self.state.set_label(state)
         self.answer.set_visible(call["state"] in ("incoming", "waiting"))
-        possible = self.app.call_audio_possible(dev)
+        # only a cellular call's sound can go to the PC
+        possible = self.app.call_audio_possible(dev) and call.get("line") != "sip"
         audio = self.app.pc_audio.get(dev.id)
         on = audio is not None and not getattr(audio, "test", False)
         self.pc.set_visible(possible and call["state"] in ("active", "dialing", "alerting",

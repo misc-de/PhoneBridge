@@ -201,6 +201,14 @@ class App(unittest.TestCase):
             self.assertEqual(started, [True])
             self.assertNotIn(self.dev.id, self.app._pc_wanted)
             self.app._on_calls(self.dev, [])
+            # a SIP call's sound is GNOME Calls' own: it cannot go to the PC
+            self.app._pc_wanted[self.dev.id] = __import__("time").time()
+            self.app._on_calls(self.dev, [{"path": "/org/gnome/Calls/Call/1",
+                                           "state": "dialing", "number": "1", "name": "",
+                                           "avatar": None, "line": "sip"}])
+            self.assertEqual(started, [True])
+            self.app._pc_wanted.pop(self.dev.id, None)
+            self.app._on_calls(self.dev, [])
 
     def test_8_links(self):
         from phonebridge.app import parse_link

@@ -1041,16 +1041,20 @@ class PhoneBridgeApp(Adw.Application):
         if wanted and time.time() - wanted > 90:
             self._pc_wanted.pop(dev.id, None)       # that call never came about
             wanted = None
+        # the sound reaches the PC only from a cellular call (the modem's
+        # audio nodes) - a SIP call's sound is GNOME Calls' own
+        cellular = [c for c in now if c.get("line") != "sip"]
         if (wanted and audio is None and any(c["state"] in ("dialing", "alerting", "active")
-                                             for c in now)):
+                                             for c in cellular)):
             self._pc_wanted.pop(dev.id, None)       # dialled to talk at the PC
             self.set_pc_audio(dev, True)
             audio = self.pc_audio.get(dev.id)
         if audio is not None and not audio.test and not now:
             self.set_pc_audio(dev, False)           # the call is over
         elif (self.cfg["call_audio_auto"] and audio is None and self.call_audio_possible(dev)
-              and any(c["state"] == "active" for c in now)
-              and not any(prev.get("state") == "active" for prev in old.values())):
+              and any(c["state"] == "active" for c in cellular)
+              and not any(prev.get("state") == "active" and prev.get("line") != "sip"
+                          for prev in old.values())):
             self.set_pc_audio(dev, True)
         if self.window is not None:
             self.window.calls_changed(dev)
@@ -1264,8 +1268,9 @@ class PhoneBridgeApp(Adw.Application):
 
     def _dial(self, dev, number, on_pc):
         line = self.chosen_line(dev)
-        if on_pc:
+        if on_pc and (line is None or line.get("kind") != "sip"):
             # the sound moves to the PC as soon as the call is being set up
+            # (a cellular call's only - a SIP call's sound stays GNOME Calls')
             self._pc_wanted[dev.id] = time.time()
 
         def done(result, error):

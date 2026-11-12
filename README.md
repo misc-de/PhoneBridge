@@ -42,7 +42,9 @@ need the FLX1's call audio. On the PC it runs on any desktop and adapts to it (s
   carry a blue edge.
 - **Telephone** - dial pad with the line to call over (SIM 1, SIM 2, SIP accounts), the call
   history with VoiceBox's voice messages in their places, answer and hang up a call in
-  progress, and - where the phone allows it - talk at the PC instead of the phone.
+  progress, and - where the phone allows it - talk at the PC instead of the phone (cellular
+  calls). SIP calls show like the others: the number out of the SIP address, the name from
+  the address book (GNOME Calls itself leaves SIP callers unnamed).
 - **Messages** - chatty's SMS conversations with profile pictures: read, reply, write new ones,
   delete whole conversations.
 - **Contacts** - all address books of the phone (local and synced: CardDAV, Google …): look up,
@@ -118,6 +120,7 @@ apps use:
 |---|---|
 | Battery | UPower |
 | Network, mobile data, calls in progress, incoming SMS | ofono |
+| SIP calls in progress | GNOME Calls' `org.gnome.Calls.Call` objects on the session bus |
 | Sending SMS | ModemManager (as chatty does) |
 | SMS history | chatty's SQLite store |
 | Contacts, appointments | evolution-data-server over D-Bus - changes sync to the accounts |
