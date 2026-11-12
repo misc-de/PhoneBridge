@@ -748,7 +748,7 @@ class ContactEditor(Adw.Dialog):
                 return
             self.photo = ("image/jpeg", bytes(data))
             from gi.repository import Gdk
-            self.avatar.set_custom_image(Gdk.Texture.new_for_pixbuf(pix))
+            self.avatar.set_custom_image(Gdk.Texture.new_from_bytes(GLib.Bytes.new(self.photo[1])))
             self.remove_photo.set_sensitive(True)
 
         dialog.open(self.get_root(), None, done)

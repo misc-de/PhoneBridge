@@ -47,9 +47,11 @@ def parse_date(text):
             return dt.datetime.strptime(text, fmt).date()
         except ValueError:
             pass
+    # the year added before parsing: without one strptime takes 1900 (no
+    # 29 February), and Python 3.15 refuses a day without a year
     try:
-        d = dt.datetime.strptime(text.rstrip("."), "%d.%m")
-        return d.date().replace(year=dt.date.today().year)
+        return dt.datetime.strptime("%s.%d" % (text.rstrip("."), dt.date.today().year),
+                                    "%d.%m.%Y").date()
     except ValueError:
         return None
 

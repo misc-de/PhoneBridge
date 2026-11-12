@@ -63,8 +63,14 @@ def main():
     bus.add_signal_watch()
     bus.connect("message", on_message)
     threading.Thread(target=watch_stdin, daemon=True).start()
+    try:                            # GLib 2.80 moved it
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+        signal_add = GLibUnix.signal_add
+    except (ImportError, ValueError):
+        signal_add = GLib.unix_signal_add
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
-        GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, lambda: loop.quit() or False)
+        signal_add(GLib.PRIORITY_HIGH, sig, lambda: loop.quit() or False)
     pipe.set_state(Gst.State.PLAYING)
     try:
         loop.run()

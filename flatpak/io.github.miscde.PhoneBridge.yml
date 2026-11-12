@@ -12,7 +12,7 @@
 # Flatpak updates it.
 id: io.github.miscde.PhoneBridge
 runtime: org.gnome.Platform
-runtime-version: '50'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: phonebridge
 finish-args:
@@ -87,8 +87,8 @@ modules:
       - /share/man
     sources:
       - type: archive
-        url: https://github.com/FreeRDP/FreeRDP/releases/download/3.31.1/freerdp-3.31.1.tar.gz
-        sha256: 4a2629026896cb4e26fb8ed2d6ca6aa4ab89ca95528dfbae2550c2f6bc866991
+        url: https://github.com/FreeRDP/FreeRDP/releases/download/3.33.1/freerdp-3.33.1.tar.gz
+        sha256: 4431bbf04d370545cfe2924b9d9f116b95c90c64ff156b2550bbaf82d34e7124
 
   - name: phonebridge
     buildsystem: simple

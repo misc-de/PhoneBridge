@@ -459,6 +459,10 @@ class Widgets(unittest.TestCase):
         self.assertEqual(parse_date("2026-10-07"), dt.date(2026, 10, 7))
         self.assertEqual(parse_date("07.10.26"), dt.date(2026, 10, 7))
         self.assertEqual(parse_date("24.12."), dt.date(dt.date.today().year, 12, 24))
+        # without a year: this year's, 29 February too when it has one
+        year = dt.date.today().year
+        leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        self.assertEqual(parse_date("29.02."), dt.date(year, 2, 29) if leap else None)
         self.assertIsNone(parse_date("morgen"))
 
     def test_day_title(self):
